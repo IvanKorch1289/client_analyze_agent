@@ -50,9 +50,9 @@ app = FastAPI(
 )
 
 # Подключаем роутеры
-app.include_router(agent_router, prefix="/agent")
-app.include_router(data_router, prefix="/data")
-app.include_router(utility_router, prefix="/utility")
+app.include_router(agent_router)
+app.include_router(data_router)
+app.include_router(utility_router)
 
 
 # =======================

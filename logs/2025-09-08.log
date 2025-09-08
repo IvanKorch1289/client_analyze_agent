@@ -13,3 +13,65 @@
 [18:43:26] INFO | mcp-server | [APP] Streamlit UI запущен на порту 8501
 [18:43:26] INFO | mcp-server | [APP] ✅ Инициализация приложения...
 [18:43:26] ERROR | mcp-server | [TARANTOOL] Tarantool connection failed: (111, 'Connection refused')
+[18:49:25] INFO | mcp-server | [APP] MCP-сервер запущен в фоне на порту 8001
+[18:49:25] INFO | mcp-server | [APP] Streamlit UI запущен на порту 8501
+[18:49:25] INFO | mcp-server | [APP] ✅ Инициализация приложения...
+[18:49:26] ERROR | mcp-server | [TARANTOOL] Tarantool connection failed: (111, 'Connection refused')
+[18:53:52] INFO | mcp-server | [APP] MCP-сервер запущен в фоне на порту 8001
+[18:53:52] INFO | mcp-server | [APP] Streamlit UI запущен на порту 8501
+[18:53:52] INFO | mcp-server | [APP] ✅ Инициализация приложения...
+[18:53:52] ERROR | mcp-server | [TARANTOOL] Tarantool connection failed: (111, 'Connection refused')
+[18:56:24] INFO | mcp-server | [APP] MCP-сервер запущен в фоне на порту 8001
+[18:56:24] INFO | mcp-server | [APP] Streamlit UI запущен на порту 8501
+[18:56:24] INFO | mcp-server | [APP] ✅ Инициализация приложения...
+[18:56:24] ERROR | mcp-server | [TARANTOOL] Tarantool connection failed: (104, 'Connection reset by peer')
+[18:56:51] INFO | mcp-server | [APP] MCP-сервер запущен в фоне на порту 8001
+[18:56:51] INFO | mcp-server | [APP] Streamlit UI запущен на порту 8501
+[18:56:51] INFO | mcp-server | [APP] ✅ Инициализация приложения...
+[18:56:51] ERROR | mcp-server | [TARANTOOL] Tarantool connection failed: (104, 'Connection reset by peer')
+[18:59:49] INFO | mcp-server | [APP] MCP-сервер запущен в фоне на порту 8001
+[18:59:49] INFO | mcp-server | [APP] Streamlit UI запущен на порту 8501
+[18:59:49] INFO | mcp-server | [APP] ✅ Инициализация приложения...
+[18:59:49] INFO | mcp-server | [TARANTOOL] Tarantool connected successfully
+[18:59:49] INFO | mcp-server | [APP] ✅ Клиенты инициализированы
+[19:00:48] INFO | mcp-server | [APP] 🛑 Завершение работы приложения...
+[19:00:48] INFO | mcp-server | [TARANTOOL] Tarantool connection closed
+[19:00:48] INFO | mcp-server | [APP] ✅ Все соединения закрыты
+[19:00:48] INFO | mcp-server | [APP] ✋ Приложение остановлено вручную
+[19:01:20] INFO | mcp-server | [APP] MCP-сервер запущен в фоне на порту 8001
+[19:01:20] INFO | mcp-server | [APP] Streamlit UI запущен на порту 8501
+[19:01:21] INFO | mcp-server | [APP] ✅ Инициализация приложения...
+[19:01:21] INFO | mcp-server | [TARANTOOL] Tarantool connected successfully
+[19:01:21] INFO | mcp-server | [APP] ✅ Клиенты инициализированы
+[19:01:33] DEBUG | mcp-server | [TARANTOOL_DEBUG] Tarantool.get() called for key='cache:08aceb857e73acdaaeed484130570643'
+[19:01:33] DEBUG | mcp-server | [CACHE] Cache MISS: app.services.fetch_data:fetch_company_info:2312016641 → cache:08aceb857e73acdaaeed484130570643
+[19:01:33] INFO | mcp-server | [COMPANY_INFO] Fetching data for INN: 2312016641
+[19:01:33] DEBUG | mcp-server | [TARANTOOL_DEBUG] Tarantool.get() called for key='cache:d634b73985cc20f08e9cea06382b6a7a'
+[19:01:33] DEBUG | mcp-server | [TARANTOOL_DEBUG] Tarantool.get() called for key='cache:d634b73985cc20f08e9cea06382b6a7a'
+[19:01:33] DEBUG | mcp-server | [TARANTOOL_DEBUG] Tarantool.get() called for key='cache:d634b73985cc20f08e9cea06382b6a7a'
+[19:01:33] DEBUG | mcp-server | [TARANTOOL_DEBUG] Tarantool.get() called for key='cache:9570f40cf8c214294668c7ceb1b37d69'
+[19:01:33] DEBUG | mcp-server | [TARANTOOL_DEBUG] Tarantool.get() called for key='cache:9570f40cf8c214294668c7ceb1b37d69'
+[19:01:33] DEBUG | mcp-server | [TARANTOOL_DEBUG] Tarantool.get() called for key='cache:9570f40cf8c214294668c7ceb1b37d69'
+[19:01:33] DEBUG | mcp-server | [TARANTOOL_DEBUG] Tarantool.get() called for key='cache:6d10c38a3d0ddfe170820e256d2775fc'
+[19:01:33] DEBUG | mcp-server | [CACHE] Cache MISS: app.services.fetch_data:fetch_from_infosphere:2312016641 → cache:9570f40cf8c214294668c7ceb1b37d69
+[19:01:33] INFO | mcp-server | 
+[19:01:33] DEBUG | mcp-server | [CACHE] Cache MISS: app.services.fetch_data:fetch_from_dadata:2312016641 → cache:d634b73985cc20f08e9cea06382b6a7a
+[19:01:33] INFO | mcp-server | 
+[19:01:34] DEBUG | mcp-server | [CACHE] Cache MISS: app.services.fetch_data:fetch_from_casebook:2312016641 → cache:6d10c38a3d0ddfe170820e256d2775fc
+[19:01:34] INFO | mcp-server | 
+[19:01:34] INFO | mcp-server | 
+[19:01:34] DEBUG | mcp-server | [TARANTOOL] Cache set: cache:d634b73985cc20f08e9cea06382b6a7a, ttl=7200
+[19:01:34] DEBUG | mcp-server | [CACHE] Cache SET: cache:d634b73985cc20f08e9cea06382b6a7a, ttl=7200
+[19:01:35] INFO | mcp-server | 
+[19:01:35] INFO | mcp-server | [FETCH_ALL_PAGES] Пагинация не обнаружена. Останавливаемся после страницы 1.
+[19:01:35] DEBUG | mcp-server | [TARANTOOL] Cache set: cache:6d10c38a3d0ddfe170820e256d2775fc, ttl=9600
+[19:01:35] DEBUG | mcp-server | [CACHE] Cache SET: cache:6d10c38a3d0ddfe170820e256d2775fc, ttl=9600
+[19:01:41] INFO | mcp-server | 
+[19:01:41] DEBUG | mcp-server | [TARANTOOL] Cache set: cache:9570f40cf8c214294668c7ceb1b37d69, ttl=3600
+[19:01:41] DEBUG | mcp-server | [CACHE] Cache SET: cache:9570f40cf8c214294668c7ceb1b37d69, ttl=3600
+[19:01:41] DEBUG | mcp-server | [TARANTOOL] Cache set: cache:08aceb857e73acdaaeed484130570643, ttl=9600
+[19:01:41] DEBUG | mcp-server | [CACHE] Cache SET: cache:08aceb857e73acdaaeed484130570643, ttl=9600
+[19:02:00] DEBUG | mcp-server | [TARANTOOL_DEBUG] Tarantool.get() called for key='cache:08aceb857e73acdaaeed484130570643'
+[19:02:00] DEBUG | mcp-server | [TARANTOOL_DEBUG] Tarantool.get() unpacking value for key='cache:08aceb857e73acdaaeed484130570643': type=<class 'bytes'>, len=432078
+[19:02:00] DEBUG | mcp-server | [CACHE] Cache HIT: app.services.fetch_data:fetch_company_info:2312016641 → cache:08aceb857e73acdaaeed484130570643
+[19:02:30] INFO | mcp-server | [APP] ✋ Приложение остановлено вручную
