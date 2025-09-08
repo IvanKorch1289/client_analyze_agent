@@ -1,0 +1,36 @@
+<!-- app/templates/result.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Результат анализа</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; background: #f9f9f9; }
+        h2 { color: #2c3e50; }
+        .result { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; }
+        .confirm-section { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        textarea { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }
+        input[type="submit"] { background: #3498db; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        input[type="submit"]:hover { background: #2980b9; }
+    </style>
+</head>
+<body>
+    <h2>✅ Результат выполнения</h2>
+    <div class="result">
+        {{ output | safe }}
+    </div>
+
+    <div class="confirm-section">
+        <h3>📌 Подтвердите результат</h3>
+        <form action="/confirm/{{ session_id }}" method="post">
+            <label><input type="radio" name="correct" value="true" checked> Да, результат корректен</label><br><br>
+            <label><input type="radio" name="correct" value="false"> Нет, есть ошибки</label><br><br>
+            <textarea name="feedback" placeholder="Опишите, что нужно улучшить..." rows="4" cols="50"></textarea><br><br>
+            <input type="submit" value="Отправить фидбек">
+        </form>
+    </div>
+
+    <br>
+    <a href="/history">← Вернуться к истории</a>
+</body>
+</html>

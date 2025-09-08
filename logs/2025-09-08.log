@@ -1,0 +1,15 @@
+[18:34:37] INFO | mcp-server | [APP] 🚀 MCP-сервер запущен в фоне на порту 8001
+[18:34:37] INFO | mcp-server | [APP] 🖥️ Streamlit UI запущен на порту 8501
+[18:34:37] INFO | mcp-server | [APP] ✅ Инициализация приложения...
+[18:37:24] INFO | mcp-server | [APP] 🚀 MCP-сервер запущен в фоне на порту 8001
+[18:37:24] INFO | mcp-server | [APP] 🖥️ Streamlit UI запущен на порту 8501
+[18:37:24] INFO | mcp-server | [APP] ✅ Инициализация приложения...
+[18:37:24] ERROR | mcp-server | [TARANTOOL] Tarantool connection failed: (111, 'Connection refused')
+[18:40:12] INFO | mcp-server | [APP] MCP-сервер запущен в фоне на порту 8001
+[18:40:12] INFO | mcp-server | [APP] Streamlit UI запущен на порту 8501
+[18:40:12] INFO | mcp-server | [APP] ✅ Инициализация приложения...
+[18:40:12] ERROR | mcp-server | [TARANTOOL] Tarantool connection failed: (111, 'Connection refused')
+[18:43:26] INFO | mcp-server | [APP] MCP-сервер запущен в фоне на порту 8001
+[18:43:26] INFO | mcp-server | [APP] Streamlit UI запущен на порту 8501
+[18:43:26] INFO | mcp-server | [APP] ✅ Инициализация приложения...
+[18:43:26] ERROR | mcp-server | [TARANTOOL] Tarantool connection failed: (111, 'Connection refused')

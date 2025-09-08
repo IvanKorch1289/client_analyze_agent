@@ -1,0 +1,74 @@
+[tool.poetry]
+name = "analyze-agent"
+version = "0.1.0"
+description = ""
+authors = ["crazyivan1289 <crazyivan1289@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.116.1"
+langchain = "^0.3.27"
+langgraph = "^0.6.7"
+fastmcp = "^2.12.2"
+tarantool = "^1.2.0"
+httpx = {extras = ["http2"], version = "^0.28.1"}
+tenacity = "^9.1.2"
+python-dotenv = "^1.1.1"
+xmltodict = "^0.15.0"
+aiofiles = "^24.1.0"
+langchain-community = "^0.3.29"
+streamlit = "^1.49.1"
+langchain-huggingface = "^0.3.1"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.12.11"
+pyright = "^1.1.404"
+detect-secrets = "^1.5.0"
+pylint = "^3.3.8"
+pip-audit = "^2.9.0"
+bandit = "^1.8.6"
+deptry = "^0.23.1"
+black = "^25.1.0"
+vulture = "^2.14"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.vulture]
+ignore_names = [
+    "x_api_key"
+]
+min_confidence = 70
+exclude = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/venv/*"
+]
+
+[tool.pyright]
+include = ["app"]
+exclude = ["**/__pycache__"]
+typeCheckingMode = "basic"
+pythonVersion = "3.12"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+  "F",   # pyflakes
+  "E",   # pycodestyle
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+]
+ignore = ["E501"]
+per-file-ignores = { "__init__.py" = ["F401"] }
+
+[tool.ruff.format]
+line-ending = "auto"
+indent-style = "space"
+quote-style = "double"
