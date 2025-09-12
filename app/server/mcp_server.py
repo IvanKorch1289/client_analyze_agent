@@ -4,7 +4,6 @@ from fastmcp import Client, FastMCP
 
 from app.advanced_funcs.logging_client import logger
 
-
 mcp = FastMCP("AgentToolsServer")
 mcp_client = Client(mcp)
 

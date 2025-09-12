@@ -4,8 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
 import msgpack
-import tarantool
 
+import tarantool
 from app.advanced_funcs.logging_client import logger
 from app.settings import settings
 
