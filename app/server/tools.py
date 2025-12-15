@@ -1,12 +1,13 @@
 import os
 import re
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import aiofiles
 
 from app.server.mcp_server import mcp
 from app.services.fetch_data import fetch_company_info
+from app.services.perplexity_client import PerplexityClient
 
 
 @mcp.tool(
@@ -331,5 +332,144 @@ async def fetch_company_info_for_analyze(inn: str) -> Dict[str, Any]:
             "error": {
                 "type": "external_api_error",
                 "message": f"Failed to fetch company info: {str(e)}",
+            }
+        }
+
+
+@mcp.tool(
+    name="Perplexity поиск",
+    description="Поиск информации в интернете с помощью Perplexity AI. Возвращает актуальные данные с источниками.",
+    tags={"catalog", "search", "ai"},
+)
+async def perplexity_search(
+    query: str,
+    search_recency: str = "month"
+) -> Dict[str, Any]:
+    """Поиск информации в интернете с помощью Perplexity AI.
+    
+    Используй для получения актуальной информации из интернета, когда нужны
+    свежие данные, новости, факты или аналитика из веб-источников.
+    
+    Аргументы:
+        query (str): Поисковый запрос (обязательный)
+        search_recency (str): Фильтр по давности (day, week, month, year)
+    
+    Возвращает:
+        Словарь с:
+        - content: ответ от Perplexity
+        - citations: список источников
+        При ошибке — объект с полем 'error'.
+    """
+    client = PerplexityClient.get_instance()
+    
+    if not client.is_configured():
+        return {
+            "error": {
+                "type": "not_configured",
+                "message": "Perplexity API key not configured. Set PERPLEXITY_API_KEY environment variable.",
+            }
+        }
+    
+    try:
+        result = await client.ask(
+            question=query,
+            system_prompt="Ты - полезный ассистент. Отвечай точно и кратко. Если вопрос на русском - отвечай на русском.",
+            search_recency_filter=search_recency
+        )
+        
+        if not result.get("success"):
+            return {
+                "error": {
+                    "type": "api_error",
+                    "message": result.get("error", "Unknown error")
+                }
+            }
+        
+        return {
+            "status": "success",
+            "content": result.get("content", ""),
+            "citations": result.get("citations", []),
+            "model": result.get("model"),
+            "summary": f"Perplexity ответил на запрос: {query[:50]}..."
+        }
+    except Exception as e:
+        return {
+            "error": {
+                "type": "perplexity_error",
+                "message": f"Error calling Perplexity: {str(e)}",
+            }
+        }
+
+
+@mcp.tool(
+    name="Perplexity анализ",
+    description="Анализ данных или документов с помощью Perplexity AI с возможностью поиска в интернете.",
+    tags={"catalog", "analyze", "ai"},
+)
+async def perplexity_analyze(
+    context: str,
+    question: str,
+    search_recency: str = "month"
+) -> Dict[str, Any]:
+    """Анализирует данные с помощью Perplexity AI.
+    
+    Используй для анализа предоставленных данных с возможностью дополнения
+    информацией из интернета.
+    
+    Аргументы:
+        context (str): Контекст/данные для анализа (обязательный)
+        question (str): Вопрос для анализа (обязательный)
+        search_recency (str): Фильтр по давности поиска (day, week, month, year)
+    
+    Возвращает:
+        Словарь с результатом анализа и источниками.
+    """
+    client = PerplexityClient.get_instance()
+    
+    if not client.is_configured():
+        return {
+            "error": {
+                "type": "not_configured",
+                "message": "Perplexity API key not configured. Set PERPLEXITY_API_KEY environment variable.",
+            }
+        }
+    
+    messages = [
+        {
+            "role": "system",
+            "content": "Ты - аналитик. Анализируй предоставленные данные и отвечай на вопросы. Используй поиск для дополнения информации. Отвечай на языке вопроса."
+        },
+        {
+            "role": "user",
+            "content": f"Контекст:\n{context}\n\nВопрос: {question}"
+        }
+    ]
+    
+    try:
+        result = await client.chat(
+            messages=messages,
+            search_recency_filter=search_recency
+        )
+        
+        if not result.get("success"):
+            return {
+                "error": {
+                    "type": "api_error",
+                    "message": result.get("error", "Unknown error")
+                }
+            }
+        
+        return {
+            "status": "success",
+            "analysis": result.get("content", ""),
+            "citations": result.get("citations", []),
+            "model": result.get("model"),
+            "summary": f"Анализ выполнен: {question[:50]}..."
+        }
+    except Exception as e:
+        return {
+            "error": {
+                "type": "perplexity_error",
+                "message": f"Error calling Perplexity: {str(e)}",
             }
         }

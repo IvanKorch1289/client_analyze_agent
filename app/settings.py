@@ -31,6 +31,10 @@ class Settings(BaseSettings):
 
     tavily_token: Optional[str] = None
     gigachat_token: Optional[str] = None
+    
+    # Perplexity
+    perplexity_api_key: Optional[str] = None
+    perplexity_model: str = "llama-3.1-sonar-small-128k-online"
 
     temperature: float = 0.1
     max_new_tokens: int = 1000
