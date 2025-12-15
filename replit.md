@@ -38,13 +38,24 @@ This starts both:
 
 ## Environment Variables (Optional)
 The app works without external API keys using mock/fallback behavior:
+- `PERPLEXITY_API_KEY` - Perplexity AI for web search
 - `INFOSPHERE_LOGIN`, `INFOSPHERE_PASSWORD` - InfoSphere API
 - `DADATA_API_KEY` - DaData API
 - `CASEBOOK_API_KEY` - Casebook API
 - `HUGGING_FACE_TOKEN` - HuggingFace model access
 - `GIGACHAT_TOKEN` - GigaChat API
 
+## Perplexity Integration
+The app includes Perplexity AI integration for web search capabilities:
+- MCP tools: `perplexity_search`, `perplexity_analyze`
+- API endpoints: `POST /utility/perplexity/search`, `GET /utility/perplexity/status`
+- Client: `app/services/perplexity_client.py`
+
 ## Recent Changes
+- 2025-12-15: Added Perplexity AI agent integration
+  - Created PerplexityClient service
+  - Added MCP tools for search and analysis
+  - Added REST API endpoints
 - 2025-12-15: Initial Replit setup
   - Made Tarantool optional with in-memory fallback
   - Configured Streamlit to run on port 5000
