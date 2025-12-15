@@ -87,6 +87,10 @@ POST /agent/analyze-client
 - **critical** (75-100): Consider rejection
 
 ## Recent Changes
+- 2025-12-15: Added Tavily Search Integration
+  - Created TavilyClient service
+  - Added REST API endpoints: POST /utility/tavily/search, GET /utility/tavily/status
+- 2025-12-15: Added Streamlit startup to app/main.py lifespan
 - 2025-12-15: Added Client Analysis Multi-Agent Workflow
   - Created Orchestrator, Search, and Report Analyzer agents
   - LangGraph workflow with parallel Perplexity searches

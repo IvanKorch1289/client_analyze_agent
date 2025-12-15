@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.services.perplexity_client import PerplexityClient
+from app.services.tavily_client import TavilyClient
 from app.storage.tarantool import TarantoolClient
 
 utility_router = APIRouter(
@@ -16,6 +17,15 @@ utility_router = APIRouter(
 class PerplexityRequest(BaseModel):
     query: str
     search_recency: str = "month"
+
+
+class TavilyRequest(BaseModel):
+    query: str
+    search_depth: str = "basic"
+    max_results: int = 5
+    include_answer: bool = True
+    include_domains: Optional[List[str]] = None
+    exclude_domains: Optional[List[str]] = None
 
 
 @utility_router.get("/validate_cache")
@@ -61,6 +71,49 @@ async def perplexity_search(request: PerplexityRequest):
 async def perplexity_status():
     """Проверка статуса Perplexity API."""
     client = PerplexityClient.get_instance()
+    return {
+        "configured": client.is_configured(),
+        "message": "API key настроен" if client.is_configured() else "API key не настроен"
+    }
+
+
+@utility_router.post("/tavily/search")
+async def tavily_search(request: TavilyRequest):
+    """Поиск информации через Tavily API."""
+    client = TavilyClient.get_instance()
+    
+    if not client.is_configured():
+        return {
+            "status": "error",
+            "message": "Tavily API key не настроен. Добавьте TAVILY_TOKEN в секреты."
+        }
+    
+    result = await client.search(
+        query=request.query,
+        search_depth=request.search_depth,
+        max_results=request.max_results,
+        include_answer=request.include_answer,
+        include_domains=request.include_domains,
+        exclude_domains=request.exclude_domains
+    )
+    
+    if result.get("success"):
+        return {
+            "status": "success",
+            "answer": result.get("answer", ""),
+            "results": result.get("results", []),
+            "query": request.query
+        }
+    return {
+        "status": "error",
+        "message": result.get("error", "Неизвестная ошибка")
+    }
+
+
+@utility_router.get("/tavily/status")
+async def tavily_status():
+    """Проверка статуса Tavily API."""
+    client = TavilyClient.get_instance()
     return {
         "configured": client.is_configured(),
         "message": "API key настроен" if client.is_configured() else "API key не настроен"
