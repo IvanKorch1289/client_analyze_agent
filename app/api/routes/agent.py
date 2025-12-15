@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
 
 from app.advanced_funcs.logging_client import logger
@@ -20,18 +20,27 @@ class ClientAnalysisRequest(BaseModel):
 
 
 @agent_router.post("/prompt")
-async def process_prompt(request: dict, bg: BackgroundTasks):
+async def process_prompt(request: Request, body: dict, bg: BackgroundTasks):
     """Принимает prompt, запускает граф, возвращает ответ."""
-    thread_id = request.get("thread_id") or f"thread_{uuid.uuid4().hex}"
-    user_input = request.get("prompt")
+    thread_id = body.get("thread_id") or f"thread_{uuid.uuid4().hex}"
+    user_input = body.get("prompt")
     if not user_input:
         raise HTTPException(status_code=400, detail="Prompt обязателен")
+
+    llm = getattr(request.app.state, "llm", None)
+    if llm is None:
+        raise HTTPException(
+            status_code=503,
+            detail="LLM не настроен. Требуется GIGACHAT_TOKEN для работы этого endpoint. "
+                   "Используйте /agent/analyze-client для анализа клиентов через Perplexity."
+        )
 
     initial_state: AgentState = {
         "session_id": thread_id,
         "user_input": user_input,
-        "llm": agent_router.app.state.llm,  # ← Устанавливается в startup
+        "llm": llm,
         "current_step": "planning",
+        "plan": "",
         "tool_sequence": [],
         "tool_results": [],
         "analysis_result": "",
@@ -47,7 +56,6 @@ async def process_prompt(request: dict, bg: BackgroundTasks):
             "analysis_result", "Не удалось сгенерировать ответ."
         )
 
-        # Сохраняем в фоне
         bg.add_task(
             save_thread_to_tarantool,
             thread_id,
