@@ -10,12 +10,13 @@ class PerplexityClient:
     """Client for Perplexity AI API."""
 
     BASE_URL = "https://api.perplexity.ai/chat/completions"
-    DEFAULT_MODEL = "llama-3.1-sonar-small-128k-online"
+    DEFAULT_MODEL = "sonar"
 
     _instance: Optional["PerplexityClient"] = None
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or os.getenv("PERPLEXITY_API_KEY")
+        self.model = model or os.getenv("PERPLEXITY_MODEL", self.DEFAULT_MODEL)
         self._client: Optional[httpx.AsyncClient] = None
 
     @classmethod
@@ -40,7 +41,7 @@ class PerplexityClient:
     async def chat(
         self,
         messages: List[Dict[str, str]],
-        model: str = DEFAULT_MODEL,
+        model: Optional[str] = None,
         temperature: float = 0.2,
         max_tokens: Optional[int] = None,
         search_recency_filter: str = "month",
@@ -72,8 +73,9 @@ class PerplexityClient:
             "Content-Type": "application/json"
         }
 
+        use_model = model or self.model
         payload = {
-            "model": model,
+            "model": use_model,
             "messages": messages,
             "temperature": temperature,
             "top_p": 0.9,
@@ -98,7 +100,7 @@ class PerplexityClient:
             result = response.json()
             
             logger.info(
-                f"Perplexity response received, model: {model}",
+                f"Perplexity response received, model: {use_model}",
                 component="perplexity"
             )
             

@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     
     # Perplexity
     perplexity_api_key: Optional[str] = None
-    perplexity_model: str = "llama-3.1-sonar-small-128k-online"
+    perplexity_model: str = "sonar"
 
     temperature: float = 0.1
     max_new_tokens: int = 1000
