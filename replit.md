@@ -51,7 +51,47 @@ The app includes Perplexity AI integration for web search capabilities:
 - API endpoints: `POST /utility/perplexity/search`, `GET /utility/perplexity/status`
 - Client: `app/services/perplexity_client.py`
 
+## Client Analysis Workflow (NEW)
+Multi-agent LangGraph workflow for analyzing potential clients/companies:
+
+### Architecture
+```
+Orchestrator -> Search Agent (parallel) -> Report Analyzer
+```
+
+### Agents
+1. **Orchestrator** (`app/agents/orchestrator.py`): Validates input and creates 5 search intents
+2. **Search Agent** (`app/agents/search.py`): Parallel Perplexity searches with sentiment analysis
+3. **Report Analyzer** (`app/agents/report_analyzer.py`): Creates risk assessment (0-100 score)
+
+### API Endpoint
+```
+POST /agent/analyze-client
+{
+  "client_name": "Company Name",
+  "inn": "1234567890",  // optional
+  "additional_notes": "..."  // optional
+}
+```
+
+### Response
+- `session_id`: Unique analysis ID
+- `status`: "completed" | "failed"
+- `report`: Risk assessment with findings, recommendations, citations
+- `summary`: Markdown summary
+
+### Risk Levels
+- **low** (0-24): Standard procedure
+- **medium** (25-49): Additional verification
+- **high** (50-74): Deep investigation required
+- **critical** (75-100): Consider rejection
+
 ## Recent Changes
+- 2025-12-15: Added Client Analysis Multi-Agent Workflow
+  - Created Orchestrator, Search, and Report Analyzer agents
+  - LangGraph workflow with parallel Perplexity searches
+  - Risk assessment with sentiment analysis
+  - API endpoint: POST /agent/analyze-client
 - 2025-12-15: Added Perplexity AI agent integration
   - Created PerplexityClient service
   - Added MCP tools for search and analysis
