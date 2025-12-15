@@ -56,6 +56,15 @@ async def lifespan(app: FastAPI):
     await AsyncHttpClient.get_instance()
     await TarantoolClient.get_instance()
 
+    # Инициализируем LLM
+    try:
+        from app.agents.llm_init import llm
+        app.state.llm = llm
+        logger.info("LLM инициализирован")
+    except Exception as e:
+        logger.warning(f"LLM не инициализирован: {e}")
+        app.state.llm = None
+
     # Запускаем Streamlit в фоновом потоке
     streamlit_thread = Thread(target=run_streamlit, daemon=True)
     streamlit_thread.start()
