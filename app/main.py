@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 from contextlib import asynccontextmanager
+from threading import Thread
 
 import uvicorn
 from fastapi import FastAPI
@@ -17,6 +18,27 @@ from app.storage.tarantool import TarantoolClient
 
 # Get backend port from environment or use default
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
+STREAMLIT_PORT = int(os.getenv("STREAMLIT_PORT", "5000"))
+
+
+# =======================
+# Streamlit startup
+# =======================
+
+
+def run_streamlit():
+    """Run Streamlit frontend on specified port."""
+    import time
+    time.sleep(2)
+    subprocess.run([
+        sys.executable, "-m", "streamlit", "run",
+        "app/streamlit_app.py",
+        f"--server.port={STREAMLIT_PORT}",
+        "--server.address=0.0.0.0",
+        "--server.headless=true",
+        "--browser.gatherUsageStats=false"
+    ])
+
 
 # =======================
 # Lifespan: управление жизненным циклом приложения
@@ -33,6 +55,11 @@ async def lifespan(app: FastAPI):
     # Инициализируем глобальные клиенты
     await AsyncHttpClient.get_instance()
     await TarantoolClient.get_instance()
+
+    # Запускаем Streamlit в фоновом потоке
+    streamlit_thread = Thread(target=run_streamlit, daemon=True)
+    streamlit_thread.start()
+    logger.info(f"Streamlit запущен на порту {STREAMLIT_PORT}")
 
     logger.info("Клиенты инициализированы")
     yield
@@ -59,7 +86,7 @@ app.include_router(utility_router)
 
 
 # =======================
-# Фоновые задачи: MCP и Streamlit
+# Фоновые задачи: MCP
 # =======================
 
 
