@@ -1,14 +1,22 @@
 import uuid
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel
 
 from app.advanced_funcs.logging_client import logger
+from app.agents.client_workflow import run_client_analysis
 from app.agents.workflow import AgentState, invoke_graph_with_persistence
 from app.storage.tarantool import save_thread_to_tarantool
 
 agent_router = APIRouter(prefix="/agent", tags=["Агент"])
+
+
+class ClientAnalysisRequest(BaseModel):
+    client_name: str
+    inn: Optional[str] = ""
+    additional_notes: Optional[str] = ""
 
 
 @agent_router.post("/prompt")
@@ -76,6 +84,33 @@ async def get_thread_history(thread_id: str):
     if not result:
         raise HTTPException(status_code=404, detail="Тред не найден")
     return result
+
+
+@agent_router.post("/analyze-client")
+async def analyze_client(request: ClientAnalysisRequest):
+    """
+    Анализирует клиента через Perplexity AI.
+    Выполняет параллельный поиск и создаёт отчёт с оценкой рисков.
+    """
+    from app.services.perplexity_client import PerplexityClient
+    
+    client = PerplexityClient.get_instance()
+    if not client.is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Perplexity API key не настроен. Добавьте PERPLEXITY_API_KEY в секреты."
+        )
+    
+    try:
+        result = await run_client_analysis(
+            client_name=request.client_name,
+            inn=request.inn or "",
+            additional_notes=request.additional_notes or ""
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Client analysis error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка анализа: {str(e)}") from e
 
 
 @agent_router.get("/threads")
