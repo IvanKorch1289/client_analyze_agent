@@ -1,46 +1,45 @@
-import os
+from typing import Optional
 
-from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
-
-load_dotenv()
 
 
 class Settings(BaseSettings):
     # Tarantool
-    tarantool_host: str = os.getenv("TARANTOOL_HOST", "localhost")
-    tarantool_port: int = int(os.getenv("TARANTOOL_PORT", 3302))
-    tarantool_user: str = os.getenv("TARANTOOL_USER", "admin")
-    tarantool_password: str = os.getenv("TARANTOOL_PASSWORD", "password")
+    tarantool_host: str = "localhost"
+    tarantool_port: int = 3302
+    tarantool_user: str = "admin"
+    tarantool_password: str = "password"
 
     # InfoSphere
-    infosphere_login: str = os.getenv("INFOSPHERE_LOGIN")
-    infosphere_password: str = os.getenv("INFOSPHERE_PASSWORD")
+    infosphere_login: Optional[str] = None
+    infosphere_password: Optional[str] = None
     infosphere_url: str = "https://i-sphere.ru/2.00/"
 
     # DaData
-    dadata_api_key: str = os.getenv("DADATA_API_KEY")
+    dadata_api_key: Optional[str] = None
     dadata_url: str = (
         "https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party"
     )
 
     # Casebook
-    casebook_api_key: str = os.getenv("CASEBOOK_API_KEY")
+    casebook_api_key: Optional[str] = None
     casebook_arbitr_url: str = "https://api3.casebook.ru/arbitrage/cases"
 
-    # ai
-    hugging_face_token: str = os.getenv("HUGGING_FACE_TOKEN")
+    # AI
+    hugging_face_token: Optional[str] = None
     huging_face_model: str = "meta-llama/Meta-Llama-3-8B-Instruct"
 
-    tavily_token: str = os.getenv("TAVILY_TOKEN")
-    gigachat_token: str = os.getenv("GIGACHAT_TOKEN")
+    tavily_token: Optional[str] = None
+    gigachat_token: Optional[str] = None
 
     temperature: float = 0.1
     max_new_tokens: int = 1000
     do_sample: bool = False
 
-    class Config:
-        env_file = ".env"
+    model_config = {
+        "env_file": ".env",
+        "extra": "ignore"
+    }
 
 
 settings = Settings()

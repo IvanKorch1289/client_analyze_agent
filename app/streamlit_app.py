@@ -1,3 +1,5 @@
+import os
+
 import requests
 import streamlit as st
 
@@ -5,12 +7,13 @@ import streamlit as st
 # Настройка страницы
 # ========================
 st.set_page_config(page_title="Multi-Agent System", layout="wide")
-st.title("🤖 Multi-Agent System Console")
+st.title("Multi-Agent System Console")
 
 # ========================
 # Константы
 # ========================
-API_BASE_URL = "http://localhost:8000"
+BACKEND_PORT = os.getenv("BACKEND_PORT", "8000")
+API_BASE_URL = f"http://localhost:{BACKEND_PORT}"
 
 # ========================
 # Боковая панель навигации

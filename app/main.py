@@ -1,7 +1,7 @@
 import asyncio
 import os
-import threading
-import time
+import subprocess
+import sys
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -15,6 +15,9 @@ from app.server.mcp_server import run_mcp_server
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
 
+# Get backend port from environment or use default
+BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
+
 # =======================
 # Lifespan: управление жизненным циклом приложения
 # =======================
@@ -22,7 +25,7 @@ from app.storage.tarantool import TarantoolClient
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("✅ Инициализация приложения...")
+    logger.info("Инициализация приложения...")
 
     # Создаём папку для заметок
     os.makedirs("notes", exist_ok=True)
@@ -31,12 +34,12 @@ async def lifespan(app: FastAPI):
     await AsyncHttpClient.get_instance()
     await TarantoolClient.get_instance()
 
-    logger.info("✅ Клиенты инициализированы")
+    logger.info("Клиенты инициализированы")
     yield
-    logger.info("🛑 Завершение работы приложения...")
+    logger.info("Завершение работы приложения...")
     await TarantoolClient.close_global()
     await AsyncHttpClient.close_global()
-    logger.info("✅ Все соединения закрыты")
+    logger.info("Все соединения закрыты")
 
 
 # =======================
@@ -61,19 +64,9 @@ app.include_router(utility_router)
 
 
 async def start_background_services():
-    """Запускает MCP-сервер и Streamlit в фоне."""
-
-    # Запуск MCP-сервера (должен быть async)
+    """Запускает MCP-сервер в фоне."""
     asyncio.create_task(run_mcp_server())
     logger.info("MCP-сервер запущен в фоне на порту 8001")
-
-    # Запуск Streamlit через threading (не async)
-    def run_streamlit():
-        time.sleep(3)  # Ждём, пока основной сервер запустится
-        os.system("streamlit run app/streamlit_app.py --server.port=8501")
-
-    threading.Thread(target=run_streamlit, daemon=True).start()
-    logger.info("Streamlit UI запущен на порту 8501")
 
 
 # =======================
@@ -87,8 +80,8 @@ async def main():
 
     config = uvicorn.Config(
         app,
-        host="0.0.0.0",
-        port=8000,
+        host="localhost",
+        port=BACKEND_PORT,
         log_level="info",
     )
     server = uvicorn.Server(config)
