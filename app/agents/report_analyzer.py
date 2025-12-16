@@ -119,12 +119,52 @@ def generate_summary(search_results: List[Dict[str, Any]], client_name: str) -> 
     return "\n".join(summary_parts)
 
 
+def analyze_source_data(source_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Анализирует данные из разных источников (DaData, InfoSphere, Casebook)."""
+    analysis = {
+        "company_info": {},
+        "legal_cases": [],
+        "risk_signals": [],
+        "positive_signals": []
+    }
+    
+    dadata = source_data.get("dadata", {})
+    if dadata and dadata.get("success"):
+        data = dadata.get("data", {})
+        analysis["company_info"] = {
+            "name": data.get("name", {}).get("full_with_opf", ""),
+            "status": data.get("state", {}).get("status", ""),
+            "registration_date": data.get("state", {}).get("registration_date"),
+            "address": data.get("address", {}).get("value", ""),
+            "management": data.get("management", {}).get("name", "")
+        }
+        if data.get("state", {}).get("status") == "LIQUIDATED":
+            analysis["risk_signals"].append("Компания ликвидирована")
+    
+    casebook = source_data.get("casebook", {})
+    if casebook and casebook.get("success"):
+        cases = casebook.get("data", [])
+        if cases:
+            analysis["legal_cases"] = cases[:10]
+            if len(cases) > 5:
+                analysis["risk_signals"].append(f"Найдено {len(cases)} судебных дел")
+    
+    infosphere = source_data.get("infosphere", {})
+    if infosphere and infosphere.get("success"):
+        data = infosphere.get("data", {})
+        if data:
+            analysis["infosphere_data"] = data
+    
+    return analysis
+
+
 async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Агент-анализатор: создаёт итоговый отчёт с оценкой рисков.
     
     Входные данные:
-        - search_results: List[Dict] - результаты поиска
+        - search_results: List[Dict] - результаты поиска (Perplexity/Tavily)
+        - source_data: Dict - данные от источников (DaData/InfoSphere/Casebook)
         - client_name: str - название клиента
         - inn: str - ИНН
     
@@ -133,16 +173,46 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         - current_step: str
     """
     search_results = state.get("search_results", [])
+    source_data = state.get("source_data", {})
     client_name = state.get("client_name", "Неизвестный клиент")
     inn = state.get("inn", "")
     
     logger.info(f"Report Analyzer: создание отчёта для '{client_name}'", component="analyzer")
     
+    source_analysis = analyze_source_data(source_data) if source_data else {}
+    
     risk_assessment = calculate_risk_score(search_results)
+    
+    for signal in source_analysis.get("risk_signals", []):
+        risk_assessment["factors"].append(signal)
+        risk_assessment["score"] = min(100, risk_assessment["score"] + 10)
+    
+    if risk_assessment["score"] >= 75:
+        risk_assessment["level"] = "critical"
+    elif risk_assessment["score"] >= 50:
+        risk_assessment["level"] = "high"
+    elif risk_assessment["score"] >= 25:
+        risk_assessment["level"] = "medium"
+    
     summary = generate_summary(search_results, client_name)
     
     all_citations = []
     findings = []
+    
+    if source_analysis.get("company_info"):
+        findings.append({
+            "category": "Информация о компании (DaData)",
+            "sentiment": "neutral",
+            "key_points": str(source_analysis["company_info"])[:300]
+        })
+    
+    if source_analysis.get("legal_cases"):
+        case_count = len(source_analysis["legal_cases"])
+        findings.append({
+            "category": f"Судебные дела (Casebook): {case_count}",
+            "sentiment": "negative" if case_count > 3 else "neutral",
+            "key_points": f"Найдено {case_count} судебных дел"
+        })
     
     for result in search_results:
         if result.get("success"):
@@ -153,14 +223,35 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 "key_points": result.get("content", "")[:300] if result.get("content") else ""
             })
     
+    perplexity_data = source_data.get("perplexity", {})
+    if perplexity_data and perplexity_data.get("success"):
+        findings.append({
+            "category": "Веб-поиск (Perplexity)",
+            "sentiment": "neutral",
+            "key_points": perplexity_data.get("content", "")[:300]
+        })
+        all_citations.extend(perplexity_data.get("citations", []))
+    
+    tavily_data = source_data.get("tavily", {})
+    if tavily_data and tavily_data.get("success"):
+        findings.append({
+            "category": "Веб-поиск (Tavily)",
+            "sentiment": "neutral",
+            "key_points": tavily_data.get("answer", "")[:300]
+        })
+    
+    successful_sources = sum(1 for v in source_data.values() if v and v.get("success"))
+    
     report = {
         "metadata": {
             "client_name": client_name,
             "inn": inn,
             "analysis_date": datetime.now().isoformat(),
-            "data_sources_count": len(search_results),
-            "successful_sources": sum(1 for r in search_results if r.get("success"))
+            "data_sources_count": len(search_results) + len([v for v in source_data.values() if v]),
+            "successful_sources": sum(1 for r in search_results if r.get("success")) + successful_sources
         },
+        "company_info": source_analysis.get("company_info", {}),
+        "legal_cases_count": len(source_analysis.get("legal_cases", [])),
         "risk_assessment": risk_assessment,
         "findings": findings,
         "summary": summary,

@@ -141,6 +141,11 @@ Optimized cache client with batch operations and compression:
 - `DELETE /utility/cache/prefix/{prefix}` - Delete keys by prefix
 
 ## Recent Changes
+- 2025-12-16: Multi-Source Parallel Data Collection
+  - New data_collector agent: parallel API calls to Casebook, InfoSphere, DaData, Perplexity, Tavily
+  - Updated workflow: orchestrator -> data_collector -> analyzer -> file_writer
+  - file_writer agent: saves reports to Markdown and JSON files in `reports/` directory
+  - Enhanced report_analyzer: integrates data from all 5 sources
 - 2025-12-16: LangGraph Workflow Optimization
   - Rate limiting with semaphore (max 3 concurrent API calls)
   - Staggered delays between search requests (0.5s)

@@ -1,6 +1,7 @@
 """
 Client Analysis Workflow: LangGraph workflow для анализа клиентов.
-Orchestrator -> Search Agent -> Report Analyzer
+Orchestrator -> Data Collector (parallel: Casebook, InfoSphere, DaData, Perplexity, Tavily)
+             -> Report Analyzer -> File Writer
 """
 import asyncio
 import time
@@ -9,6 +10,8 @@ from typing import Any, AsyncGenerator, Dict, List, Literal, Optional, TypedDict
 from langgraph.graph import END, StateGraph
 
 from app.advanced_funcs.logging_client import logger
+from app.agents.data_collector import data_collector_agent
+from app.agents.file_writer import file_writer_agent
 from app.agents.orchestrator import orchestrator_agent
 from app.agents.report_analyzer import report_analyzer_agent
 from app.agents.search import search_agent
@@ -24,49 +27,61 @@ class ClientAnalysisState(TypedDict, total=False):
     
     search_intents: List[Dict[str, str]]
     search_results: List[Dict[str, Any]]
+    source_data: Dict[str, Any]
+    collection_stats: Dict[str, Any]
     
     orchestrator_result: Dict[str, Any]
     report: Dict[str, Any]
     analysis_result: str
+    saved_files: Dict[str, str]
     
     error: str
     search_error: str
     
     current_step: Literal[
         "orchestrating",
+        "collecting",
         "searching",
         "analyzing",
+        "saving",
         "completed",
         "failed"
     ]
 
 
 def build_client_analysis_graph():
-    """Создаёт и возвращает скомпилированный граф анализа клиента."""
+    """
+    Создаёт и возвращает скомпилированный граф анализа клиента.
+    
+    Архитектура:
+        orchestrator -> data_collector (parallel API calls) -> analyzer -> file_writer
+    """
     workflow = StateGraph(ClientAnalysisState)
     
     workflow.add_node("orchestrator", orchestrator_agent)
-    workflow.add_node("search", search_agent)
+    workflow.add_node("data_collector", data_collector_agent)
     workflow.add_node("analyzer", report_analyzer_agent)
+    workflow.add_node("file_writer", file_writer_agent)
     
     workflow.set_entry_point("orchestrator")
     
     def route_after_orchestrator(state: Dict[str, Any]) -> str:
         if state.get("current_step") == "failed":
             return END
-        return "search"
+        return "data_collector"
     
     workflow.add_conditional_edges(
         "orchestrator",
         route_after_orchestrator,
         {
-            "search": "search",
+            "data_collector": "data_collector",
             END: END
         }
     )
     
-    workflow.add_edge("search", "analyzer")
-    workflow.add_edge("analyzer", END)
+    workflow.add_edge("data_collector", "analyzer")
+    workflow.add_edge("analyzer", "file_writer")
+    workflow.add_edge("file_writer", END)
     
     return workflow.compile()
 
@@ -102,9 +117,12 @@ def run_client_analysis_streaming(
         "current_step": "orchestrating",
         "search_intents": [],
         "search_results": [],
+        "source_data": {},
+        "collection_stats": {},
         "orchestrator_result": {},
         "report": {},
         "analysis_result": "",
+        "saved_files": {},
         "error": "",
         "search_error": ""
     }
@@ -162,39 +180,36 @@ async def _run_streaming_analysis(
         yield {
             "type": "progress",
             "data": {
-                "step": "searching",
-                "message": f"Выполняем {len(intents)} поисковых запросов...",
+                "step": "collecting",
+                "message": "Сбор данных из всех источников (Casebook, DaData, InfoSphere, Perplexity, Tavily)...",
                 "progress": 25
             }
         }
         
-        current_state = await search_agent(current_state)
+        current_state = await data_collector_agent(current_state)
         
-        results = current_state.get("search_results", [])
-        successful = sum(1 for r in results if r.get("success"))
+        source_data = current_state.get("source_data", {})
+        collection_stats = current_state.get("collection_stats", {})
+        successful_sources = collection_stats.get("successful_sources", [])
         
-        for i, result in enumerate(results):
-            sentiment_data = result.get("sentiment", {})
-            sentiment_label = sentiment_data.get("label", "neutral") if isinstance(sentiment_data, dict) else "neutral"
-            yield {
-                "type": "search_result",
-                "data": {
-                    "index": i + 1,
-                    "total": len(results),
-                    "query": result.get("query", "")[:50],
-                    "success": result.get("success", False),
-                    "sentiment": sentiment_label,
-                    "progress": 25 + int((i + 1) / len(results) * 40) if results else 65
-                }
+        yield {
+            "type": "data_collected",
+            "data": {
+                "step": "data_collection_complete",
+                "sources": list(source_data.keys()),
+                "successful": successful_sources,
+                "duration_ms": collection_stats.get("duration_ms", 0),
+                "progress": 60
             }
+        }
         
         yield {
             "type": "progress",
             "data": {
                 "step": "analyzing",
                 "message": "Формирование отчёта и оценка рисков...",
-                "successful_searches": successful,
-                "total_searches": len(results),
+                "successful_sources": len(successful_sources),
+                "total_sources": len(source_data),
                 "progress": 70
             }
         }
@@ -211,9 +226,22 @@ async def _run_streaming_analysis(
                 "risk_score": risk.get("score", 0),
                 "risk_level": risk.get("level", "unknown"),
                 "findings_count": len(report.get("findings", [])),
-                "progress": 95
+                "progress": 85
             }
         }
+        
+        yield {
+            "type": "progress",
+            "data": {
+                "step": "saving",
+                "message": "Сохранение отчёта в файл...",
+                "progress": 90
+            }
+        }
+        
+        current_state = await file_writer_agent(current_state)
+        
+        saved_files = current_state.get("saved_files", {})
         
         final_result = {
             "session_id": session_id,
@@ -222,6 +250,7 @@ async def _run_streaming_analysis(
             "status": "completed",
             "report": report,
             "summary": current_state.get("analysis_result", ""),
+            "saved_files": saved_files,
             "timestamp": time.time()
         }
         
@@ -238,7 +267,7 @@ async def _run_streaming_analysis(
                     {"type": "input", "data": {"client_name": client_name, "inn": inn}},
                     {"type": "report", "data": report}
                 ],
-                "final_state": current_state
+                "saved_files": saved_files
             }
             asyncio.create_task(save_thread_to_tarantool(session_id, thread_data))
         except Exception as e:
@@ -296,6 +325,7 @@ async def _run_batch_analysis(
         "status": final_state.get("current_step"),
         "report": final_state.get("report", {}),
         "summary": final_state.get("analysis_result", ""),
+        "saved_files": final_state.get("saved_files", {}),
         "error": final_state.get("error") or final_state.get("search_error"),
         "timestamp": time.time()
     }
