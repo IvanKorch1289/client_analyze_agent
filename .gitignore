@@ -4,3 +4,4 @@
 .env
 /notes
 .secrets.baseline
+/logs
