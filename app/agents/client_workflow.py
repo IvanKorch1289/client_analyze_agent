@@ -4,7 +4,7 @@ Orchestrator -> Search Agent -> Report Analyzer
 """
 import asyncio
 import time
-from typing import Any, Dict, List, Literal, Optional, TypedDict
+from typing import Any, AsyncGenerator, Dict, List, Literal, Optional, TypedDict, Union
 
 from langgraph.graph import END, StateGraph
 
@@ -71,23 +71,25 @@ def build_client_analysis_graph():
     return workflow.compile()
 
 
-async def run_client_analysis(
+def run_client_analysis_streaming(
     client_name: str,
     inn: str = "",
     additional_notes: str = "",
-    session_id: Optional[str] = None
-) -> Dict[str, Any]:
+    session_id: Optional[str] = None,
+    stream: bool = False
+) -> Union[AsyncGenerator[Dict[str, Any], None], Any]:
     """
-    Запускает workflow анализа клиента.
+    Запускает workflow анализа клиента с поддержкой streaming.
     
     Args:
         client_name: Название компании
         inn: ИНН компании (опционально)
         additional_notes: Дополнительные заметки (опционально)
         session_id: ID сессии (генерируется автоматически)
+        stream: Если True, возвращает AsyncGenerator с событиями прогресса
     
     Returns:
-        Dict с результатом анализа и отчётом
+        AsyncGenerator с событиями (stream=True) или Coroutine для batch анализа
     """
     if not session_id:
         session_id = f"analysis_{int(time.time())}"
@@ -109,11 +111,160 @@ async def run_client_analysis(
     
     logger.info(f"Starting client analysis workflow: {session_id}", component="workflow")
     
+    if stream:
+        return _run_streaming_analysis(initial_state, session_id, client_name, inn)
+    
+    return _run_batch_analysis(initial_state, session_id, client_name, inn)
+
+
+async def _run_streaming_analysis(
+    initial_state: ClientAnalysisState,
+    session_id: str,
+    client_name: str,
+    inn: str
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """Streaming версия анализа с событиями прогресса."""
+    current_state = initial_state.copy()
+    
+    try:
+        yield {
+            "type": "progress",
+            "data": {
+                "step": "orchestrating",
+                "message": "Формирование поисковых запросов...",
+                "progress": 10
+            }
+        }
+        
+        current_state = await orchestrator_agent(current_state)
+        
+        intents = current_state.get("search_intents", [])
+        intent_categories = [
+            i.get("category") or i.get("query", "")[:30] for i in intents
+        ]
+        yield {
+            "type": "orchestrator",
+            "data": {
+                "step": "orchestrator_complete",
+                "intents_count": len(intents),
+                "intents": intent_categories,
+                "progress": 20
+            }
+        }
+        
+        if current_state.get("current_step") == "failed":
+            yield {
+                "type": "error",
+                "data": {"error": current_state.get("error", "Ошибка оркестратора")}
+            }
+            return
+        
+        yield {
+            "type": "progress",
+            "data": {
+                "step": "searching",
+                "message": f"Выполняем {len(intents)} поисковых запросов...",
+                "progress": 25
+            }
+        }
+        
+        current_state = await search_agent(current_state)
+        
+        results = current_state.get("search_results", [])
+        successful = sum(1 for r in results if r.get("success"))
+        
+        for i, result in enumerate(results):
+            sentiment_data = result.get("sentiment", {})
+            sentiment_label = sentiment_data.get("label", "neutral") if isinstance(sentiment_data, dict) else "neutral"
+            yield {
+                "type": "search_result",
+                "data": {
+                    "index": i + 1,
+                    "total": len(results),
+                    "query": result.get("query", "")[:50],
+                    "success": result.get("success", False),
+                    "sentiment": sentiment_label,
+                    "progress": 25 + int((i + 1) / len(results) * 40) if results else 65
+                }
+            }
+        
+        yield {
+            "type": "progress",
+            "data": {
+                "step": "analyzing",
+                "message": "Формирование отчёта и оценка рисков...",
+                "successful_searches": successful,
+                "total_searches": len(results),
+                "progress": 70
+            }
+        }
+        
+        current_state = await report_analyzer_agent(current_state)
+        
+        report = current_state.get("report", {})
+        risk = report.get("risk_assessment", {})
+        
+        yield {
+            "type": "report",
+            "data": {
+                "step": "report_complete",
+                "risk_score": risk.get("score", 0),
+                "risk_level": risk.get("level", "unknown"),
+                "findings_count": len(report.get("findings", [])),
+                "progress": 95
+            }
+        }
+        
+        final_result = {
+            "session_id": session_id,
+            "client_name": client_name,
+            "inn": inn,
+            "status": "completed",
+            "report": report,
+            "summary": current_state.get("analysis_result", ""),
+            "timestamp": time.time()
+        }
+        
+        yield {
+            "type": "result",
+            "data": final_result
+        }
+        
+        try:
+            thread_data = {
+                "input": f"Анализ клиента: {client_name}",
+                "created_at": time.time(),
+                "messages": [
+                    {"type": "input", "data": {"client_name": client_name, "inn": inn}},
+                    {"type": "report", "data": report}
+                ],
+                "final_state": current_state
+            }
+            asyncio.create_task(save_thread_to_tarantool(session_id, thread_data))
+        except Exception as e:
+            logger.error(f"Failed to save thread: {e}", component="workflow")
+            
+    except asyncio.CancelledError:
+        logger.info(f"Streaming cancelled for session {session_id}", component="workflow")
+        raise
+    except Exception as e:
+        logger.error(f"Streaming workflow error: {e}", component="workflow")
+        yield {
+            "type": "error",
+            "data": {"error": str(e), "session_id": session_id}
+        }
+
+
+async def _run_batch_analysis(
+    initial_state: ClientAnalysisState,
+    session_id: str,
+    client_name: str,
+    inn: str
+) -> Dict[str, Any]:
+    """Обычная batch версия анализа."""
     try:
         graph = build_client_analysis_graph()
-        
         final_state = await graph.ainvoke(initial_state)
-        
         final_state["current_step"] = final_state.get("current_step", "completed")
         
     except Exception as e:

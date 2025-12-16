@@ -1,12 +1,16 @@
+import asyncio
+import json
+import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.advanced_funcs.logging_client import logger
-from app.agents.client_workflow import run_client_analysis
+from app.agents.client_workflow import run_client_analysis_streaming
 from app.agents.workflow import AgentState, invoke_graph_with_persistence
 from app.storage.tarantool import save_thread_to_tarantool
 
@@ -95,10 +99,13 @@ async def get_thread_history(thread_id: str):
 
 
 @agent_router.post("/analyze-client")
-async def analyze_client(request: ClientAnalysisRequest):
+async def analyze_client(request: ClientAnalysisRequest, stream: bool = False):
     """
     Анализирует клиента через Perplexity AI.
     Выполняет параллельный поиск и создаёт отчёт с оценкой рисков.
+    
+    Args:
+        stream: Если True, возвращает SSE stream с прогрессом
     """
     from app.services.perplexity_client import PerplexityClient
     
@@ -109,16 +116,78 @@ async def analyze_client(request: ClientAnalysisRequest):
             detail="Perplexity API key не настроен. Добавьте PERPLEXITY_API_KEY в секреты."
         )
     
+    if stream:
+        return StreamingResponse(
+            _stream_client_analysis(
+                client_name=request.client_name,
+                inn=request.inn or "",
+                additional_notes=request.additional_notes or ""
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+    
     try:
-        result = await run_client_analysis(
+        coro = run_client_analysis_streaming(
             client_name=request.client_name,
             inn=request.inn or "",
             additional_notes=request.additional_notes or ""
         )
+        result = await coro
         return result
     except Exception as e:
         logger.error(f"Client analysis error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка анализа: {str(e)}") from e
+
+
+async def _stream_client_analysis(
+    client_name: str,
+    inn: str,
+    additional_notes: str
+) -> AsyncGenerator[str, None]:
+    """Генератор SSE событий для streaming анализа."""
+    session_id = f"analysis_{int(time.time())}"
+    
+    def format_sse(event: str, data: Dict[str, Any]) -> str:
+        return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    
+    yield format_sse("start", {
+        "session_id": session_id,
+        "client_name": client_name,
+        "message": "Начинаем анализ клиента..."
+    })
+    
+    generator = None
+    try:
+        generator = run_client_analysis_streaming(
+            client_name=client_name,
+            inn=inn,
+            additional_notes=additional_notes,
+            session_id=session_id,
+            stream=True
+        )
+        async for event in generator:
+            yield format_sse(event["type"], event["data"])
+        
+        yield format_sse("complete", {"session_id": session_id, "status": "completed"})
+        
+    except asyncio.CancelledError:
+        logger.info(f"Client disconnected from stream: {session_id}")
+        if generator:
+            await generator.aclose()
+    except Exception as e:
+        logger.error(f"Streaming error: {e}", exc_info=True)
+        yield format_sse("error", {"error": str(e), "session_id": session_id})
+    finally:
+        if generator:
+            try:
+                await generator.aclose()
+            except Exception:
+                pass
 
 
 @agent_router.get("/threads")

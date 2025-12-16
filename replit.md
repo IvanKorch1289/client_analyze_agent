@@ -64,7 +64,7 @@ Orchestrator -> Search Agent (parallel) -> Report Analyzer
 2. **Search Agent** (`app/agents/search.py`): Parallel Perplexity searches with sentiment analysis
 3. **Report Analyzer** (`app/agents/report_analyzer.py`): Creates risk assessment (0-100 score)
 
-### API Endpoint
+### API Endpoints
 ```
 POST /agent/analyze-client
 {
@@ -72,13 +72,25 @@ POST /agent/analyze-client
   "inn": "1234567890",  // optional
   "additional_notes": "..."  // optional
 }
+Query params: stream=true для SSE streaming
 ```
 
-### Response
+### Response (batch mode)
 - `session_id`: Unique analysis ID
 - `status`: "completed" | "failed"
 - `report`: Risk assessment with findings, recommendations, citations
 - `summary`: Markdown summary
+
+### Streaming Mode (stream=true)
+SSE events с прогрессом выполнения:
+- `start` - начало анализа
+- `progress` - текущий этап (orchestrating, searching, analyzing)
+- `orchestrator` - результат формирования поисковых запросов
+- `search_result` - результат каждого поиска
+- `report` - итоговый отчёт с риск-оценкой
+- `result` - полный результат анализа
+- `complete` - завершение
+- `error` - ошибка
 
 ### Risk Levels
 - **low** (0-24): Standard procedure
@@ -129,6 +141,10 @@ Optimized cache client with batch operations and compression:
 - `DELETE /utility/cache/prefix/{prefix}` - Delete keys by prefix
 
 ## Recent Changes
+- 2025-12-16: Streaming API для анализа клиентов
+  - Добавлен SSE streaming endpoint (stream=true query param)
+  - События прогресса: start, progress, orchestrator, search_result, report, result, complete
+  - Обработка отключения клиента с очисткой ресурсов
 - 2025-12-16: TarantoolClient Optimizations
   - Added batch operations (get_many, set_many, delete_many)
   - Implemented gzip compression for large objects
