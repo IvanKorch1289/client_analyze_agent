@@ -10,10 +10,8 @@ from app.server.mcp_server import get_available_tools
 async def planner_agent(state: dict) -> dict:
     """Агент-планировщик. Динамически получает список инструментов и строит план."""
 
-    # Получаем актуальный список инструментов
     tools = await get_available_tools()
 
-    # Формируем описание инструментов для LLM
     tools_description = "\n".join(
         [
             f"- {tool['name']}: {tool['description']} (аргументы: {list(tool['input_schema'].get('properties', {}).keys()) if tool['input_schema'] else 'нет'})"
@@ -21,22 +19,25 @@ async def planner_agent(state: dict) -> dict:
         ]
     )
 
-    system_message = f"""Ты — строгий планировщик. Твоя задача — РАЗЛОЖИТЬ запрос на последовательность шагов с указанием ТОЧНОГО порядка вызова инструментов.
+    json_example = '{"plan": "описание плана", "tool_sequence": ["tool_name1", "tool_name2", ...]}'
+
+    system_content = f"""Ты — строгий планировщик. Твоя задача — РАЗЛОЖИТЬ запрос на последовательность шагов с указанием ТОЧНОГО порядка вызова инструментов.
 
 Доступные инструменты:
 {tools_description}
 
 Отвечай ТОЛЬКО в формате JSON:
-{{"plan": "описание плана", "tool_sequence": ["tool_name1", "tool_name2", ...]}}
+{json_example}
 
 НЕ ОТКЛОНЯЙСЯ ОТ ЭТОГО ФОРМАТА. НЕ ДОБАВЛЯЙ ЛИШНЕГО."""
 
-    planner_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", system_message),
-            ("human", "{input}"),
-        ]
-    )
+    messages = [
+        ("system", system_content),
+        ("human", "{input}"),
+    ]
+
+    planner_prompt = ChatPromptTemplate.from_messages(messages)
+    planner_prompt = planner_prompt.partial()
 
     chain = planner_prompt | llm
     response = await chain.ainvoke({"input": state["user_input"]})
@@ -53,7 +54,6 @@ async def planner_agent(state: dict) -> dict:
         plan = parsed["plan"]
         tool_sequence = parsed["tool_sequence"]
 
-        # Проверяем, что все инструменты существуют
         available_tool_names = {tool["name"] for tool in tools}
         invalid_tools = [t for t in tool_sequence if t not in available_tool_names]
         if invalid_tools:

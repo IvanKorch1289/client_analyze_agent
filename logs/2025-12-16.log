@@ -68,3 +68,33 @@ Either initialize with a synchronous function or invoke via the async API (ainvo
 [14:37:20] INFO | mcp-server | [APP] Завершение работы приложения...
 [14:37:20] INFO | mcp-server | [TARANTOOL] Tarantool connection closed
 [14:37:20] INFO | mcp-server | [APP] Все соединения закрыты
+[11:39:42] INFO | mcp-server | [APP] Завершение работы приложения...
+[11:39:42] INFO | mcp-server | [APP] Все соединения закрыты
+[11:39:44] INFO | mcp-server | [APP] Инициализация приложения...
+[11:39:45] WARNING | mcp-server | [TARANTOOL] Tarantool connection failed: (111, 'Connection refused'), using in-memory fallback
+[11:39:45] INFO | mcp-server | [TARANTOOL] Falling back to in-memory storage
+[11:39:45] INFO | mcp-server | [APP] LLM инициализирован
+[11:39:45] INFO | mcp-server | [APP] Streamlit запущен на порту 5000
+[11:39:45] INFO | mcp-server | [APP] Клиенты инициализированы
+[11:40:06] INFO | mcp-server | [APP] Завершение работы приложения...
+[11:40:06] INFO | mcp-server | [APP] Все соединения закрыты
+[11:40:08] INFO | mcp-server | [APP] Инициализация приложения...
+[11:40:08] WARNING | mcp-server | [TARANTOOL] Tarantool connection failed: (111, 'Connection refused'), using in-memory fallback
+[11:40:08] INFO | mcp-server | [TARANTOOL] Falling back to in-memory storage
+[11:40:08] INFO | mcp-server | [APP] LLM инициализирован
+[11:40:08] INFO | mcp-server | [APP] Streamlit запущен на порту 5000
+[11:40:08] INFO | mcp-server | [APP] Клиенты инициализированы
+[11:40:39] INFO | mcp-server | [APP] Завершение работы приложения...
+[11:40:39] INFO | mcp-server | [APP] Все соединения закрыты
+[11:40:41] INFO | mcp-server | [APP] Инициализация приложения...
+[11:40:41] WARNING | mcp-server | [TARANTOOL] Tarantool connection failed: (111, 'Connection refused'), using in-memory fallback
+[11:40:41] INFO | mcp-server | [TARANTOOL] Falling back to in-memory storage
+[11:40:41] INFO | mcp-server | [APP] LLM инициализирован
+[11:40:41] INFO | mcp-server | [APP] Streamlit запущен на порту 5000
+[11:40:41] INFO | mcp-server | [APP] Клиенты инициализированы
+[11:40:47] INFO | mcp-server | [APP] Инициализация приложения...
+[11:40:47] WARNING | mcp-server | [TARANTOOL] Tarantool connection failed: (111, 'Connection refused'), using in-memory fallback
+[11:40:47] INFO | mcp-server | [TARANTOOL] Falling back to in-memory storage
+[11:40:47] INFO | mcp-server | [APP] LLM инициализирован
+[11:40:47] INFO | mcp-server | [APP] Streamlit запущен на порту 5000
+[11:40:47] INFO | mcp-server | [APP] Клиенты инициализированы
