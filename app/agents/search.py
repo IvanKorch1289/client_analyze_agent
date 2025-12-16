@@ -1,67 +1,110 @@
 """
 Search Agent: выполняет параллельный поиск через Perplexity API.
+Includes rate limiting via semaphore for API-friendly requests.
 """
 import asyncio
-from typing import Any, Dict, List
+import time
+from typing import Any, Dict, List, Optional
 
 from app.advanced_funcs.logging_client import logger
 from app.services.perplexity_client import PerplexityClient
 
+MAX_CONCURRENT_SEARCHES = 3
+API_DELAY_SECONDS = 0.5
+
+_search_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    global _search_semaphore
+    if _search_semaphore is None:
+        _search_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
+    return _search_semaphore
+
 
 async def search_single_intent(
     client: PerplexityClient,
-    intent: Dict[str, str]
+    intent: Dict[str, str],
+    delay: float = 0
 ) -> Dict[str, Any]:
-    """Выполняет один поисковый запрос."""
+    """Выполняет один поисковый запрос с rate limiting."""
     intent_id = intent.get("id", "unknown")
     query = intent.get("query", "")
     description = intent.get("description", "")
     
-    try:
-        result = await client.ask(
-            question=query,
-            system_prompt=(
-                "Ты - аналитик бизнес-разведки. Найди и кратко изложи информацию по запросу. "
-                "Выдели позитивные и негативные факты. Отвечай на русском языке. "
-                "Укажи источники информации."
-            ),
-            search_recency_filter="month"
-        )
+    semaphore = _get_semaphore()
+    
+    if delay > 0:
+        await asyncio.sleep(delay)
+    
+    async with semaphore:
+        start_time = time.perf_counter()
         
-        if result.get("success"):
-            content = result.get("content", "")
-            sentiment = analyze_sentiment(content)
+        try:
+            result = await client.ask(
+                question=query,
+                system_prompt=(
+                    "Ты - аналитик бизнес-разведки. Найди и кратко изложи информацию по запросу. "
+                    "Выдели позитивные и негативные факты. Отвечай на русском языке. "
+                    "Укажи источники информации."
+                ),
+                search_recency_filter="month"
+            )
             
-            return {
-                "intent_id": intent_id,
-                "description": description,
-                "query": query,
-                "success": True,
-                "content": content,
-                "citations": result.get("citations", []),
-                "sentiment": sentiment,
-                "sentiment_score": sentiment["score"]
-            }
-        else:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            
+            logger.structured(
+                "info",
+                "search_completed",
+                component="search_agent",
+                intent_id=intent_id,
+                query=query[:50],
+                success=result.get("success", False),
+                duration_ms=round(duration_ms, 2)
+            )
+        
+            if result.get("success"):
+                content = result.get("content", "")
+                sentiment = analyze_sentiment(content)
+                
+                return {
+                    "intent_id": intent_id,
+                    "description": description,
+                    "query": query,
+                    "success": True,
+                    "content": content,
+                    "citations": result.get("citations", []),
+                    "sentiment": sentiment,
+                    "sentiment_score": sentiment["score"],
+                    "duration_ms": round(duration_ms, 2)
+                }
+            else:
+                return {
+                    "intent_id": intent_id,
+                    "description": description,
+                    "query": query,
+                    "success": False,
+                    "error": result.get("error", "Unknown error"),
+                    "sentiment": {"label": "unknown", "score": 0},
+                    "duration_ms": round(duration_ms, 2)
+                }
+                
+        except Exception as e:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.log_exception(
+                e,
+                component="search_agent",
+                context={"intent_id": intent_id, "query": query[:50]}
+            )
             return {
                 "intent_id": intent_id,
                 "description": description,
                 "query": query,
                 "success": False,
-                "error": result.get("error", "Unknown error"),
-                "sentiment": {"label": "unknown", "score": 0}
+                "error": str(e),
+                "sentiment": {"label": "unknown", "score": 0},
+                "duration_ms": round(duration_ms, 2)
             }
-            
-    except Exception as e:
-        logger.error(f"Search error for intent {intent_id}: {e}", component="search_agent")
-        return {
-            "intent_id": intent_id,
-            "description": description,
-            "query": query,
-            "success": False,
-            "error": str(e),
-            "sentiment": {"label": "unknown", "score": 0}
-        }
 
 
 def analyze_sentiment(text: str) -> Dict[str, Any]:
@@ -105,7 +148,7 @@ def analyze_sentiment(text: str) -> Dict[str, Any]:
 
 async def search_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Агент поиска: выполняет параллельные запросы к Perplexity.
+    Агент поиска: выполняет параллельные запросы к Perplexity с rate limiting.
     
     Входные данные:
         - search_intents: List[Dict] - список поисковых запросов от оркестратора
@@ -113,8 +156,13 @@ async def search_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     Выходные данные:
         - search_results: List[Dict] - результаты поиска с sentiment analysis
         - current_step: str
+        
+    Rate limiting:
+        - Max concurrent: MAX_CONCURRENT_SEARCHES (3)
+        - Staggered delay: API_DELAY_SECONDS between starts
     """
     search_intents = state.get("search_intents", [])
+    total_start = time.perf_counter()
     
     if not search_intents:
         logger.warning("Search Agent: no search intents provided", component="search_agent")
@@ -136,9 +184,18 @@ async def search_agent(state: Dict[str, Any]) -> Dict[str, Any]:
             "search_error": "Perplexity API key not configured"
         }
     
-    logger.info(f"Search Agent: запуск {len(search_intents)} параллельных поисков", component="search_agent")
+    logger.structured(
+        "info",
+        "search_batch_started",
+        component="search_agent",
+        intent_count=len(search_intents),
+        max_concurrent=MAX_CONCURRENT_SEARCHES
+    )
     
-    tasks = [search_single_intent(client, intent) for intent in search_intents]
+    tasks = [
+        search_single_intent(client, intent, delay=i * API_DELAY_SECONDS)
+        for i, intent in enumerate(search_intents)
+    ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
     search_results = []
@@ -146,6 +203,7 @@ async def search_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(result, Exception):
             search_results.append({
                 "intent_id": search_intents[i].get("id", f"unknown_{i}"),
+                "query": search_intents[i].get("query", ""),
                 "success": False,
                 "error": str(result),
                 "sentiment": {"label": "unknown", "score": 0}
@@ -154,9 +212,15 @@ async def search_agent(state: Dict[str, Any]) -> Dict[str, Any]:
             search_results.append(result)
     
     successful = sum(1 for r in search_results if r.get("success"))
-    logger.info(
-        f"Search Agent: завершено {successful}/{len(search_results)} успешных запросов",
-        component="search_agent"
+    total_duration_ms = (time.perf_counter() - total_start) * 1000
+    
+    logger.structured(
+        "info",
+        "search_batch_completed",
+        component="search_agent",
+        successful=successful,
+        total=len(search_results),
+        total_duration_ms=round(total_duration_ms, 2)
     )
     
     return {

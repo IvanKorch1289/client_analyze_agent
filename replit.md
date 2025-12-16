@@ -141,6 +141,11 @@ Optimized cache client with batch operations and compression:
 - `DELETE /utility/cache/prefix/{prefix}` - Delete keys by prefix
 
 ## Recent Changes
+- 2025-12-16: LangGraph Workflow Optimization
+  - Rate limiting with semaphore (max 3 concurrent API calls)
+  - Staggered delays between search requests (0.5s)
+  - Structured logging for search operations
+  - Per-search duration tracking
 - 2025-12-16: Enhanced Error Handling & Structured Logging
   - Request ID tracking middleware (X-Request-ID header)
   - Structured JSON logging (`logger.structured()`)
