@@ -1,14 +1,15 @@
+import hashlib
 import os
-from typing import Any, Dict, List, Optional
-
-import httpx
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from app.advanced_funcs.logging_client import logger
+from app.services.http_client import (
+    AsyncHttpClient,
+    CircuitBreakerOpenError,
+)
 
 
 class PerplexityClient:
-    """Client for Perplexity AI API."""
-
     BASE_URL = "https://api.perplexity.ai/chat/completions"
     DEFAULT_MODEL = "sonar"
 
@@ -17,26 +18,28 @@ class PerplexityClient:
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or os.getenv("PERPLEXITY_API_KEY")
         self.model = model or os.getenv("PERPLEXITY_MODEL", self.DEFAULT_MODEL)
-        self._client: Optional[httpx.AsyncClient] = None
+        self._http_client: Optional[AsyncHttpClient] = None
+        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_ttl = 300
 
     @classmethod
     def get_instance(cls) -> "PerplexityClient":
-        """Singleton pattern for client."""
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
 
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create async client."""
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(connect=5.0, read=60.0, write=10.0, pool=5.0)
-            )
-        return self._client
+    async def _get_http_client(self) -> AsyncHttpClient:
+        if self._http_client is None:
+            self._http_client = await AsyncHttpClient.get_instance()
+        return self._http_client
 
     def is_configured(self) -> bool:
-        """Check if API key is available."""
         return bool(self.api_key)
+
+    def _get_cache_key(self, messages: List[Dict[str, str]], model: str) -> str:
+        messages_str = str(messages)
+        key_str = f"{messages_str}:{model}"
+        return f"perplexity:{hashlib.md5(key_str.encode()).hexdigest()}"
 
     async def chat(
         self,
@@ -45,20 +48,8 @@ class PerplexityClient:
         temperature: float = 0.2,
         max_tokens: Optional[int] = None,
         search_recency_filter: str = "month",
+        use_cache: bool = False,
     ) -> Dict[str, Any]:
-        """
-        Send a chat request to Perplexity API.
-        
-        Args:
-            messages: List of message dicts with 'role' and 'content'
-            model: Model to use (default: llama-3.1-sonar-small-128k-online)
-            temperature: Temperature for generation (0.0 - 1.0)
-            max_tokens: Maximum tokens in response
-            search_recency_filter: Filter for search results (day, week, month, year)
-        
-        Returns:
-            API response dict
-        """
         if not self.api_key:
             logger.error("Perplexity API key not configured", component="perplexity")
             return {
@@ -66,14 +57,21 @@ class PerplexityClient:
                 "success": False
             }
 
-        client = await self._get_client()
+        use_model = model or self.model
+
+        cache_key = self._get_cache_key(messages, use_model)
+        if use_cache and cache_key in self._cache:
+            cached = self._cache[cache_key]
+            logger.info("Perplexity cache hit", component="perplexity")
+            return cached
+
+        http_client = await self._get_http_client()
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
 
-        use_model = model or self.model
         payload = {
             "model": use_model,
             "messages": messages,
@@ -91,76 +89,122 @@ class PerplexityClient:
             payload["max_tokens"] = max_tokens
 
         try:
-            response = await client.post(
-                self.BASE_URL,
+            response = await http_client.request_with_resilience(
+                method="POST",
+                url=self.BASE_URL,
+                service="perplexity",
                 headers=headers,
-                json=payload
+                json=payload,
             )
-            response.raise_for_status()
             result = response.json()
-            
+
             logger.info(
                 f"Perplexity response received, model: {use_model}",
                 component="perplexity"
             )
-            
-            return {
+
+            response_data = {
                 "success": True,
                 "content": result.get("choices", [{}])[0].get("message", {}).get("content", ""),
                 "citations": result.get("citations", []),
                 "model": result.get("model"),
                 "usage": result.get("usage", {}),
-                "raw_response": result
+                "raw_response": result,
+                "cached": False,
             }
 
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                f"Perplexity API error: {e.response.status_code} - {e.response.text}",
+            if use_cache:
+                self._cache[cache_key] = {**response_data, "cached": True}
+
+            return response_data
+
+        except CircuitBreakerOpenError:
+            logger.warning(
+                "Perplexity circuit breaker is open, service temporarily unavailable",
                 component="perplexity"
             )
             return {
                 "success": False,
-                "error": f"API error: {e.response.status_code}"
+                "error": "Perplexity service temporarily unavailable (circuit breaker open)",
+                "circuit_breaker": True,
             }
+
         except Exception as e:
-            logger.error(f"Perplexity request failed: {e}", component="perplexity")
+            error_msg = str(e)
+            logger.error(f"Perplexity request failed: {error_msg}", component="perplexity")
+
+            if "status_code" in error_msg:
+                if "401" in error_msg or "403" in error_msg:
+                    return {
+                        "success": False,
+                        "error": "Invalid Perplexity API key"
+                    }
+                elif "429" in error_msg:
+                    return {
+                        "success": False,
+                        "error": "Perplexity rate limit exceeded"
+                    }
+
             return {
                 "success": False,
-                "error": str(e)
+                "error": error_msg
             }
 
     async def ask(
         self,
         question: str,
         system_prompt: str = "Be precise and concise. Answer in Russian if the question is in Russian.",
+        use_cache: bool = False,
         **kwargs
     ) -> Dict[str, Any]:
-        """
-        Simple interface to ask a question.
-        
-        Args:
-            question: The question to ask
-            system_prompt: System prompt for context
-            **kwargs: Additional parameters passed to chat()
-        
-        Returns:
-            API response dict
-        """
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": question}
         ]
-        return await self.chat(messages, **kwargs)
+        return await self.chat(messages, use_cache=use_cache, **kwargs)
 
-    async def close(self):
-        """Close the client."""
-        if self._client:
-            await self._client.aclose()
-            self._client = None
+    async def ask_with_fallback(
+        self,
+        question: str,
+        fallback_handler: Optional[Callable[..., Awaitable[Dict[str, Any]]]] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        result = await self.ask(question, **kwargs)
+
+        if not result.get("success") and fallback_handler:
+            logger.info(
+                f"Perplexity ask failed, trying fallback for: {question[:50]}",
+                component="perplexity"
+            )
+            return await fallback_handler(question, **kwargs)
+
+        return result
+
+    def clear_cache(self):
+        self._cache.clear()
+        logger.info("Perplexity cache cleared", component="perplexity")
+
+    def get_cache_stats(self) -> Dict[str, int]:
+        return {
+            "cache_size": len(self._cache),
+            "cache_ttl": self._cache_ttl,
+        }
+
+    async def get_status(self) -> Dict[str, Any]:
+        http_client = await self._get_http_client()
+        circuit_status = http_client.get_circuit_breaker_status("perplexity")
+        metrics = http_client.get_metrics("perplexity")
+
+        return {
+            "configured": self.is_configured(),
+            "model": self.model,
+            "circuit_breaker": circuit_status,
+            "metrics": metrics,
+            "cache_stats": self.get_cache_stats(),
+        }
 
     @classmethod
     async def close_global(cls):
-        """Close the global instance."""
         if cls._instance:
-            await cls._instance.close()
+            cls._instance._cache.clear()
             cls._instance = None

@@ -86,7 +86,43 @@ POST /agent/analyze-client
 - **high** (50-74): Deep investigation required
 - **critical** (75-100): Consider rejection
 
+## Resilience & Monitoring
+
+### HTTP Client (`app/services/http_client.py`)
+Enhanced HTTP client with production-ready resilience patterns:
+- **Circuit Breaker**: Prevents cascading failures with configurable thresholds
+- **Retry Logic**: Exponential backoff using tenacity library
+- **Timeouts**: Service-specific timeout configurations
+- **Metrics**: Request tracking (success rate, latency, retry counts)
+
+### Service-Specific Configurations
+| Service    | Read Timeout | Max Retries | CB Failure Threshold |
+|------------|--------------|-------------|---------------------|
+| Tavily     | 60s          | 3           | 5                   |
+| Perplexity | 90s          | 3           | 5                   |
+| DaData     | 30s          | 2           | 3                   |
+| Casebook   | 30s          | 2           | 3                   |
+
+### Monitoring Endpoints
+- `GET /utility/health` - Health check with component status and issues
+- `GET /utility/circuit-breakers` - Circuit breaker states
+- `GET /utility/metrics` - Request metrics per service
+- `POST /utility/circuit-breakers/{service}/reset` - Reset circuit breaker
+- `POST /utility/metrics/reset` - Reset metrics
+
+### Circuit Breaker States
+- **CLOSED**: Normal operation, requests pass through
+- **OPEN**: Too many failures, requests rejected immediately
+- **HALF_OPEN**: Testing recovery with limited requests
+
 ## Recent Changes
+- 2025-12-16: HTTP Client Resilience Improvements
+  - Added Circuit Breaker pattern with configurable thresholds
+  - Implemented retry logic with tenacity (exponential backoff)
+  - Added service-specific timeout configurations
+  - Added request metrics tracking
+  - Updated Tavily/Perplexity clients to use resilient HTTP client
+  - Added monitoring API endpoints (health, circuit-breakers, metrics)
 - 2025-12-15: Added Tavily Search Integration
   - Created TavilyClient service
   - Added REST API endpoints: POST /utility/tavily/search, GET /utility/tavily/status

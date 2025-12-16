@@ -1,40 +1,42 @@
+import hashlib
 import os
-from typing import Any, Dict, List, Optional
-
-import httpx
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from app.advanced_funcs.logging_client import logger
+from app.services.http_client import (
+    AsyncHttpClient,
+    CircuitBreakerOpenError,
+)
 
 
 class TavilyClient:
-    """Client for Tavily Search API."""
-
     BASE_URL = "https://api.tavily.com"
 
     _instance: Optional["TavilyClient"] = None
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("TAVILY_TOKEN")
-        self._client: Optional[httpx.AsyncClient] = None
+        self._http_client: Optional[AsyncHttpClient] = None
+        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_ttl = 300
 
     @classmethod
     def get_instance(cls) -> "TavilyClient":
-        """Singleton pattern for client."""
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
 
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create async client."""
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(connect=5.0, read=60.0, write=10.0, pool=5.0)
-            )
-        return self._client
+    async def _get_http_client(self) -> AsyncHttpClient:
+        if self._http_client is None:
+            self._http_client = await AsyncHttpClient.get_instance()
+        return self._http_client
 
     def is_configured(self) -> bool:
-        """Check if API key is available."""
         return bool(self.api_key)
+
+    def _get_cache_key(self, query: str, search_depth: str, max_results: int) -> str:
+        key_str = f"{query}:{search_depth}:{max_results}"
+        return f"tavily:{hashlib.md5(key_str.encode()).hexdigest()}"
 
     async def search(
         self,
@@ -45,22 +47,8 @@ class TavilyClient:
         include_raw_content: bool = False,
         include_domains: Optional[List[str]] = None,
         exclude_domains: Optional[List[str]] = None,
+        use_cache: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Search the web using Tavily API.
-        
-        Args:
-            query: Search query
-            search_depth: "basic" or "advanced" (more thorough but slower)
-            max_results: Maximum number of results (1-10)
-            include_answer: Include AI-generated answer
-            include_raw_content: Include raw HTML content
-            include_domains: Only search these domains
-            exclude_domains: Exclude these domains
-        
-        Returns:
-            Dict with search results
-        """
         if not self.api_key:
             logger.error("Tavily API key not configured", component="tavily")
             return {
@@ -68,7 +56,13 @@ class TavilyClient:
                 "success": False
             }
 
-        client = await self._get_client()
+        cache_key = self._get_cache_key(query, search_depth, max_results)
+        if use_cache and cache_key in self._cache:
+            cached = self._cache[cache_key]
+            logger.info(f"Tavily cache hit for query: {query[:50]}", component="tavily")
+            return cached
+
+        http_client = await self._get_http_client()
 
         payload = {
             "api_key": self.api_key,
@@ -85,51 +79,106 @@ class TavilyClient:
             payload["exclude_domains"] = exclude_domains
 
         try:
-            response = await client.post(
-                f"{self.BASE_URL}/search",
-                json=payload
+            response = await http_client.request_with_resilience(
+                method="POST",
+                url=f"{self.BASE_URL}/search",
+                service="tavily",
+                json=payload,
             )
-            response.raise_for_status()
             result = response.json()
-            
+
             logger.info(
                 f"Tavily search completed: {len(result.get('results', []))} results",
                 component="tavily"
             )
-            
-            return {
+
+            response_data = {
                 "success": True,
                 "answer": result.get("answer", ""),
                 "results": result.get("results", []),
                 "query": query,
                 "response_time": result.get("response_time", 0),
+                "cached": False,
             }
 
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                f"Tavily API error: {e.response.status_code} - {e.response.text}",
+            if use_cache:
+                self._cache[cache_key] = {**response_data, "cached": True}
+
+            return response_data
+
+        except CircuitBreakerOpenError:
+            logger.warning(
+                "Tavily circuit breaker is open, service temporarily unavailable",
                 component="tavily"
             )
             return {
                 "success": False,
-                "error": f"API error: {e.response.status_code}"
-            }
-        except Exception as e:
-            logger.error(f"Tavily request failed: {e}", component="tavily")
-            return {
-                "success": False,
-                "error": str(e)
+                "error": "Tavily service temporarily unavailable (circuit breaker open)",
+                "circuit_breaker": True,
             }
 
-    async def close(self):
-        """Close the client."""
-        if self._client:
-            await self._client.aclose()
-            self._client = None
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Tavily request failed: {error_msg}", component="tavily")
+
+            if "status_code" in error_msg:
+                if "401" in error_msg or "403" in error_msg:
+                    return {
+                        "success": False,
+                        "error": "Invalid Tavily API key"
+                    }
+                elif "429" in error_msg:
+                    return {
+                        "success": False,
+                        "error": "Tavily rate limit exceeded"
+                    }
+
+            return {
+                "success": False,
+                "error": error_msg
+            }
+
+    async def search_with_fallback(
+        self,
+        query: str,
+        fallback_handler: Optional[Callable[..., Awaitable[Dict[str, Any]]]] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        result = await self.search(query, **kwargs)
+
+        if not result.get("success") and fallback_handler:
+            logger.info(
+                f"Tavily search failed, trying fallback for: {query[:50]}",
+                component="tavily"
+            )
+            return await fallback_handler(query, **kwargs)
+
+        return result
+
+    def clear_cache(self):
+        self._cache.clear()
+        logger.info("Tavily cache cleared", component="tavily")
+
+    def get_cache_stats(self) -> Dict[str, int]:
+        return {
+            "cache_size": len(self._cache),
+            "cache_ttl": self._cache_ttl,
+        }
+
+    async def get_status(self) -> Dict[str, Any]:
+        http_client = await self._get_http_client()
+        circuit_status = http_client.get_circuit_breaker_status("tavily")
+        metrics = http_client.get_metrics("tavily")
+
+        return {
+            "configured": self.is_configured(),
+            "circuit_breaker": circuit_status,
+            "metrics": metrics,
+            "cache_stats": self.get_cache_stats(),
+        }
 
     @classmethod
     async def close_global(cls):
-        """Close the global instance."""
         if cls._instance:
-            await cls._instance.close()
+            cls._instance._cache.clear()
             cls._instance = None
