@@ -34,8 +34,26 @@ class TavilyClient:
     def is_configured(self) -> bool:
         return bool(self.api_key)
 
-    def _get_cache_key(self, query: str, search_depth: str, max_results: int) -> str:
-        key_str = f"{query}:{search_depth}:{max_results}"
+    def _get_cache_key(
+        self,
+        query: str,
+        search_depth: str,
+        max_results: int,
+        include_answer: bool = True,
+        include_raw_content: bool = False,
+        include_domains: Optional[List[str]] = None,
+        exclude_domains: Optional[List[str]] = None,
+    ) -> str:
+        key_parts = [
+            query,
+            search_depth,
+            str(max_results),
+            str(include_answer),
+            str(include_raw_content),
+            ",".join(sorted(include_domains or [])),
+            ",".join(sorted(exclude_domains or [])),
+        ]
+        key_str = ":".join(key_parts)
         return f"tavily:{hashlib.md5(key_str.encode()).hexdigest()}"
 
     async def search(
@@ -56,7 +74,11 @@ class TavilyClient:
                 "success": False
             }
 
-        cache_key = self._get_cache_key(query, search_depth, max_results)
+        cache_key = self._get_cache_key(
+            query, search_depth, max_results,
+            include_answer, include_raw_content,
+            include_domains, exclude_domains
+        )
         if use_cache and cache_key in self._cache:
             cached = self._cache[cache_key]
             logger.info(f"Tavily cache hit for query: {query[:50]}", component="tavily")

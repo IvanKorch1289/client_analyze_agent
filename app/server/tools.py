@@ -8,6 +8,7 @@ import aiofiles
 from app.server.mcp_server import mcp
 from app.services.fetch_data import fetch_company_info
 from app.services.perplexity_client import PerplexityClient
+from app.services.tavily_client import TavilyClient
 
 
 @mcp.tool(
@@ -471,5 +472,213 @@ async def perplexity_analyze(
             "error": {
                 "type": "perplexity_error",
                 "message": f"Error calling Perplexity: {str(e)}",
+            }
+        }
+
+
+@mcp.tool(
+    name="Tavily поиск",
+    description="Поиск информации в интернете с помощью Tavily Search API. Возвращает структурированные результаты с источниками.",
+    tags={"catalog", "search", "web"},
+)
+async def tavily_search(
+    query: str,
+    search_depth: str = "basic",
+    max_results: int = 5,
+    include_answer: bool = True
+) -> Dict[str, Any]:
+    """Поиск информации в интернете с помощью Tavily Search API.
+    
+    Используй для поиска актуальной информации из интернета с качественным
+    ранжированием и структурированными результатами.
+    
+    Аргументы:
+        query (str): Поисковый запрос (обязательный)
+        search_depth (str): Глубина поиска - basic (быстрый) или advanced (глубокий)
+        max_results (int): Максимальное количество результатов (1-10)
+        include_answer (bool): Включить AI-сгенерированный ответ
+    
+    Возвращает:
+        Словарь с:
+        - answer: AI-сгенерированный ответ на запрос
+        - results: список результатов с title, url, content, score
+        При ошибке — объект с полем 'error'.
+    """
+    client = TavilyClient.get_instance()
+    
+    if not client.is_configured():
+        return {
+            "error": {
+                "type": "not_configured",
+                "message": "Tavily API key not configured. Set TAVILY_TOKEN environment variable.",
+            }
+        }
+    
+    try:
+        result = await client.search(
+            query=query,
+            search_depth=search_depth,
+            max_results=max_results,
+            include_answer=include_answer,
+        )
+        
+        if not result.get("success"):
+            return {
+                "error": {
+                    "type": "api_error",
+                    "message": result.get("error", "Unknown error")
+                }
+            }
+        
+        formatted_results = []
+        for r in result.get("results", []):
+            formatted_results.append({
+                "title": r.get("title", ""),
+                "url": r.get("url", ""),
+                "content": r.get("content", "")[:500],
+                "score": r.get("score", 0),
+            })
+        
+        return {
+            "status": "success",
+            "answer": result.get("answer", ""),
+            "results": formatted_results,
+            "results_count": len(formatted_results),
+            "query": query,
+            "response_time": result.get("response_time", 0),
+            "summary": f"Найдено {len(formatted_results)} результатов для: {query[:50]}..."
+        }
+    except Exception as e:
+        return {
+            "error": {
+                "type": "tavily_error",
+                "message": f"Error calling Tavily: {str(e)}",
+            }
+        }
+
+
+@mcp.tool(
+    name="Tavily расширенный поиск",
+    description="Расширенный поиск Tavily с фильтрацией по доменам и глубоким анализом.",
+    tags={"catalog", "search", "web", "advanced"},
+)
+async def tavily_advanced_search(
+    query: str,
+    include_domains: Optional[List[str]] = None,
+    exclude_domains: Optional[List[str]] = None,
+    max_results: int = 10,
+    include_raw_content: bool = False
+) -> Dict[str, Any]:
+    """Расширенный поиск с фильтрацией по доменам.
+    
+    Используй для целевого поиска на определённых сайтах или исключения
+    нежелательных источников. Например, поиск только на официальных
+    государственных сайтах или исключение агрегаторов.
+    
+    Аргументы:
+        query (str): Поисковый запрос (обязательный)
+        include_domains (List[str]): Искать только на этих доменах (опционально)
+        exclude_domains (List[str]): Исключить эти домены (опционально)
+        max_results (int): Максимальное количество результатов (1-10)
+        include_raw_content (bool): Включить полный HTML контент
+    
+    Возвращает:
+        Расширенные результаты поиска с фильтрацией.
+    """
+    client = TavilyClient.get_instance()
+    
+    if not client.is_configured():
+        return {
+            "error": {
+                "type": "not_configured",
+                "message": "Tavily API key not configured. Set TAVILY_TOKEN environment variable.",
+            }
+        }
+    
+    try:
+        result = await client.search(
+            query=query,
+            search_depth="advanced",
+            max_results=max_results,
+            include_answer=True,
+            include_raw_content=include_raw_content,
+            include_domains=include_domains,
+            exclude_domains=exclude_domains,
+        )
+        
+        if not result.get("success"):
+            return {
+                "error": {
+                    "type": "api_error",
+                    "message": result.get("error", "Unknown error")
+                }
+            }
+        
+        formatted_results = []
+        for r in result.get("results", []):
+            item = {
+                "title": r.get("title", ""),
+                "url": r.get("url", ""),
+                "content": r.get("content", ""),
+                "score": r.get("score", 0),
+            }
+            if include_raw_content and r.get("raw_content"):
+                item["raw_content"] = r.get("raw_content", "")[:2000]
+            formatted_results.append(item)
+        
+        return {
+            "status": "success",
+            "answer": result.get("answer", ""),
+            "results": formatted_results,
+            "results_count": len(formatted_results),
+            "query": query,
+            "filters": {
+                "include_domains": include_domains or [],
+                "exclude_domains": exclude_domains or [],
+            },
+            "summary": f"Расширенный поиск: {len(formatted_results)} результатов"
+        }
+    except Exception as e:
+        return {
+            "error": {
+                "type": "tavily_error",
+                "message": f"Error calling Tavily: {str(e)}",
+            }
+        }
+
+
+@mcp.tool(
+    name="Tavily статус сервиса",
+    description="Проверка статуса и метрик Tavily API - circuit breaker, кэш, счётчики запросов.",
+    tags={"catalog", "monitoring", "web"},
+)
+async def tavily_status() -> Dict[str, Any]:
+    """Получает статус Tavily API сервиса.
+    
+    Используй для мониторинга состояния подключения к Tavily,
+    проверки circuit breaker, кэша и метрик.
+    
+    Возвращает:
+        Статус сервиса, метрики и информацию о кэше.
+    """
+    client = TavilyClient.get_instance()
+    
+    try:
+        status = await client.get_status()
+        
+        return {
+            "status": "success",
+            "service": "tavily",
+            "configured": status.get("configured", False),
+            "circuit_breaker": status.get("circuit_breaker", {}),
+            "metrics": status.get("metrics", {}),
+            "cache_stats": status.get("cache_stats", {}),
+            "summary": "Tavily API " + ("доступен" if status.get("configured") else "не настроен")
+        }
+    except Exception as e:
+        return {
+            "error": {
+                "type": "status_error",
+                "message": f"Error getting Tavily status: {str(e)}",
             }
         }

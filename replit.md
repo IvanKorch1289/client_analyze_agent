@@ -47,7 +47,7 @@ The app works without external API keys using mock/fallback behavior:
 
 ## Perplexity Integration
 The app includes Perplexity AI integration for web search capabilities:
-- MCP tools: `perplexity_search`, `perplexity_analyze`
+- MCP tools: `perplexity_search`, `perplexity_analyze`, `tavily_search`, `tavily_advanced_search`, `tavily_status`
 - API endpoints: `POST /utility/perplexity/search`, `GET /utility/perplexity/status`
 - Client: `app/services/perplexity_client.py`
 
