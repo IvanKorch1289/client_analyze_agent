@@ -262,3 +262,44 @@ async def delete_cache_by_prefix(prefix: str) -> Dict[str, Any]:
         return {"status": "success", "message": f"Deleted keys with prefix: {prefix}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+
+@utility_router.get("/tarantool/status")
+async def tarantool_status() -> Dict[str, Any]:
+    try:
+        tarantool = await TarantoolClient.get_instance()
+        metrics = tarantool.get_metrics()
+        config = tarantool.get_config()
+        cache_size = tarantool.get_cache_size()
+        
+        is_fallback = getattr(tarantool, '_fallback_mode', False)
+        
+        return {
+            "status": "success",
+            "available": True,
+            "mode": "in-memory" if is_fallback else "tarantool",
+            "connection": {
+                "host": config.get("host", "N/A"),
+                "port": config.get("port", "N/A"),
+                "fallback": is_fallback,
+            },
+            "cache": {
+                "size": cache_size,
+                "hits": metrics.get("hits", 0),
+                "misses": metrics.get("misses", 0),
+                "hit_rate": metrics.get("hit_rate", 0),
+            },
+            "compression": {
+                "enabled": config.get("compression_enabled", False),
+                "threshold": config.get("compression_threshold", 0),
+                "compressed_count": metrics.get("compressed_count", 0),
+                "bytes_saved": metrics.get("bytes_saved", 0),
+            },
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "available": False,
+            "mode": "unavailable",
+            "message": str(e),
+        }

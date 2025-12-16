@@ -198,8 +198,51 @@ elif page == "Внешние данные":
 elif page == "Утилиты":
     st.header("⚙️ Служебные функции")
 
+    # Статус Tarantool
+    st.subheader("🗄️ Статус Tarantool")
+    if st.button("🔄 Проверить Tarantool", key="check_tarantool"):
+        try:
+            resp = requests.get(f"{API_BASE_URL}/utility/tarantool/status", timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("available"):
+                    mode = data.get("mode", "unknown")
+                    if mode == "in-memory":
+                        st.warning("⚠️ Tarantool: режим in-memory (fallback)")
+                    else:
+                        st.success("✅ Tarantool: подключен")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    cache = data.get("cache", {})
+                    with col1:
+                        st.metric("Записей в кэше", cache.get("size", 0))
+                    with col2:
+                        st.metric("Hit Rate", f"{cache.get('hit_rate', 0):.1%}")
+                    with col3:
+                        st.metric("Hits / Misses", f"{cache.get('hits', 0)} / {cache.get('misses', 0)}")
+                    
+                    conn = data.get("connection", {})
+                    comp = data.get("compression", {})
+                    with st.expander("Подробности"):
+                        st.write(f"**Режим:** {mode}")
+                        st.write(f"**Host:** {conn.get('host', 'N/A')}")
+                        st.write(f"**Port:** {conn.get('port', 'N/A')}")
+                        st.write(f"**Fallback:** {'Да' if conn.get('fallback') else 'Нет'}")
+                        st.write(f"**Сжатие:** {'Вкл' if comp.get('enabled') else 'Выкл'}")
+                        if comp.get('enabled'):
+                            st.write(f"**Сжато объектов:** {comp.get('compressed_count', 0)}")
+                            st.write(f"**Сэкономлено байт:** {comp.get('bytes_saved', 0)}")
+                else:
+                    st.error(f"❌ Tarantool недоступен: {data.get('message', 'Unknown error')}")
+            else:
+                st.error(f"Ошибка: {resp.status_code}")
+        except Exception as e:
+            st.error(f"❌ Ошибка проверки: {e}")
+
+    st.divider()
+
     # Очистка кэша
-    st.subheader("🧹 Очистка кэша Tarantool")
+    st.subheader("🧹 Очистка кэша")
     confirm = st.checkbox("⚠️ Подтверждаю очистку кэша", value=False)
     if st.button("💥 Инвалидировать кэш", type="primary", disabled=not confirm):
         try:
@@ -228,7 +271,7 @@ elif page == "Утилиты":
             else:
                 st.error("Не удалось получить статус")
         except Exception:
-            st.error("Tarantool недоступен")
+            st.error("Backend недоступен")
 
     with col2:
         try:
