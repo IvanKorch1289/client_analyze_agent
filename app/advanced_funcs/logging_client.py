@@ -1,6 +1,12 @@
+import contextvars
+import json
 import logging
+import time
+import traceback
+import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 import httpx
 from rich.console import Console
@@ -8,14 +14,30 @@ from rich.logging import RichHandler
 from rich.table import Table
 from rich.text import Text
 
-# Настройка папки для логов
 LOGS_DIR = Path("logs")
 LOGS_DIR.mkdir(exist_ok=True)
 
-# Глобальный логгер приложения
 app_logger = logging.getLogger("mcp-server")
 app_logger.setLevel(logging.DEBUG)
 app_logger.handlers.clear()
+
+request_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "request_id", default=None
+)
+
+
+def generate_request_id() -> str:
+    return str(uuid.uuid4())[:8]
+
+
+def get_request_id() -> Optional[str]:
+    return request_id_var.get()
+
+
+def set_request_id(request_id: Optional[str] = None) -> str:
+    rid = request_id or generate_request_id()
+    request_id_var.set(rid)
+    return rid
 
 
 class AppLogger:
@@ -160,6 +182,101 @@ class AppLogger:
         self._ensure_daily_log()
         app_logger.exception(f"[{component.upper()}] {message}")
 
+    def structured(
+        self,
+        level: str,
+        event: str,
+        component: str = "app",
+        **extra: Any
+    ):
+        """Structured JSON logging for machine parsing."""
+        self._ensure_daily_log()
+        
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "level": level.upper(),
+            "event": event,
+            "component": component,
+            "request_id": get_request_id(),
+            **extra
+        }
+        
+        json_str = json.dumps(log_entry, ensure_ascii=False, default=str)
+        log_func = getattr(app_logger, level.lower(), app_logger.info)
+        log_func(f"[STRUCTURED] {json_str}")
 
-# Единый экземпляр логгера (можно импортировать где угодно)
+    def log_exception(
+        self,
+        exc: Exception,
+        component: str = "app",
+        context: Optional[Dict[str, Any]] = None
+    ):
+        """Enhanced exception logging with full context."""
+        self._ensure_daily_log()
+        
+        exc_info = {
+            "exception_type": type(exc).__name__,
+            "exception_message": str(exc),
+            "traceback": traceback.format_exc(),
+            "request_id": get_request_id(),
+        }
+        if context:
+            exc_info["context"] = context
+        
+        self.structured("error", "exception", component=component, **exc_info)
+
+    def timed(self, operation: str, component: str = "app"):
+        """Context manager for timing operations."""
+        return TimedOperation(operation, component, self)
+
+
+class TimedOperation:
+    """Context manager for timing and logging operations."""
+    
+    def __init__(self, operation: str, component: str, logger_instance: "AppLogger"):
+        self.operation = operation
+        self.component = component
+        self.logger = logger_instance
+        self.start_time: float = 0
+        self.extra: Dict[str, Any] = {}
+    
+    def add_context(self, **kwargs: Any):
+        self.extra.update(kwargs)
+        return self
+    
+    def __enter__(self):
+        self.start_time = time.perf_counter()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        duration_ms = (time.perf_counter() - self.start_time) * 1000
+        
+        if exc_type is not None:
+            self.logger.structured(
+                "error",
+                f"{self.operation}_failed",
+                component=self.component,
+                duration_ms=round(duration_ms, 2),
+                error=str(exc_val),
+                **self.extra
+            )
+        else:
+            self.logger.structured(
+                "info",
+                f"{self.operation}_completed",
+                component=self.component,
+                duration_ms=round(duration_ms, 2),
+                **self.extra
+            )
+        
+        return False
+
+    async def __aenter__(self):
+        self.start_time = time.perf_counter()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return self.__exit__(exc_type, exc_val, exc_tb)
+
+
 logger = AppLogger()

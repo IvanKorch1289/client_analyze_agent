@@ -141,6 +141,15 @@ Optimized cache client with batch operations and compression:
 - `DELETE /utility/cache/prefix/{prefix}` - Delete keys by prefix
 
 ## Recent Changes
+- 2025-12-16: Enhanced Error Handling & Structured Logging
+  - Request ID tracking middleware (X-Request-ID header)
+  - Structured JSON logging (`logger.structured()`)
+  - Exception logging with full context (`logger.log_exception()`)
+  - Timed operation context manager (`logger.timed()`)
+  - Slow request warnings (>1s)
+- 2025-12-16: MCP Server Expansion
+  - Tavily search tools: `tavily_search`, `tavily_advanced_search`, `tavily_status`
+  - Fixed cache key to include all search parameters
 - 2025-12-16: Streaming API для анализа клиентов
   - Добавлен SSE streaming endpoint (stream=true query param)
   - События прогресса: start, progress, orchestrator, search_result, report, result, complete
