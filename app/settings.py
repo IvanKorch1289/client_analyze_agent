@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     tavily_token: Optional[str] = None
     gigachat_token: Optional[str] = None
-    
+
     # Perplexity
     perplexity_api_key: Optional[str] = None
     perplexity_model: str = "sonar"
@@ -40,10 +40,7 @@ class Settings(BaseSettings):
     max_new_tokens: int = 1000
     do_sample: bool = False
 
-    model_config = {
-        "env_file": ".env",
-        "extra": "ignore"
-    }
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()

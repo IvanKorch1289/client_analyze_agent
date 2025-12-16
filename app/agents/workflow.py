@@ -56,7 +56,9 @@ def build_persistent_graph():
     return workflow.compile()
 
 
-async def invoke_graph_with_persistence(session_id: str, initial_state: dict = None) -> dict:
+async def invoke_graph_with_persistence(
+    session_id: str, initial_state: dict = None
+) -> dict:
     """Запускает граф асинхронно и сохраняет результат в Tarantool."""
     graph = build_persistent_graph()
 
@@ -103,17 +105,21 @@ def _make_serializable(obj, max_depth=10):
     """Фильтрует не-сериализуемые объекты из состояния."""
     if max_depth <= 0:
         return str(obj)
-    
+
     if obj is None or isinstance(obj, (str, int, float, bool)):
         return obj
     elif isinstance(obj, dict):
-        return {k: _make_serializable(v, max_depth - 1) for k, v in obj.items()
-                if not k.startswith('_') and k != 'llm'}
+        return {
+            k: _make_serializable(v, max_depth - 1)
+            for k, v in obj.items()
+            if not k.startswith("_") and k != "llm"
+        }
     elif isinstance(obj, (list, tuple)):
         return [_make_serializable(item, max_depth - 1) for item in obj]
     else:
         try:
             import json
+
             json.dumps(obj)
             return obj
         except (TypeError, ValueError):

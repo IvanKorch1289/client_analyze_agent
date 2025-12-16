@@ -142,8 +142,8 @@ class AppLogger:
             body = response.text
             if body:
                 table.add_row("Тело", self._truncate(body, 500))
-        except Exception:
-            pass
+        except Exception as e:
+            app_logger.debug(f"Failed to add body to table: {e}")
 
         app_logger.info("")
         self._console.print(table)
@@ -182,25 +182,19 @@ class AppLogger:
         self._ensure_daily_log()
         app_logger.exception(f"[{component.upper()}] {message}")
 
-    def structured(
-        self,
-        level: str,
-        event: str,
-        component: str = "app",
-        **extra: Any
-    ):
+    def structured(self, level: str, event: str, component: str = "app", **extra: Any):
         """Structured JSON logging for machine parsing."""
         self._ensure_daily_log()
-        
+
         log_entry = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "level": level.upper(),
             "event": event,
             "component": component,
             "request_id": get_request_id(),
-            **extra
+            **extra,
         }
-        
+
         json_str = json.dumps(log_entry, ensure_ascii=False, default=str)
         log_func = getattr(app_logger, level.lower(), app_logger.info)
         log_func(f"[STRUCTURED] {json_str}")
@@ -209,11 +203,11 @@ class AppLogger:
         self,
         exc: Exception,
         component: str = "app",
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
     ):
         """Enhanced exception logging with full context."""
         self._ensure_daily_log()
-        
+
         exc_info = {
             "exception_type": type(exc).__name__,
             "exception_message": str(exc),
@@ -222,7 +216,7 @@ class AppLogger:
         }
         if context:
             exc_info["context"] = context
-        
+
         self.structured("error", "exception", component=component, **exc_info)
 
     def timed(self, operation: str, component: str = "app"):
@@ -232,25 +226,25 @@ class AppLogger:
 
 class TimedOperation:
     """Context manager for timing and logging operations."""
-    
+
     def __init__(self, operation: str, component: str, logger_instance: "AppLogger"):
         self.operation = operation
         self.component = component
         self.logger = logger_instance
         self.start_time: float = 0
         self.extra: Dict[str, Any] = {}
-    
+
     def add_context(self, **kwargs: Any):
         self.extra.update(kwargs)
         return self
-    
+
     def __enter__(self):
         self.start_time = time.perf_counter()
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         duration_ms = (time.perf_counter() - self.start_time) * 1000
-        
+
         if exc_type is not None:
             self.logger.structured(
                 "error",
@@ -258,7 +252,7 @@ class TimedOperation:
                 component=self.component,
                 duration_ms=round(duration_ms, 2),
                 error=str(exc_val),
-                **self.extra
+                **self.extra,
             )
         else:
             self.logger.structured(
@@ -266,15 +260,15 @@ class TimedOperation:
                 f"{self.operation}_completed",
                 component=self.component,
                 duration_ms=round(duration_ms, 2),
-                **self.extra
+                **self.extra,
             )
-        
+
         return False
 
     async def __aenter__(self):
         self.start_time = time.perf_counter()
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         return self.__exit__(exc_type, exc_val, exc_tb)
 

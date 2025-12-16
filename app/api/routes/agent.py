@@ -5,14 +5,13 @@ import uuid
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.advanced_funcs.logging_client import logger
 from app.agents.client_workflow import run_client_analysis_streaming
 from app.agents.workflow import AgentState, invoke_graph_with_persistence
-from app.storage.tarantool import save_thread_to_tarantool
 
 agent_router = APIRouter(prefix="/agent", tags=["Агент"])
 
@@ -24,7 +23,7 @@ class ClientAnalysisRequest(BaseModel):
 
 
 @agent_router.post("/prompt")
-async def process_prompt(request: Request, body: dict, bg: BackgroundTasks):
+async def process_prompt(request: Request, body: dict):
     """Принимает prompt, запускает граф, возвращает ответ."""
     thread_id = body.get("thread_id") or f"thread_{uuid.uuid4().hex}"
     user_input = body.get("prompt")
@@ -36,7 +35,7 @@ async def process_prompt(request: Request, body: dict, bg: BackgroundTasks):
         raise HTTPException(
             status_code=503,
             detail="LLM не настроен. Требуется GIGACHAT_TOKEN для работы этого endpoint. "
-                   "Используйте /agent/analyze-client для анализа клиентов через Perplexity."
+            "Используйте /agent/analyze-client для анализа клиентов через Perplexity.",
         )
 
     initial_state: AgentState = {
@@ -89,39 +88,39 @@ async def analyze_client(request: ClientAnalysisRequest, stream: bool = False):
     """
     Анализирует клиента через Perplexity AI.
     Выполняет параллельный поиск и создаёт отчёт с оценкой рисков.
-    
+
     Args:
         stream: Если True, возвращает SSE stream с прогрессом
     """
     from app.services.perplexity_client import PerplexityClient
-    
+
     client = PerplexityClient.get_instance()
     if not client.is_configured():
         raise HTTPException(
             status_code=503,
-            detail="Perplexity API key не настроен. Добавьте PERPLEXITY_API_KEY в секреты."
+            detail="Perplexity API key не настроен. Добавьте PERPLEXITY_API_KEY в секреты.",
         )
-    
+
     if stream:
         return StreamingResponse(
             _stream_client_analysis(
                 client_name=request.client_name,
                 inn=request.inn or "",
-                additional_notes=request.additional_notes or ""
+                additional_notes=request.additional_notes or "",
             ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-                "X-Accel-Buffering": "no"
-            }
+                "X-Accel-Buffering": "no",
+            },
         )
-    
+
     try:
         coro = run_client_analysis_streaming(
             client_name=request.client_name,
             inn=request.inn or "",
-            additional_notes=request.additional_notes or ""
+            additional_notes=request.additional_notes or "",
         )
         result = await coro
         return result
@@ -131,22 +130,23 @@ async def analyze_client(request: ClientAnalysisRequest, stream: bool = False):
 
 
 async def _stream_client_analysis(
-    client_name: str,
-    inn: str,
-    additional_notes: str
+    client_name: str, inn: str, additional_notes: str
 ) -> AsyncGenerator[str, None]:
     """Генератор SSE событий для streaming анализа."""
     session_id = f"analysis_{int(time.time())}"
-    
+
     def format_sse(event: str, data: Dict[str, Any]) -> str:
         return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-    
-    yield format_sse("start", {
-        "session_id": session_id,
-        "client_name": client_name,
-        "message": "Начинаем анализ клиента..."
-    })
-    
+
+    yield format_sse(
+        "start",
+        {
+            "session_id": session_id,
+            "client_name": client_name,
+            "message": "Начинаем анализ клиента...",
+        },
+    )
+
     generator = None
     try:
         generator = run_client_analysis_streaming(
@@ -154,13 +154,13 @@ async def _stream_client_analysis(
             inn=inn,
             additional_notes=additional_notes,
             session_id=session_id,
-            stream=True
+            stream=True,
         )
         async for event in generator:
             yield format_sse(event["type"], event["data"])
-        
+
         yield format_sse("complete", {"session_id": session_id, "status": "completed"})
-        
+
     except asyncio.CancelledError:
         logger.info(f"Client disconnected from stream: {session_id}")
         if generator:
@@ -172,8 +172,8 @@ async def _stream_client_analysis(
         if generator:
             try:
                 await generator.aclose()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Error closing streaming generator: {e}", exc_info=True)
 
 
 @agent_router.get("/threads")

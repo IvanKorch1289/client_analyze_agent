@@ -1,0 +1,69 @@
+# .bandit.yml
+# Bandit Security Scanner Configuration for FastAPI/LangChain Projects
+# Documentation: https://bandit.readthedocs.io/en/latest/config.html
+# Run: poetry run bandit -r ./app -c .bandit.yml
+
+# ===========================
+# Excluded Directories
+# ===========================
+# Glob patterns поддерживаются
+exclude_dirs:
+  - '.venv'
+  - 'venv'
+  - 'env'
+  - '.env'
+  - '__pycache__'
+  - '.git'
+  - '.tox'
+  - '.pytest_cache'
+  - '.mypy_cache'
+  - '.ruff_cache'
+  - '*.egg-info'
+  - 'build'
+  - 'dist'
+  - 'node_modules'
+  - 'alembic/versions'   # Автогенерируемые миграции
+  - 'migrations'         # Если используете другую систему миграций
+
+# ===========================
+# Test Selection
+# ===========================
+# Если нужно запускать только конкретные тесты (оставьте [] для всех)
+tests: []
+
+# Глобальные пропуски (применяются ко всем файлам)
+skips:
+  # B101 - assert_used: не пропускайте глобально, настройте ниже
+  # B404 - import_subprocess: если subprocess нужен для legitimate use cases
+  # B603 - subprocess_without_shell_equals_true: если используете subprocess безопасно
+  # B607 - start_process_with_partial_path: если используете абсолютные пути
+
+# ===========================
+# Test-Specific Configuration
+# ===========================
+# Разрешить assert в pytest-файлах
+assert_used:
+  skips:
+    - '*/tests/*'          # Все файлы в любой директории tests
+    - '*/test_*.py'        # test_example.py в любой директории
+    - '*/*_test.py'        # example_test.py в любой директории
+    - 'tests/*.py'         # Все файлы в корневой директории tests
+    - 'test_*.py'          # test_ файлы в корне проекта
+
+# Если используете hardcoded_password_string (B105, B106)
+hardcoded_password_string:
+  # Примеры фиктивных паролей для исключения
+  # (настройте под свой проект)
+
+# ===========================
+# Plugins Configuration
+# ===========================
+# Если нужно добавить кастомные плагины
+# plugins:
+#   - custom_bandit_plugin
+
+# ===========================
+# Severity & Confidence Levels
+# ===========================
+# Не устанавливайте здесь (используйте CLI флаги при необходимости):
+# bandit -r ./app -c .bandit.yml -ll  # Low severity, Low confidence

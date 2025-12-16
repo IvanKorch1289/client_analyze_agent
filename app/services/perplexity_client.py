@@ -39,7 +39,7 @@ class PerplexityClient:
     def _get_cache_key(self, messages: List[Dict[str, str]], model: str) -> str:
         messages_str = str(messages)
         key_str = f"{messages_str}:{model}"
-        return f"perplexity:{hashlib.md5(key_str.encode()).hexdigest()}"
+        return f"perplexity:{hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()}"
 
     async def chat(
         self,
@@ -52,10 +52,7 @@ class PerplexityClient:
     ) -> Dict[str, Any]:
         if not self.api_key:
             logger.error("Perplexity API key not configured", component="perplexity")
-            return {
-                "error": "Perplexity API key not configured",
-                "success": False
-            }
+            return {"error": "Perplexity API key not configured", "success": False}
 
         use_model = model or self.model
 
@@ -69,7 +66,7 @@ class PerplexityClient:
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         payload = {
@@ -82,7 +79,7 @@ class PerplexityClient:
             "search_recency_filter": search_recency_filter,
             "stream": False,
             "presence_penalty": 0,
-            "frequency_penalty": 1
+            "frequency_penalty": 1,
         }
 
         if max_tokens:
@@ -100,12 +97,14 @@ class PerplexityClient:
 
             logger.info(
                 f"Perplexity response received, model: {use_model}",
-                component="perplexity"
+                component="perplexity",
             )
 
             response_data = {
                 "success": True,
-                "content": result.get("choices", [{}])[0].get("message", {}).get("content", ""),
+                "content": result.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", ""),
                 "citations": result.get("citations", []),
                 "model": result.get("model"),
                 "usage": result.get("usage", {}),
@@ -121,7 +120,7 @@ class PerplexityClient:
         except CircuitBreakerOpenError:
             logger.warning(
                 "Perplexity circuit breaker is open, service temporarily unavailable",
-                component="perplexity"
+                component="perplexity",
             )
             return {
                 "success": False,
@@ -131,35 +130,28 @@ class PerplexityClient:
 
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"Perplexity request failed: {error_msg}", component="perplexity")
+            logger.error(
+                f"Perplexity request failed: {error_msg}", component="perplexity"
+            )
 
             if "status_code" in error_msg:
                 if "401" in error_msg or "403" in error_msg:
-                    return {
-                        "success": False,
-                        "error": "Invalid Perplexity API key"
-                    }
+                    return {"success": False, "error": "Invalid Perplexity API key"}
                 elif "429" in error_msg:
-                    return {
-                        "success": False,
-                        "error": "Perplexity rate limit exceeded"
-                    }
+                    return {"success": False, "error": "Perplexity rate limit exceeded"}
 
-            return {
-                "success": False,
-                "error": error_msg
-            }
+            return {"success": False, "error": error_msg}
 
     async def ask(
         self,
         question: str,
         system_prompt: str = "Be precise and concise. Answer in Russian if the question is in Russian.",
         use_cache: bool = False,
-        **kwargs
+        **kwargs,
     ) -> Dict[str, Any]:
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question}
+            {"role": "user", "content": question},
         ]
         return await self.chat(messages, use_cache=use_cache, **kwargs)
 
@@ -174,7 +166,7 @@ class PerplexityClient:
         if not result.get("success") and fallback_handler:
             logger.info(
                 f"Perplexity ask failed, trying fallback for: {question[:50]}",
-                component="perplexity"
+                component="perplexity",
             )
             return await fallback_handler(question, **kwargs)
 

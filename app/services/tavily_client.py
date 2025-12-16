@@ -54,7 +54,9 @@ class TavilyClient:
             ",".join(sorted(exclude_domains or [])),
         ]
         key_str = ":".join(key_parts)
-        return f"tavily:{hashlib.md5(key_str.encode()).hexdigest()}"
+        return (
+            f"tavily:{hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()}"
+        )
 
     async def search(
         self,
@@ -69,15 +71,16 @@ class TavilyClient:
     ) -> Dict[str, Any]:
         if not self.api_key:
             logger.error("Tavily API key not configured", component="tavily")
-            return {
-                "error": "Tavily API key not configured",
-                "success": False
-            }
+            return {"error": "Tavily API key not configured", "success": False}
 
         cache_key = self._get_cache_key(
-            query, search_depth, max_results,
-            include_answer, include_raw_content,
-            include_domains, exclude_domains
+            query,
+            search_depth,
+            max_results,
+            include_answer,
+            include_raw_content,
+            include_domains,
+            exclude_domains,
         )
         if use_cache and cache_key in self._cache:
             cached = self._cache[cache_key]
@@ -111,7 +114,7 @@ class TavilyClient:
 
             logger.info(
                 f"Tavily search completed: {len(result.get('results', []))} results",
-                component="tavily"
+                component="tavily",
             )
 
             response_data = {
@@ -131,7 +134,7 @@ class TavilyClient:
         except CircuitBreakerOpenError:
             logger.warning(
                 "Tavily circuit breaker is open, service temporarily unavailable",
-                component="tavily"
+                component="tavily",
             )
             return {
                 "success": False,
@@ -145,20 +148,11 @@ class TavilyClient:
 
             if "status_code" in error_msg:
                 if "401" in error_msg or "403" in error_msg:
-                    return {
-                        "success": False,
-                        "error": "Invalid Tavily API key"
-                    }
+                    return {"success": False, "error": "Invalid Tavily API key"}
                 elif "429" in error_msg:
-                    return {
-                        "success": False,
-                        "error": "Tavily rate limit exceeded"
-                    }
+                    return {"success": False, "error": "Tavily rate limit exceeded"}
 
-            return {
-                "success": False,
-                "error": error_msg
-            }
+            return {"success": False, "error": error_msg}
 
     async def search_with_fallback(
         self,
@@ -171,7 +165,7 @@ class TavilyClient:
         if not result.get("success") and fallback_handler:
             logger.info(
                 f"Tavily search failed, trying fallback for: {query[:50]}",
-                component="tavily"
+                component="tavily",
             )
             return await fallback_handler(query, **kwargs)
 

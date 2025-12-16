@@ -27,7 +27,9 @@ def cache_response(ttl: int = 3600):
 
             # Хешируем, чтобы избежать длинных ключей (> 255 символов)
             raw_key = ":".join(key_parts)
-            key = hashlib.md5(raw_key.encode("utf-8")).hexdigest()
+            key = hashlib.md5(
+                raw_key.encode("utf-8"), usedforsecurity=False
+            ).hexdigest()
             cache_key = f"cache:{key}"
 
             try:

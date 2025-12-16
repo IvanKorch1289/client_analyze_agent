@@ -3,7 +3,7 @@ import gzip
 import hashlib
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import msgpack
@@ -13,11 +13,14 @@ from app.settings import settings
 
 try:
     import tarantool
+
     TARANTOOL_AVAILABLE = True
 except ImportError:
     tarantool = None
     TARANTOOL_AVAILABLE = False
-    logger.warning("Tarantool not available, using in-memory fallback", component="tarantool")
+    logger.warning(
+        "Tarantool not available, using in-memory fallback", component="tarantool"
+    )
 
 _executor = ThreadPoolExecutor(max_workers=5)
 
@@ -130,7 +133,10 @@ class TarantoolClient:
         """Асинхронное подключение через пул"""
         if self._use_memory:
             self._connected = True
-            logger.info("Using in-memory storage (Tarantool not available)", component="tarantool")
+            logger.info(
+                "Using in-memory storage (Tarantool not available)",
+                component="tarantool",
+            )
             return
 
         if self._connected and self._connection:
@@ -146,18 +152,21 @@ class TarantoolClient:
                 )
                 return conn
             except Exception as e:
-                logger.warning(f"Tarantool connection failed: {e}, using in-memory fallback", component="tarantool")
+                logger.warning(
+                    f"Tarantool connection failed: {e}, using in-memory fallback",
+                    component="tarantool",
+                )
                 return None
 
         loop = asyncio.get_event_loop()
         self._connection = await loop.run_in_executor(_executor, connect_fn)
-        
+
         if self._connection is None:
             self._use_memory = True
             logger.info("Falling back to in-memory storage", component="tarantool")
         else:
             logger.info("Tarantool connected successfully", component="tarantool")
-        
+
         self._connected = True
 
     async def _ensure_connection(self):
@@ -167,7 +176,9 @@ class TarantoolClient:
 
     def _compress(self, data: bytes) -> bytes:
         if data and len(data) >= self._config.compression_threshold:
-            compressed = gzip.compress(data, compresslevel=self._config.compression_level)
+            compressed = gzip.compress(
+                data, compresslevel=self._config.compression_level
+            )
             if len(compressed) < len(data):
                 self._metrics.compressed_saves += 1
                 self._metrics.bytes_saved_by_compression += len(data) - len(compressed)
@@ -181,7 +192,9 @@ class TarantoolClient:
 
     def _generate_search_key(self, query: str, service: str = "default") -> str:
         normalized = query.lower().strip()
-        hash_val = hashlib.md5(normalized.encode()).hexdigest()[:12]
+        hash_val = hashlib.md5(normalized.encode(), usedforsecurity=False).hexdigest()[
+            :12
+        ]
         return f"search:{service}:{hash_val}"
 
     async def get(self, key: str) -> Optional[Dict[Any, Any]]:
@@ -256,7 +269,9 @@ class TarantoolClient:
             self._metrics.misses += 1
         return result
 
-    async def set(self, key: str, value: Any, ttl: Optional[int] = None, compress: bool = True):
+    async def set(
+        self, key: str, value: Any, ttl: Optional[int] = None, compress: bool = True
+    ):
         await self._ensure_connection()
         start_time = time.time()
         ttl_value = ttl if ttl is not None else self._config.default_ttl
@@ -335,11 +350,15 @@ class TarantoolClient:
                     result = self._connection.select(self._space, key)
                     if result and len(result[0]) >= 3:
                         value_packed, expires_at = result[0][1], result[0][2]
-                        if now <= expires_at and isinstance(value_packed, (bytes, bytearray)):
+                        if now <= expires_at and isinstance(
+                            value_packed, (bytes, bytearray)
+                        ):
                             data = self._decompress(value_packed)
                             batch_results[key] = msgpack.unpackb(data, raw=False)
                 except Exception as e:
-                    logger.warning(f"Error in batch get for {key}: {e}", component="tarantool")
+                    logger.warning(
+                        f"Error in batch get for {key}: {e}", component="tarantool"
+                    )
             return batch_results
 
         loop = asyncio.get_event_loop()
@@ -350,7 +369,13 @@ class TarantoolClient:
         self._metrics.misses += len(keys) - len(results)
         return results
 
-    async def set_many(self, items: Dict[str, Any], ttl: Optional[int] = None, compress: bool = True, _is_chunk: bool = False):
+    async def set_many(
+        self,
+        items: Dict[str, Any],
+        ttl: Optional[int] = None,
+        compress: bool = True,
+        _is_chunk: bool = False,
+    ):
         await self._ensure_connection()
         if not _is_chunk:
             self._metrics.batch_operations += 1
@@ -359,8 +384,10 @@ class TarantoolClient:
         expires_at = time.time() + ttl_value
 
         if len(items) > self._config.max_batch_size:
-            chunks = [dict(list(items.items())[i:i + self._config.max_batch_size])
-                      for i in range(0, len(items), self._config.max_batch_size)]
+            chunks = [
+                dict(list(items.items())[i : i + self._config.max_batch_size])
+                for i in range(0, len(items), self._config.max_batch_size)
+            ]
             for chunk in chunks:
                 await self.set_many(chunk, ttl, compress, _is_chunk=True)
             return
@@ -384,7 +411,9 @@ class TarantoolClient:
                         packed = self._compress(packed)
                     self._connection.replace(self._space, (key, packed, expires_at))
                 except Exception as e:
-                    logger.warning(f"Error in batch set for {key}: {e}", component="tarantool")
+                    logger.warning(
+                        f"Error in batch set for {key}: {e}", component="tarantool"
+                    )
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(_executor, do_batch_set)
@@ -407,18 +436,24 @@ class TarantoolClient:
                 try:
                     self._connection.delete(self._space, key)
                 except Exception as e:
-                    logger.warning(f"Error in batch delete for {key}: {e}", component="tarantool")
+                    logger.warning(
+                        f"Error in batch delete for {key}: {e}", component="tarantool"
+                    )
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(_executor, do_batch_delete)
         self._metrics.deletes += len(keys)
 
-    async def cache_search_result(self, query: str, result: Any, service: str = "default"):
+    async def cache_search_result(
+        self, query: str, result: Any, service: str = "default"
+    ):
         key = self._generate_search_key(query, service)
         await self.set(key, result, ttl=self._config.search_cache_ttl)
         self._search_cache[key] = (result, time.time() + self._config.search_cache_ttl)
 
-    async def get_cached_search(self, query: str, service: str = "default") -> Optional[Any]:
+    async def get_cached_search(
+        self, query: str, service: str = "default"
+    ) -> Optional[Any]:
         key = self._generate_search_key(query, service)
         if key in self._search_cache:
             result, expires_at = self._search_cache[key]
@@ -448,7 +483,9 @@ class TarantoolClient:
                         deleted += 1
                 return deleted
             except Exception as e:
-                logger.error(f"Error deleting by prefix {prefix}: {e}", component="tarantool")
+                logger.error(
+                    f"Error deleting by prefix {prefix}: {e}", component="tarantool"
+                )
                 return 0
 
         loop = asyncio.get_event_loop()
@@ -491,7 +528,9 @@ class TarantoolClient:
                 packed = msgpack.packb(value, use_bin_type=True, strict_types=False)
                 self._connection.replace("persistent", (key, packed))
             except Exception as e:
-                logger.error(f"Failed to save persistent {key}: {e}", component="tarantool")
+                logger.error(
+                    f"Failed to save persistent {key}: {e}", component="tarantool"
+                )
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(_executor, do_set)
@@ -533,12 +572,14 @@ class TarantoolClient:
                     try:
                         value = msgpack.unpackb(packed, raw=False)
                         if isinstance(value, dict) and "input" in value:
-                            threads.append({
-                                "key": key,
-                                "input": value.get("input", "Без запроса"),
-                                "created_at": value.get("created_at", 0),
-                                "message_count": len(value.get("messages", [])),
-                            })
+                            threads.append(
+                                {
+                                    "key": key,
+                                    "input": value.get("input", "Без запроса"),
+                                    "created_at": value.get("created_at", 0),
+                                    "message_count": len(value.get("messages", [])),
+                                }
+                            )
                     except Exception as e:
                         logger.warning(f"Failed to unpack thread {key}: {e}")
             return threads
@@ -553,12 +594,16 @@ class TarantoolClient:
                             if isinstance(row[1], (bytes, bytearray)):
                                 value = msgpack.unpackb(row[1], raw=False)
                                 if isinstance(value, dict) and "input" in value:
-                                    threads.append({
-                                        "key": row[0],
-                                        "input": value.get("input", "Без запроса"),
-                                        "created_at": value.get("created_at", 0),
-                                        "message_count": len(value.get("messages", [])),
-                                    })
+                                    threads.append(
+                                        {
+                                            "key": row[0],
+                                            "input": value.get("input", "Без запроса"),
+                                            "created_at": value.get("created_at", 0),
+                                            "message_count": len(
+                                                value.get("messages", [])
+                                            ),
+                                        }
+                                    )
                         except Exception as e:
                             logger.warning(f"Failed to unpack thread {row[0]}: {e}")
                 return threads
@@ -572,22 +617,32 @@ class TarantoolClient:
     async def invalidate_all_keys(self, confirm: bool = False):
         """Полная инвалидация всех ключей."""
         if not confirm:
-            logger.warning("invalidate_all_keys() called without confirm=True. Aborted.", component="tarantool")
+            logger.warning(
+                "invalidate_all_keys() called without confirm=True. Aborted.",
+                component="tarantool",
+            )
             return
 
         await self._ensure_connection()
 
         if self._use_memory:
             _memory_cache.clear()
-            logger.warning("All cache keys invalidated (in-memory)", component="tarantool")
+            logger.warning(
+                "All cache keys invalidated (in-memory)", component="tarantool"
+            )
             return
 
         def do_truncate():
             try:
                 self._connection.call("box.space.cache:truncate")
-                logger.warning("All cache keys invalidated (space 'cache' truncated)", component="tarantool")
+                logger.warning(
+                    "All cache keys invalidated (space 'cache' truncated)",
+                    component="tarantool",
+                )
             except Exception as e:
-                logger.error(f"Failed to invalidate all keys: {e}", component="tarantool")
+                logger.error(
+                    f"Failed to invalidate all keys: {e}", component="tarantool"
+                )
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(_executor, do_truncate)
@@ -595,6 +650,7 @@ class TarantoolClient:
     async def close(self):
         """Закрывает соединение."""
         if self._connection and not self._use_memory:
+
             def close_fn():
                 try:
                     self._connection.close()
@@ -647,13 +703,15 @@ async def save_thread_to_tarantool(thread_id: str, data: Dict[str, Any]):
         final_state = data.get("final_state", {})
         if isinstance(final_state, dict):
             serializable_state = {
-                k: v for k, v in final_state.items()
-                if k not in ('llm', '_llm') and not k.startswith('_')
+                k: v
+                for k, v in final_state.items()
+                if k not in ("llm", "_llm")
+                and not k.startswith("_")
                 and isinstance(v, (str, int, float, bool, list, dict, type(None)))
             }
         else:
             serializable_state = str(final_state)
-        
+
         record = {
             "messages": processed_messages,
             "created_at": data.get("created_at", time.time()),

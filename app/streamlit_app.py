@@ -36,7 +36,7 @@ page = st.sidebar.radio(
     "Выберите раздел",
     PAGES,
     index=PAGES.index(st.session_state.page) if st.session_state.page in PAGES else 0,
-    key="nav_radio"
+    key="nav_radio",
 )
 st.session_state.page = page
 
@@ -211,7 +211,7 @@ elif page == "Утилиты":
                         st.warning("⚠️ Tarantool: режим in-memory (fallback)")
                     else:
                         st.success("✅ Tarantool: подключен")
-                    
+
                     col1, col2, col3 = st.columns(3)
                     cache = data.get("cache", {})
                     with col1:
@@ -219,21 +219,34 @@ elif page == "Утилиты":
                     with col2:
                         st.metric("Hit Rate", f"{cache.get('hit_rate', 0):.1%}")
                     with col3:
-                        st.metric("Hits / Misses", f"{cache.get('hits', 0)} / {cache.get('misses', 0)}")
-                    
+                        st.metric(
+                            "Hits / Misses",
+                            f"{cache.get('hits', 0)} / {cache.get('misses', 0)}",
+                        )
+
                     conn = data.get("connection", {})
                     comp = data.get("compression", {})
                     with st.expander("Подробности"):
                         st.write(f"**Режим:** {mode}")
                         st.write(f"**Host:** {conn.get('host', 'N/A')}")
                         st.write(f"**Port:** {conn.get('port', 'N/A')}")
-                        st.write(f"**Fallback:** {'Да' if conn.get('fallback') else 'Нет'}")
-                        st.write(f"**Сжатие:** {'Вкл' if comp.get('enabled') else 'Выкл'}")
-                        if comp.get('enabled'):
-                            st.write(f"**Сжато объектов:** {comp.get('compressed_count', 0)}")
-                            st.write(f"**Сэкономлено байт:** {comp.get('bytes_saved', 0)}")
+                        st.write(
+                            f"**Fallback:** {'Да' if conn.get('fallback') else 'Нет'}"
+                        )
+                        st.write(
+                            f"**Сжатие:** {'Вкл' if comp.get('enabled') else 'Выкл'}"
+                        )
+                        if comp.get("enabled"):
+                            st.write(
+                                f"**Сжато объектов:** {comp.get('compressed_count', 0)}"
+                            )
+                            st.write(
+                                f"**Сэкономлено байт:** {comp.get('bytes_saved', 0)}"
+                            )
                 else:
-                    st.error(f"❌ Tarantool недоступен: {data.get('message', 'Unknown error')}")
+                    st.error(
+                        f"❌ Tarantool недоступен: {data.get('message', 'Unknown error')}"
+                    )
             else:
                 st.error(f"Ошибка: {resp.status_code}")
         except Exception as e:

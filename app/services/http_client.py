@@ -423,7 +423,10 @@ class AsyncHttpClient:
                 f"Request to {detected_service} failed after {retry.max_attempts} attempts: {last_exception}",
                 component="http_client",
             )
-            raise last_exception if last_exception else e
+            if last_exception:
+                raise last_exception from e
+            else:
+                raise
 
         except Exception as e:
             metrics.failed_requests += 1
@@ -536,15 +539,15 @@ class AsyncHttpClient:
 
         return all_data
 
-    def get_circuit_breaker_status(self, service: Optional[str] = None) -> Dict[str, Any]:
+    def get_circuit_breaker_status(
+        self, service: Optional[str] = None
+    ) -> Dict[str, Any]:
         if service:
             if service in self._circuit_breakers:
                 return self._circuit_breakers[service].get_status()
             return {"error": f"No circuit breaker for service: {service}"}
 
-        return {
-            name: cb.get_status() for name, cb in self._circuit_breakers.items()
-        }
+        return {name: cb.get_status() for name, cb in self._circuit_breakers.items()}
 
     def get_metrics(self, service: Optional[str] = None) -> Dict[str, Any]:
         if service:

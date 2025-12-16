@@ -1,0 +1,70 @@
+[13:40:45] INFO | mcp-server | [APP] Инициализация приложения...
+[13:40:45] INFO | mcp-server | [TARANTOOL] Tarantool connected successfully
+[13:40:45] INFO | mcp-server | [APP] LLM инициализирован
+[13:40:45] INFO | mcp-server | [APP] Streamlit запущен на порту 5000
+[13:40:45] INFO | mcp-server | [APP] Клиенты инициализированы
+[13:41:24] ERROR | mcp-server | [APP] Ошибка выполнения графа: No synchronous function provided to "planner".
+Either initialize with a synchronous function or invoke via the async API (ainvoke, astream, etc.)
+[13:41:24] INFO | mcp-server | [APP] Состояние графа сохранено в Tarantool: thread:thread_a348572735d64d3b89b2431184cee759
+[13:41:24] ERROR | mcp-server | [TARANTOOL] Failed to save persistent thread:thread_a348572735d64d3b89b2431184cee759: can not serialize 'HuggingFaceEndpoint' object
+[13:41:24] ERROR | mcp-server | [TARANTOOL] Failed to save persistent thread:thread_a348572735d64d3b89b2431184cee759: can not serialize 'HuggingFaceEndpoint' object
+[13:41:24] INFO | mcp-server | [APP] Thread saved: thread:thread_a348572735d64d3b89b2431184cee759
+[13:41:24] INFO | mcp-server | [APP] Thread saved: thread:thread_a348572735d64d3b89b2431184cee759
+[14:01:54] INFO | mcp-server | [APP] Завершение работы приложения...
+[14:01:54] INFO | mcp-server | [TARANTOOL] Tarantool connection closed
+[14:01:54] INFO | mcp-server | [APP] Все соединения закрыты
+[14:02:15] INFO | mcp-server | [APP] Инициализация приложения...
+[14:02:15] INFO | mcp-server | [TARANTOOL] Tarantool connected successfully
+[14:02:15] INFO | mcp-server | [APP] LLM инициализирован
+[14:02:15] INFO | mcp-server | [APP] Streamlit запущен на порту 5000
+[14:02:15] INFO | mcp-server | [APP] Клиенты инициализированы
+[14:02:31] ERROR | mcp-server | [APP] Ошибка выполнения графа: 'Input to ChatPromptTemplate is missing variables {\'\\n            "plan"\'}.  Expected: [\'\\n            "plan"\', \'input\'] Received: [\'input\']\nNote: if you intended {\n            "plan"} to be part of the string and not a variable, please escape it with double curly braces like: \'{{\n            "plan"}}\'.\nFor troubleshooting, visit: https://python.langchain.com/docs/troubleshooting/errors/INVALID_PROMPT_INPUT '
+[14:02:31] INFO | mcp-server | [APP] Состояние графа сохранено в Tarantool: thread:thread_7aad9c1a897947b4bb185b675ffcd219
+[14:02:31] INFO | mcp-server | [APP] Thread saved: thread:thread_7aad9c1a897947b4bb185b675ffcd219
+[14:16:55] INFO | mcp-server | [APP] Завершение работы приложения...
+[14:16:55] INFO | mcp-server | [TARANTOOL] Tarantool connection closed
+[14:16:55] INFO | mcp-server | [APP] Все соединения закрыты
+[14:16:57] INFO | mcp-server | [APP] Инициализация приложения...
+[14:16:57] INFO | mcp-server | [TARANTOOL] Tarantool connected successfully
+[14:16:57] INFO | mcp-server | [APP] LLM инициализирован
+[14:16:57] INFO | mcp-server | [APP] Streamlit запущен на порту 5000
+[14:16:57] INFO | mcp-server | [APP] Клиенты инициализированы
+[14:16:58] INFO | mcp-server | [APP] Завершение работы приложения...
+[14:16:58] INFO | mcp-server | [TARANTOOL] Tarantool connection closed
+[14:16:58] INFO | mcp-server | [APP] Все соединения закрыты
+[14:17:00] INFO | mcp-server | [APP] Инициализация приложения...
+[14:17:00] INFO | mcp-server | [TARANTOOL] Tarantool connected successfully
+[14:17:00] INFO | mcp-server | [APP] LLM инициализирован
+[14:17:00] INFO | mcp-server | [APP] Streamlit запущен на порту 5000
+[14:17:00] INFO | mcp-server | [APP] Клиенты инициализированы
+[14:35:13] INFO | mcp-server | [APP] Инициализация приложения...
+[14:35:13] INFO | mcp-server | [TARANTOOL] Tarantool connected successfully
+[14:35:13] INFO | mcp-server | [APP] LLM инициализирован
+[14:35:13] INFO | mcp-server | [APP] Streamlit запущен на порту 5000
+[14:35:13] INFO | mcp-server | [APP] Клиенты инициализированы
+[14:35:53] DEBUG | mcp-server | [CACHE] Cache MISS: app.services.fetch_data:fetch_company_info:2312016641 → cache:08aceb857e73acdaaeed484130570643
+[14:35:53] INFO | mcp-server | [COMPANY_INFO] Fetching data for INN: 2312016641
+[14:35:53] DEBUG | mcp-server | [CACHE] Cache MISS: app.services.fetch_data:fetch_from_infosphere:2312016641 → cache:9570f40cf8c214294668c7ceb1b37d69
+[14:35:53] INFO | mcp-server | 
+[14:35:53] DEBUG | mcp-server | [CACHE] Cache MISS: app.services.fetch_data:fetch_from_dadata:2312016641 → cache:d634b73985cc20f08e9cea06382b6a7a
+[14:35:53] INFO | mcp-server | 
+[14:35:53] DEBUG | mcp-server | [CACHE] Cache MISS: app.services.fetch_data:fetch_from_casebook:2312016641 → cache:6d10c38a3d0ddfe170820e256d2775fc
+[14:35:53] INFO | mcp-server | 
+[14:35:53] DEBUG | mcp-server | Failed to add body to table: Attempted to access streaming response content, without having called `read()`.
+[14:35:53] INFO | mcp-server | 
+[14:35:53] DEBUG | mcp-server | [CACHE] Cache SET: cache:d634b73985cc20f08e9cea06382b6a7a, ttl=7200
+[14:35:54] DEBUG | mcp-server | Failed to add body to table: Attempted to access streaming response content, without having called `read()`.
+[14:35:54] INFO | mcp-server | 
+[14:35:54] INFO | mcp-server | [HTTP_CLIENT] Пагинация не обнаружена. Останавливаемся после страницы 1.
+[14:35:54] DEBUG | mcp-server | [CACHE] Cache SET: cache:6d10c38a3d0ddfe170820e256d2775fc, ttl=9600
+[14:35:57] DEBUG | mcp-server | Failed to add body to table: Attempted to access streaming response content, without having called `read()`.
+[14:35:57] INFO | mcp-server | 
+[14:35:57] DEBUG | mcp-server | [CACHE] Cache SET: cache:9570f40cf8c214294668c7ceb1b37d69, ttl=3600
+[14:35:57] DEBUG | mcp-server | [CACHE] Cache SET: cache:08aceb857e73acdaaeed484130570643, ttl=9600
+[14:35:57] WARNING | mcp-server | [STRUCTURED] {"timestamp": "2025-12-16T11:35:57.293000Z", "level": "WARNING", "event": "slow_request", "component": "http", "request_id": "d7296926", "method": "GET", "path": "/data/client/info/2312016641", "status_code": 200, "duration_ms": 4089.0}
+[14:36:55] ERROR | mcp-server | [APP] Ошибка выполнения графа: 'Input to ChatPromptTemplate is missing variables {\'"plan"\'}.  Expected: [\'"plan"\', \'input\'] Received: [\'input\']\nNote: if you intended {"plan"} to be part of the string and not a variable, please escape it with double curly braces like: \'{{"plan"}}\'.\nFor troubleshooting, visit: https://python.langchain.com/docs/troubleshooting/errors/INVALID_PROMPT_INPUT '
+[14:36:55] INFO | mcp-server | [APP] Состояние графа сохранено в Tarantool: thread:thread_fac377387989477b93b9b3fe6517427f
+[14:36:55] INFO | mcp-server | [APP] Thread saved: thread:thread_fac377387989477b93b9b3fe6517427f
+[14:37:20] INFO | mcp-server | [APP] Завершение работы приложения...
+[14:37:20] INFO | mcp-server | [TARANTOOL] Tarantool connection closed
+[14:37:20] INFO | mcp-server | [APP] Все соединения закрыты

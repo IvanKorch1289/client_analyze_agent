@@ -343,18 +343,17 @@ async def fetch_company_info_for_analyze(inn: str) -> Dict[str, Any]:
     tags={"catalog", "search", "ai"},
 )
 async def perplexity_search(
-    query: str,
-    search_recency: str = "month"
+    query: str, search_recency: str = "month"
 ) -> Dict[str, Any]:
     """Поиск информации в интернете с помощью Perplexity AI.
-    
+
     Используй для получения актуальной информации из интернета, когда нужны
     свежие данные, новости, факты или аналитика из веб-источников.
-    
+
     Аргументы:
         query (str): Поисковый запрос (обязательный)
         search_recency (str): Фильтр по давности (day, week, month, year)
-    
+
     Возвращает:
         Словарь с:
         - content: ответ от Perplexity
@@ -362,7 +361,7 @@ async def perplexity_search(
         При ошибке — объект с полем 'error'.
     """
     client = PerplexityClient.get_instance()
-    
+
     if not client.is_configured():
         return {
             "error": {
@@ -370,28 +369,28 @@ async def perplexity_search(
                 "message": "Perplexity API key not configured. Set PERPLEXITY_API_KEY environment variable.",
             }
         }
-    
+
     try:
         result = await client.ask(
             question=query,
             system_prompt="Ты - полезный ассистент. Отвечай точно и кратко. Если вопрос на русском - отвечай на русском.",
-            search_recency_filter=search_recency
+            search_recency_filter=search_recency,
         )
-        
+
         if not result.get("success"):
             return {
                 "error": {
                     "type": "api_error",
-                    "message": result.get("error", "Unknown error")
+                    "message": result.get("error", "Unknown error"),
                 }
             }
-        
+
         return {
             "status": "success",
             "content": result.get("content", ""),
             "citations": result.get("citations", []),
             "model": result.get("model"),
-            "summary": f"Perplexity ответил на запрос: {query[:50]}..."
+            "summary": f"Perplexity ответил на запрос: {query[:50]}...",
         }
     except Exception as e:
         return {
@@ -408,25 +407,23 @@ async def perplexity_search(
     tags={"catalog", "analyze", "ai"},
 )
 async def perplexity_analyze(
-    context: str,
-    question: str,
-    search_recency: str = "month"
+    context: str, question: str, search_recency: str = "month"
 ) -> Dict[str, Any]:
     """Анализирует данные с помощью Perplexity AI.
-    
+
     Используй для анализа предоставленных данных с возможностью дополнения
     информацией из интернета.
-    
+
     Аргументы:
         context (str): Контекст/данные для анализа (обязательный)
         question (str): Вопрос для анализа (обязательный)
         search_recency (str): Фильтр по давности поиска (day, week, month, year)
-    
+
     Возвращает:
         Словарь с результатом анализа и источниками.
     """
     client = PerplexityClient.get_instance()
-    
+
     if not client.is_configured():
         return {
             "error": {
@@ -434,38 +431,34 @@ async def perplexity_analyze(
                 "message": "Perplexity API key not configured. Set PERPLEXITY_API_KEY environment variable.",
             }
         }
-    
+
     messages = [
         {
             "role": "system",
-            "content": "Ты - аналитик. Анализируй предоставленные данные и отвечай на вопросы. Используй поиск для дополнения информации. Отвечай на языке вопроса."
+            "content": "Ты - аналитик. Анализируй предоставленные данные и отвечай на вопросы. Используй поиск для дополнения информации. Отвечай на языке вопроса.",
         },
-        {
-            "role": "user",
-            "content": f"Контекст:\n{context}\n\nВопрос: {question}"
-        }
+        {"role": "user", "content": f"Контекст:\n{context}\n\nВопрос: {question}"},
     ]
-    
+
     try:
         result = await client.chat(
-            messages=messages,
-            search_recency_filter=search_recency
+            messages=messages, search_recency_filter=search_recency
         )
-        
+
         if not result.get("success"):
             return {
                 "error": {
                     "type": "api_error",
-                    "message": result.get("error", "Unknown error")
+                    "message": result.get("error", "Unknown error"),
                 }
             }
-        
+
         return {
             "status": "success",
             "analysis": result.get("content", ""),
             "citations": result.get("citations", []),
             "model": result.get("model"),
-            "summary": f"Анализ выполнен: {question[:50]}..."
+            "summary": f"Анализ выполнен: {question[:50]}...",
         }
     except Exception as e:
         return {
@@ -485,19 +478,19 @@ async def tavily_search(
     query: str,
     search_depth: str = "basic",
     max_results: int = 5,
-    include_answer: bool = True
+    include_answer: bool = True,
 ) -> Dict[str, Any]:
     """Поиск информации в интернете с помощью Tavily Search API.
-    
+
     Используй для поиска актуальной информации из интернета с качественным
     ранжированием и структурированными результатами.
-    
+
     Аргументы:
         query (str): Поисковый запрос (обязательный)
         search_depth (str): Глубина поиска - basic (быстрый) или advanced (глубокий)
         max_results (int): Максимальное количество результатов (1-10)
         include_answer (bool): Включить AI-сгенерированный ответ
-    
+
     Возвращает:
         Словарь с:
         - answer: AI-сгенерированный ответ на запрос
@@ -505,7 +498,7 @@ async def tavily_search(
         При ошибке — объект с полем 'error'.
     """
     client = TavilyClient.get_instance()
-    
+
     if not client.is_configured():
         return {
             "error": {
@@ -513,7 +506,7 @@ async def tavily_search(
                 "message": "Tavily API key not configured. Set TAVILY_TOKEN environment variable.",
             }
         }
-    
+
     try:
         result = await client.search(
             query=query,
@@ -521,24 +514,26 @@ async def tavily_search(
             max_results=max_results,
             include_answer=include_answer,
         )
-        
+
         if not result.get("success"):
             return {
                 "error": {
                     "type": "api_error",
-                    "message": result.get("error", "Unknown error")
+                    "message": result.get("error", "Unknown error"),
                 }
             }
-        
+
         formatted_results = []
         for r in result.get("results", []):
-            formatted_results.append({
-                "title": r.get("title", ""),
-                "url": r.get("url", ""),
-                "content": r.get("content", "")[:500],
-                "score": r.get("score", 0),
-            })
-        
+            formatted_results.append(
+                {
+                    "title": r.get("title", ""),
+                    "url": r.get("url", ""),
+                    "content": r.get("content", "")[:500],
+                    "score": r.get("score", 0),
+                }
+            )
+
         return {
             "status": "success",
             "answer": result.get("answer", ""),
@@ -546,7 +541,7 @@ async def tavily_search(
             "results_count": len(formatted_results),
             "query": query,
             "response_time": result.get("response_time", 0),
-            "summary": f"Найдено {len(formatted_results)} результатов для: {query[:50]}..."
+            "summary": f"Найдено {len(formatted_results)} результатов для: {query[:50]}...",
         }
     except Exception as e:
         return {
@@ -567,26 +562,26 @@ async def tavily_advanced_search(
     include_domains: Optional[List[str]] = None,
     exclude_domains: Optional[List[str]] = None,
     max_results: int = 10,
-    include_raw_content: bool = False
+    include_raw_content: bool = False,
 ) -> Dict[str, Any]:
     """Расширенный поиск с фильтрацией по доменам.
-    
+
     Используй для целевого поиска на определённых сайтах или исключения
     нежелательных источников. Например, поиск только на официальных
     государственных сайтах или исключение агрегаторов.
-    
+
     Аргументы:
         query (str): Поисковый запрос (обязательный)
         include_domains (List[str]): Искать только на этих доменах (опционально)
         exclude_domains (List[str]): Исключить эти домены (опционально)
         max_results (int): Максимальное количество результатов (1-10)
         include_raw_content (bool): Включить полный HTML контент
-    
+
     Возвращает:
         Расширенные результаты поиска с фильтрацией.
     """
     client = TavilyClient.get_instance()
-    
+
     if not client.is_configured():
         return {
             "error": {
@@ -594,7 +589,7 @@ async def tavily_advanced_search(
                 "message": "Tavily API key not configured. Set TAVILY_TOKEN environment variable.",
             }
         }
-    
+
     try:
         result = await client.search(
             query=query,
@@ -605,15 +600,15 @@ async def tavily_advanced_search(
             include_domains=include_domains,
             exclude_domains=exclude_domains,
         )
-        
+
         if not result.get("success"):
             return {
                 "error": {
                     "type": "api_error",
-                    "message": result.get("error", "Unknown error")
+                    "message": result.get("error", "Unknown error"),
                 }
             }
-        
+
         formatted_results = []
         for r in result.get("results", []):
             item = {
@@ -625,7 +620,7 @@ async def tavily_advanced_search(
             if include_raw_content and r.get("raw_content"):
                 item["raw_content"] = r.get("raw_content", "")[:2000]
             formatted_results.append(item)
-        
+
         return {
             "status": "success",
             "answer": result.get("answer", ""),
@@ -636,7 +631,7 @@ async def tavily_advanced_search(
                 "include_domains": include_domains or [],
                 "exclude_domains": exclude_domains or [],
             },
-            "summary": f"Расширенный поиск: {len(formatted_results)} результатов"
+            "summary": f"Расширенный поиск: {len(formatted_results)} результатов",
         }
     except Exception as e:
         return {
@@ -654,18 +649,18 @@ async def tavily_advanced_search(
 )
 async def tavily_status() -> Dict[str, Any]:
     """Получает статус Tavily API сервиса.
-    
+
     Используй для мониторинга состояния подключения к Tavily,
     проверки circuit breaker, кэша и метрик.
-    
+
     Возвращает:
         Статус сервиса, метрики и информацию о кэше.
     """
     client = TavilyClient.get_instance()
-    
+
     try:
         status = await client.get_status()
-        
+
         return {
             "status": "success",
             "service": "tavily",
@@ -673,7 +668,8 @@ async def tavily_status() -> Dict[str, Any]:
             "circuit_breaker": status.get("circuit_breaker", {}),
             "metrics": status.get("metrics", {}),
             "cache_stats": status.get("cache_stats", {}),
-            "summary": "Tavily API " + ("доступен" if status.get("configured") else "не настроен")
+            "summary": "Tavily API "
+            + ("доступен" if status.get("configured") else "не настроен"),
         }
     except Exception as e:
         return {

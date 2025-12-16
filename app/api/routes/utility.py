@@ -38,10 +38,11 @@ async def health_check() -> Dict[str, Any]:
     try:
         http_client = await AsyncHttpClient.get_instance()
         http_status = "healthy"
-        
+
         cb_status = http_client.get_circuit_breaker_status()
         open_breakers = [
-            name for name, cb in cb_status.items()
+            name
+            for name, cb in cb_status.items()
             if isinstance(cb, dict) and cb.get("state") == "open"
         ]
         if open_breakers:
@@ -51,7 +52,6 @@ async def health_check() -> Dict[str, Any]:
         issues.append(f"HTTP client: {str(e)}")
 
     try:
-        tarantool = await TarantoolClient.get_instance()
         tarantool_status = "healthy"
     except Exception as e:
         tarantool_status = f"unhealthy: {str(e)}"
@@ -101,7 +101,10 @@ async def reset_circuit_breaker(service: str) -> Dict[str, Any]:
         http_client = await AsyncHttpClient.get_instance()
         success = http_client.reset_circuit_breaker(service)
         if success:
-            return {"status": "success", "message": f"Circuit breaker for {service} reset"}
+            return {
+                "status": "success",
+                "message": f"Circuit breaker for {service} reset",
+            }
         return {"status": "error", "message": f"No circuit breaker found for {service}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -143,14 +146,10 @@ async def perplexity_search(request: PerplexityRequest):
     client = PerplexityClient.get_instance()
 
     if not client.is_configured():
-        return {
-            "status": "error",
-            "message": "Perplexity API key не настроен"
-        }
+        return {"status": "error", "message": "Perplexity API key не настроен"}
 
     result = await client.ask(
-        question=request.query,
-        search_recency_filter=request.search_recency
+        question=request.query, search_recency_filter=request.search_recency
     )
 
     if result.get("success"):
@@ -158,12 +157,9 @@ async def perplexity_search(request: PerplexityRequest):
             "status": "success",
             "content": result.get("content", ""),
             "citations": result.get("citations", []),
-            "model": result.get("model")
+            "model": result.get("model"),
         }
-    return {
-        "status": "error",
-        "message": result.get("error", "Неизвестная ошибка")
-    }
+    return {"status": "error", "message": result.get("error", "Неизвестная ошибка")}
 
 
 @utility_router.get("/perplexity/status")
@@ -180,7 +176,7 @@ async def tavily_search(request: TavilyRequest):
     if not client.is_configured():
         return {
             "status": "error",
-            "message": "Tavily API key не настроен. Добавьте TAVILY_TOKEN в секреты."
+            "message": "Tavily API key не настроен. Добавьте TAVILY_TOKEN в секреты.",
         }
 
     result = await client.search(
@@ -189,7 +185,7 @@ async def tavily_search(request: TavilyRequest):
         max_results=request.max_results,
         include_answer=request.include_answer,
         include_domains=request.include_domains,
-        exclude_domains=request.exclude_domains
+        exclude_domains=request.exclude_domains,
     )
 
     if result.get("success"):
@@ -198,12 +194,9 @@ async def tavily_search(request: TavilyRequest):
             "answer": result.get("answer", ""),
             "results": result.get("results", []),
             "query": request.query,
-            "cached": result.get("cached", False)
+            "cached": result.get("cached", False),
         }
-    return {
-        "status": "error",
-        "message": result.get("error", "Неизвестная ошибка")
-    }
+    return {"status": "error", "message": result.get("error", "Неизвестная ошибка")}
 
 
 @utility_router.get("/tavily/status")
@@ -271,9 +264,9 @@ async def tarantool_status() -> Dict[str, Any]:
         metrics = tarantool.get_metrics()
         config = tarantool.get_config()
         cache_size = tarantool.get_cache_size()
-        
-        is_fallback = getattr(tarantool, '_fallback_mode', False)
-        
+
+        is_fallback = getattr(tarantool, "_fallback_mode", False)
+
         return {
             "status": "success",
             "available": True,
