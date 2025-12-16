@@ -644,12 +644,22 @@ async def save_thread_to_tarantool(thread_id: str, data: Dict[str, Any]):
                 logger.warning(f"Failed to serialize message: {e}")
                 processed_messages.append({"error": str(e)})
 
+        final_state = data.get("final_state", {})
+        if isinstance(final_state, dict):
+            serializable_state = {
+                k: v for k, v in final_state.items()
+                if k not in ('llm', '_llm') and not k.startswith('_')
+                and isinstance(v, (str, int, float, bool, list, dict, type(None)))
+            }
+        else:
+            serializable_state = str(final_state)
+        
         record = {
             "messages": processed_messages,
             "created_at": data.get("created_at", time.time()),
             "input": str(data.get("input", "")),
             "thread_id": normalized_id,
-            "final_state": data,
+            "final_state": serializable_state,
         }
 
         await client.set_persistent(f"thread:{normalized_id}", record)

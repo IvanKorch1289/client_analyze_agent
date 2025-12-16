@@ -16,16 +16,6 @@ BACKEND_PORT = os.getenv("BACKEND_PORT", "8000")
 API_BASE_URL = f"http://localhost:{BACKEND_PORT}"
 
 # ========================
-# Боковая панель навигации
-# ========================
-st.sidebar.title("Навигация")
-page = st.sidebar.radio(
-    "Выберите раздел",
-    ["Запрос агенту", "История", "Внешние данные", "Утилиты"],
-    index=0,
-)
-
-# ========================
 # Инициализация состояния
 # ========================
 if "last_response" not in st.session_state:
@@ -34,6 +24,21 @@ if "last_thread_id" not in st.session_state:
     st.session_state.last_thread_id = None
 if "threads" not in st.session_state:
     st.session_state.threads = []
+if "page" not in st.session_state:
+    st.session_state.page = "Запрос агенту"
+
+# ========================
+# Боковая панель навигации
+# ========================
+PAGES = ["Запрос агенту", "История", "Внешние данные", "Утилиты"]
+st.sidebar.title("Навигация")
+page = st.sidebar.radio(
+    "Выберите раздел",
+    PAGES,
+    index=PAGES.index(st.session_state.page) if st.session_state.page in PAGES else 0,
+    key="nav_radio"
+)
+st.session_state.page = page
 
 # ========================
 # Страница: Запрос агенту
@@ -98,7 +103,8 @@ if page == "Запрос агенту":
         # Кнопка перехода к истории
         if st.button("📋 Просмотреть в истории"):
             st.session_state.selected_thread_id = result.get("thread_id")
-            st.switch_page("История")  # ← Не работает, но можно через query params
+            st.session_state.page = "История"
+            st.rerun()
 
         st.divider()
 

@@ -56,23 +56,22 @@ def build_persistent_graph():
     return workflow.compile()
 
 
-def invoke_graph_with_persistence(session_id: str, initial_state: dict = None) -> dict:
-    """Запускает граф и сохраняет результат в Tarantool."""
+async def invoke_graph_with_persistence(session_id: str, initial_state: dict = None) -> dict:
+    """Запускает граф асинхронно и сохраняет результат в Tarantool."""
     graph = build_persistent_graph()
 
-    # Если initial_state не передан — ошибка
     if not initial_state:
         raise ValueError("Начальное состояние обязательно")
 
     try:
-        final_state = graph.invoke(initial_state)
+        final_state = await graph.ainvoke(initial_state)
         final_state["current_step"] = final_state.get("current_step", "completed")
     except Exception as e:
         logger.error(f"Ошибка выполнения графа: {e}")
         final_state = {**initial_state, "error": str(e), "current_step": "failed"}
 
-    # ✅ Сохраняем в Tarantool как thread
     try:
+        serializable_state = _make_serializable(final_state)
         thread_data = {
             "input": final_state.get("user_input", ""),
             "created_at": time.time(),
@@ -88,10 +87,9 @@ def invoke_graph_with_persistence(session_id: str, initial_state: dict = None) -
                     "data": {"content": str(final_state.get("tool_results", []))},
                 },
             ],
-            "final_state": final_state,
+            "final_state": serializable_state,
         }
 
-        # Асинхронно сохраняем, не блокируя ответ
         asyncio.create_task(save_thread_to_tarantool(session_id, thread_data))
         logger.info(f"Состояние графа сохранено в Tarantool: thread:{session_id}")
 
@@ -99,3 +97,24 @@ def invoke_graph_with_persistence(session_id: str, initial_state: dict = None) -
         logger.error(f"Не удалось сохранить состояние в Tarantool: {e}")
 
     return final_state
+
+
+def _make_serializable(obj, max_depth=10):
+    """Фильтрует не-сериализуемые объекты из состояния."""
+    if max_depth <= 0:
+        return str(obj)
+    
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    elif isinstance(obj, dict):
+        return {k: _make_serializable(v, max_depth - 1) for k, v in obj.items()
+                if not k.startswith('_') and k != 'llm'}
+    elif isinstance(obj, (list, tuple)):
+        return [_make_serializable(item, max_depth - 1) for item in obj]
+    else:
+        try:
+            import json
+            json.dumps(obj)
+            return obj
+        except (TypeError, ValueError):
+            return f"<{type(obj).__name__}>"

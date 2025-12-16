@@ -55,23 +55,9 @@ async def process_prompt(request: Request, body: dict, bg: BackgroundTasks):
     }
 
     try:
-        final_state = invoke_graph_with_persistence(thread_id, initial_state)
+        final_state = await invoke_graph_with_persistence(thread_id, initial_state)
         response_text = final_state.get(
             "analysis_result", "Не удалось сгенерировать ответ."
-        )
-
-        bg.add_task(
-            save_thread_to_tarantool,
-            thread_id,
-            {
-                "input": user_input,
-                "created_at": datetime.now().timestamp(),
-                "messages": [
-                    {"type": "human", "data": {"content": user_input}},
-                    {"type": "ai", "data": {"content": response_text}},
-                ],
-                "final_state": final_state,
-            },
         )
 
         return {
