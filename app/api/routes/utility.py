@@ -225,3 +225,40 @@ async def clear_perplexity_cache():
     client = PerplexityClient.get_instance()
     client.clear_cache()
     return {"status": "success", "message": "Perplexity cache cleared"}
+
+
+@utility_router.get("/cache/metrics")
+async def get_cache_metrics() -> Dict[str, Any]:
+    try:
+        tarantool = await TarantoolClient.get_instance()
+        metrics = tarantool.get_metrics()
+        config = tarantool.get_config()
+        cache_size = tarantool.get_cache_size()
+        return {
+            "status": "success",
+            "metrics": metrics,
+            "config": config,
+            "cache_size": cache_size,
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@utility_router.post("/cache/metrics/reset")
+async def reset_cache_metrics() -> Dict[str, Any]:
+    try:
+        tarantool = await TarantoolClient.get_instance()
+        tarantool.reset_metrics()
+        return {"status": "success", "message": "Cache metrics reset"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@utility_router.delete("/cache/prefix/{prefix}")
+async def delete_cache_by_prefix(prefix: str) -> Dict[str, Any]:
+    try:
+        tarantool = await TarantoolClient.get_instance()
+        await tarantool.delete_by_prefix(prefix)
+        return {"status": "success", "message": f"Deleted keys with prefix: {prefix}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

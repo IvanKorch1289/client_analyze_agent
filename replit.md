@@ -115,7 +115,27 @@ Enhanced HTTP client with production-ready resilience patterns:
 - **OPEN**: Too many failures, requests rejected immediately
 - **HALF_OPEN**: Testing recovery with limited requests
 
+### TarantoolClient (`app/storage/tarantool.py`)
+Optimized cache client with batch operations and compression:
+- **Batch Operations**: `get_many()`, `set_many()`, `delete_many()` for efficient bulk operations
+- **Data Compression**: gzip compression for objects > 1KB
+- **Search Caching**: `cache_search_result()`, `get_cached_search()` with TTL
+- **Metrics Tracking**: hits, misses, hit rate, compression stats, latency
+- **Prefix Deletion**: `delete_by_prefix()` for bulk cleanup
+
+### Cache API Endpoints
+- `GET /utility/cache/metrics` - Cache statistics and configuration
+- `POST /utility/cache/metrics/reset` - Reset cache metrics
+- `DELETE /utility/cache/prefix/{prefix}` - Delete keys by prefix
+
 ## Recent Changes
+- 2025-12-16: TarantoolClient Optimizations
+  - Added batch operations (get_many, set_many, delete_many)
+  - Implemented gzip compression for large objects
+  - Added search result caching with TTL
+  - Added cache metrics (hits, misses, compression stats)
+  - Added prefix-based deletion
+  - Added cache monitoring endpoints
 - 2025-12-16: HTTP Client Resilience Improvements
   - Added Circuit Breaker pattern with configurable thresholds
   - Implemented retry logic with tenacity (exponential backoff)
