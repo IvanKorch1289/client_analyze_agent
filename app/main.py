@@ -8,6 +8,7 @@ from threading import Thread
 
 import uvicorn
 from fastapi import FastAPI, Request
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.routes.agent import agent_router
@@ -17,6 +18,7 @@ from app.mcp_server.server import run_mcp_server
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
 from app.utility.logging_client import get_request_id, logger, set_request_id
+from app.utility.telemetry import init_telemetry
 
 # Get backend port from environment or use default
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
@@ -62,6 +64,10 @@ async def lifespan(app: FastAPI):
     Cleans up connections on shutdown.
     """
     logger.info("Инициализация приложения...")
+
+    # Инициализируем OpenTelemetry
+    init_telemetry()
+    logger.info("OpenTelemetry инициализирован")
 
     # Создаём папку для отчётов
     os.makedirs("reports", exist_ok=True)
@@ -152,6 +158,8 @@ app = FastAPI(
     description="Сервер агентов с поддержкой MCP, Tarantool и внешних API",
     lifespan=lifespan,
 )
+
+FastAPIInstrumentor.instrument_app(app, excluded_urls="/utility/health,/utility/metrics")
 
 app.add_middleware(RequestIdMiddleware)
 

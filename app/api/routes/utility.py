@@ -20,6 +20,7 @@ from app.services.tavily_client import TavilyClient
 from app.storage.tarantool import TarantoolClient
 from app.utility.auth import Role, get_current_role, require_admin
 from app.utility.pdf_generator import save_pdf_report
+from app.utility.telemetry import get_log_store, get_span_exporter
 
 utility_router = APIRouter(
     prefix="/utility",
@@ -422,3 +423,103 @@ async def get_cache_entries(
         "entries": entries,
         "count": len(entries),
     }
+
+
+@utility_router.get("/traces")
+async def get_traces(
+    limit: int = 50,
+    since_minutes: Optional[int] = None,
+    role: str = Depends(require_admin)
+) -> Dict[str, Any]:
+    """
+    Get recent traces. Requires admin role.
+    
+    Args:
+        limit: Maximum number of traces to return (default: 50)
+        since_minutes: Only return traces from last N minutes
+    """
+    exporter = get_span_exporter()
+    if not exporter:
+        return {"status": "error", "message": "Telemetry not initialized"}
+    
+    spans = exporter.get_spans(limit=limit, since_minutes=since_minutes)
+    stats = exporter.get_trace_stats()
+    
+    return {
+        "status": "success",
+        "spans": spans,
+        "count": len(spans),
+        "stats": stats
+    }
+
+
+@utility_router.get("/traces/stats")
+async def get_trace_stats(role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """Get trace statistics. Requires admin role."""
+    exporter = get_span_exporter()
+    if not exporter:
+        return {"status": "error", "message": "Telemetry not initialized"}
+    
+    return {"status": "success", "stats": exporter.get_trace_stats()}
+
+
+@utility_router.post("/traces/clear")
+async def clear_traces(role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """Clear all stored traces. Requires admin role."""
+    exporter = get_span_exporter()
+    if not exporter:
+        return {"status": "error", "message": "Telemetry not initialized"}
+    
+    exporter.clear()
+    return {"status": "success", "message": "Traces cleared"}
+
+
+@utility_router.get("/logs")
+async def get_logs(
+    limit: int = 100,
+    since_minutes: Optional[int] = None,
+    level: Optional[str] = None,
+    role: str = Depends(require_admin)
+) -> Dict[str, Any]:
+    """
+    Get application logs. Requires admin role.
+    
+    Args:
+        limit: Maximum number of logs to return (default: 100)
+        since_minutes: Only return logs from last N minutes
+        level: Filter by log level (DEBUG, INFO, WARNING, ERROR)
+    """
+    log_store = get_log_store()
+    if not log_store:
+        return {"status": "error", "message": "Log store not initialized"}
+    
+    logs = log_store.get_logs(limit=limit, since_minutes=since_minutes, level=level)
+    stats = log_store.get_stats()
+    
+    return {
+        "status": "success",
+        "logs": logs,
+        "count": len(logs),
+        "stats": stats
+    }
+
+
+@utility_router.get("/logs/stats")
+async def get_log_stats(role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """Get log statistics. Requires admin role."""
+    log_store = get_log_store()
+    if not log_store:
+        return {"status": "error", "message": "Log store not initialized"}
+    
+    return {"status": "success", "stats": log_store.get_stats()}
+
+
+@utility_router.post("/logs/clear")
+async def clear_logs(role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """Clear all stored logs. Requires admin role."""
+    log_store = get_log_store()
+    if not log_store:
+        return {"status": "error", "message": "Log store not initialized"}
+    
+    log_store.clear()
+    return {"status": "success", "message": "Logs cleared"}

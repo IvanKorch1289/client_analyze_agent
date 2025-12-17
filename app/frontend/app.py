@@ -90,7 +90,7 @@ elif st.session_state.admin_token:
 st.sidebar.divider()
 
 PAGES_BASE = ["Запрос агенту", "История", "Внешние данные"]
-PAGES_ADMIN = ["Утилиты", "Метрики"]
+PAGES_ADMIN = ["Утилиты", "Метрики", "Логи"]
 
 if st.session_state.is_admin:
     PAGES = PAGES_BASE + PAGES_ADMIN
@@ -792,33 +792,207 @@ elif page == "Метрики":
         
         st.divider()
         
-        st.subheader("Email (SMTP)")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            with st.container(border=True):
+                st.subheader("Email (SMTP)")
+                try:
+                    resp = requests.get(f"{API_BASE_URL}/utility/email/status", timeout=10)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        
+                        metric_col1, metric_col2 = st.columns(2)
+                        with metric_col1:
+                            configured = data.get("configured", False)
+                            if configured:
+                                st.success("Настроен")
+                            else:
+                                st.warning("Не настроен")
+                        with metric_col2:
+                            smtp_host = data.get("smtp_host", "Н/Д")
+                            st.caption(f"SMTP: {smtp_host}")
+                    else:
+                        st.warning("Сервис недоступен")
+                except Exception as e:
+                    st.error(f"Ошибка: {e}")
+        
+        with col2:
+            with st.container(border=True):
+                st.subheader("OpenTelemetry Трейсы")
+                try:
+                    resp = requests.get(
+                        f"{API_BASE_URL}/utility/traces/stats",
+                        headers=headers,
+                        timeout=10
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        stats = data.get("stats", {})
+                        
+                        metric_col1, metric_col2, metric_col3 = st.columns(3)
+                        with metric_col1:
+                            st.metric("Всего спанов", stats.get("total_spans", 0))
+                        with metric_col2:
+                            st.metric("Ср. время (мс)", stats.get("avg_duration_ms", 0))
+                        with metric_col3:
+                            st.metric("Ошибок", stats.get("error_count", 0))
+                        
+                        by_kind = stats.get("by_kind", {})
+                        if by_kind:
+                            with st.expander("По типу"):
+                                for kind, count in by_kind.items():
+                                    st.caption(f"{kind}: {count}")
+                    else:
+                        st.warning("Трейсы недоступны")
+                except Exception as e:
+                    st.error(f"Ошибка: {e}")
+        
+        st.divider()
+        
+        st.subheader("Последние трейсы")
         try:
-            resp = requests.get(f"{API_BASE_URL}/utility/email/status", timeout=10)
+            resp = requests.get(
+                f"{API_BASE_URL}/utility/traces?limit=20",
+                headers=headers,
+                timeout=10
+            )
             if resp.status_code == 200:
                 data = resp.json()
+                spans = data.get("spans", [])
                 
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    configured = data.get("configured", False)
-                    if configured:
-                        st.success("Настроен")
-                    else:
-                        st.warning("Не настроен")
-                with col2:
-                    smtp_host = data.get("smtp_host", "Н/Д")
-                    st.metric("SMTP сервер", smtp_host)
-                with col3:
-                    health = data.get("health", {})
-                    status = health.get("status", "unknown")
-                    if status == "healthy":
-                        st.success("Здоров")
-                    elif status == "not_configured":
-                        st.info("Не настроен")
-                    else:
-                        st.error(status)
+                if spans:
+                    for span in spans[:10]:
+                        status_icon = "🟢" if span.get("status") == "OK" else "🔴" if span.get("status") == "ERROR" else "⚪"
+                        duration = span.get("duration_ms", 0)
+                        name = span.get("name", "unknown")
+                        
+                        col1, col2, col3 = st.columns([3, 1, 1])
+                        with col1:
+                            st.caption(f"{status_icon} {name}")
+                        with col2:
+                            st.caption(f"{duration:.1f}мс")
+                        with col3:
+                            st.caption(span.get("start_time", "")[:19])
+                else:
+                    st.info("Нет трейсов")
             else:
-                st.warning("Сервис недоступен")
+                st.warning("Не удалось загрузить трейсы")
+        except Exception as e:
+            st.error(f"Ошибка: {e}")
+
+elif page == "Логи":
+    st.header("Просмотр логов приложения")
+    
+    if st.session_state.is_admin:
+        headers = {"X-Auth-Token": st.session_state.admin_token}
+        
+        with st.container(border=True):
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                since_minutes = st.selectbox(
+                    "Период",
+                    options=[5, 15, 30, 60, 120, 0],
+                    format_func=lambda x: f"Последние {x} мин" if x > 0 else "Все логи",
+                    index=1
+                )
+            
+            with col2:
+                level_filter = st.selectbox(
+                    "Уровень",
+                    options=["", "DEBUG", "INFO", "WARNING", "ERROR"],
+                    format_func=lambda x: x if x else "Все уровни"
+                )
+            
+            with col3:
+                limit = st.number_input("Лимит", min_value=10, max_value=500, value=100)
+            
+            with col4:
+                st.write("")
+                st.write("")
+                refresh_logs = st.button("Обновить", type="primary")
+        
+        params = {"limit": limit}
+        if since_minutes > 0:
+            params["since_minutes"] = since_minutes
+        if level_filter:
+            params["level"] = level_filter
+        
+        try:
+            resp = requests.get(
+                f"{API_BASE_URL}/utility/logs",
+                headers=headers,
+                params=params,
+                timeout=15
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                logs = data.get("logs", [])
+                stats = data.get("stats", {})
+                
+                with st.container(border=True):
+                    st.subheader("Статистика")
+                    stat_cols = st.columns(5)
+                    
+                    levels = ["total", "DEBUG", "INFO", "WARNING", "ERROR"]
+                    colors = {"total": "📊", "DEBUG": "🔍", "INFO": "ℹ️", "WARNING": "⚠️", "ERROR": "❌"}
+                    
+                    for idx, level in enumerate(levels):
+                        with stat_cols[idx]:
+                            count = stats.get(level, 0)
+                            st.metric(f"{colors.get(level, '')} {level}", count)
+                
+                st.divider()
+                
+                st.subheader(f"Логи ({len(logs)} записей)")
+                
+                if logs:
+                    for log in logs:
+                        level = log.get("level", "INFO")
+                        timestamp = log.get("timestamp", "")[:19]
+                        message = log.get("message", "")
+                        logger_name = log.get("logger", "")
+                        
+                        if level == "ERROR":
+                            color = "🔴"
+                        elif level == "WARNING":
+                            color = "🟡"
+                        elif level == "DEBUG":
+                            color = "⚪"
+                        else:
+                            color = "🟢"
+                        
+                        with st.container(border=True):
+                            col1, col2 = st.columns([1, 5])
+                            with col1:
+                                st.caption(f"{color} {level}")
+                                st.caption(timestamp)
+                            with col2:
+                                st.text(message[:200] + ("..." if len(message) > 200 else ""))
+                                if logger_name:
+                                    st.caption(f"Logger: {logger_name}")
+                else:
+                    st.info("Нет логов за выбранный период")
+                
+                st.divider()
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Очистить логи", type="secondary"):
+                        try:
+                            clear_resp = requests.post(
+                                f"{API_BASE_URL}/utility/logs/clear",
+                                headers=headers,
+                                timeout=10
+                            )
+                            if clear_resp.status_code == 200:
+                                st.success("Логи очищены")
+                                st.rerun()
+                        except Exception as e:
+                            st.error(f"Ошибка: {e}")
+            else:
+                st.error(f"Ошибка загрузки: {resp.status_code}")
         except Exception as e:
             st.error(f"Ошибка: {e}")
 
