@@ -55,10 +55,16 @@ def run_streamlit():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    Application lifespan manager.
+    
+    Initializes global clients, LLM, and background services on startup.
+    Cleans up connections on shutdown.
+    """
     logger.info("Инициализация приложения...")
 
-    # Создаём папку для заметок
-    os.makedirs("notes", exist_ok=True)
+    # Создаём папку для отчётов
+    os.makedirs("reports", exist_ok=True)
 
     # Инициализируем глобальные клиенты
     await AsyncHttpClient.get_instance()

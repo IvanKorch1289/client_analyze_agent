@@ -1,13 +1,24 @@
+"""
+Utility API routes for system monitoring, caching, and service management.
+
+Provides endpoints for health checks, circuit breaker management,
+cache operations, and external service status monitoring.
+"""
+
+import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.services.http_client import AsyncHttpClient
 from app.services.openrouter_client import get_openrouter_client
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
+from app.utility.auth import get_current_role, require_admin, Role
 from app.utility.tcp_client import get_tcp_client, TCPClientConfig
+from app.utility.pdf_generator import generate_analysis_pdf, save_pdf_report
 from app.storage.tarantool import TarantoolClient
 
 utility_router = APIRouter(
@@ -144,7 +155,14 @@ async def reset_metrics(service: Optional[str] = None) -> Dict[str, Any]:
 
 
 @utility_router.get("/validate_cache")
-async def validate_cache(confirm: bool):
+async def validate_cache(confirm: bool, role: str = Depends(require_admin)):
+    """
+    Invalidate all cache keys. Requires admin role.
+    
+    Args:
+        confirm: Must be True to execute the operation.
+        role: User role from authentication.
+    """
     client = await TarantoolClient.get_instance()
     await client.invalidate_all_keys(confirm)
     return {
@@ -219,14 +237,16 @@ async def tavily_status():
 
 
 @utility_router.post("/tavily/cache/clear")
-async def clear_tavily_cache():
+async def clear_tavily_cache(role: str = Depends(require_admin)):
+    """Clear Tavily cache. Requires admin role."""
     client = TavilyClient.get_instance()
     client.clear_cache()
     return {"status": "success", "message": "Tavily cache cleared"}
 
 
 @utility_router.post("/perplexity/cache/clear")
-async def clear_perplexity_cache():
+async def clear_perplexity_cache(role: str = Depends(require_admin)):
+    """Clear Perplexity cache. Requires admin role."""
     client = PerplexityClient.get_instance()
     client.clear_cache()
     return {"status": "success", "message": "Perplexity cache cleared"}
@@ -262,7 +282,8 @@ async def get_cache_metrics() -> Dict[str, Any]:
 
 
 @utility_router.post("/cache/metrics/reset")
-async def reset_cache_metrics() -> Dict[str, Any]:
+async def reset_cache_metrics(role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """Reset cache metrics. Requires admin role."""
     try:
         tarantool = await TarantoolClient.get_instance()
         tarantool.reset_metrics()
@@ -272,7 +293,8 @@ async def reset_cache_metrics() -> Dict[str, Any]:
 
 
 @utility_router.delete("/cache/prefix/{prefix}")
-async def delete_cache_by_prefix(prefix: str) -> Dict[str, Any]:
+async def delete_cache_by_prefix(prefix: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """Delete cache keys by prefix. Requires admin role."""
     try:
         tarantool = await TarantoolClient.get_instance()
         await tarantool.delete_by_prefix(prefix)
@@ -395,6 +417,7 @@ async def tcp_send_message(request: TCPMessageRequest) -> Dict[str, Any]:
 
 @utility_router.post("/tcp/send-async")
 async def tcp_send_async(request: TCPMessageRequest) -> Dict[str, Any]:
+    """Send message asynchronously via TCP."""
     try:
         client = await get_tcp_client()
         await client.send_message_async(request.message)
@@ -405,3 +428,160 @@ async def tcp_send_async(request: TCPMessageRequest) -> Dict[str, Any]:
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+
+@utility_router.get("/tcp/healthcheck")
+async def tcp_healthcheck() -> Dict[str, Any]:
+    """
+    Healthcheck for TCP message server.
+    
+    Attempts to send a ping and checks connection state.
+    """
+    try:
+        client = await get_tcp_client()
+        
+        health_status = {
+            "connected": client.is_connected,
+            "state": client.state.value,
+            "config": {
+                "host": client.config.host,
+                "port": client.config.port,
+            },
+        }
+        
+        if client.is_connected:
+            import time
+            ping_msg = {"type": "ping", "timestamp": time.time()}
+            response = await client.send_message(ping_msg, wait_response=True)
+            
+            health_status["ping_response"] = response is not None
+            health_status["status"] = "healthy" if response else "degraded"
+        else:
+            health_status["status"] = "disconnected"
+            health_status["ping_response"] = False
+        
+        metrics = client.metrics.to_dict()
+        health_status["metrics"] = {
+            "messages_sent": metrics.get("messages_sent", 0),
+            "messages_received": metrics.get("messages_received", 0),
+            "failed_sends": metrics.get("failed_sends", 0),
+            "reconnections": metrics.get("reconnections", 0),
+        }
+        
+        return health_status
+    except Exception as e:
+        return {
+            "status": "error",
+            "connected": False,
+            "message": str(e),
+        }
+
+
+class PDFReportRequest(BaseModel):
+    """Request body for PDF report generation."""
+    client_name: str
+    inn: Optional[str] = None
+    session_id: Optional[str] = None
+    report_data: Dict[str, Any]
+
+
+@utility_router.post("/reports/pdf")
+async def generate_pdf_report(request: PDFReportRequest) -> Dict[str, Any]:
+    """
+    Generate PDF report from analysis data.
+    
+    Args:
+        request: Report data with client info and analysis results.
+        
+    Returns:
+        Path to generated PDF file.
+    """
+    try:
+        filepath = save_pdf_report(
+            report_data=request.report_data,
+            client_name=request.client_name,
+            inn=request.inn,
+            session_id=request.session_id,
+        )
+        
+        return {
+            "status": "success",
+            "filepath": filepath,
+            "filename": os.path.basename(filepath),
+            "download_url": f"/utility/reports/download/{os.path.basename(filepath)}",
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@utility_router.get("/reports/download/{filename}")
+async def download_report(filename: str):
+    """
+    Download PDF report file.
+    
+    Args:
+        filename: Name of the PDF file to download.
+    """
+    filepath = os.path.join("reports", filename)
+    
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    return FileResponse(
+        filepath,
+        media_type="application/pdf",
+        filename=filename,
+    )
+
+
+@utility_router.get("/reports/list")
+async def list_reports() -> Dict[str, Any]:
+    """List all available reports."""
+    reports_dir = "reports"
+    
+    if not os.path.exists(reports_dir):
+        return {"status": "success", "reports": []}
+    
+    reports = []
+    for filename in os.listdir(reports_dir):
+        filepath = os.path.join(reports_dir, filename)
+        if os.path.isfile(filepath):
+            reports.append({
+                "filename": filename,
+                "size_bytes": os.path.getsize(filepath),
+                "created": os.path.getctime(filepath),
+                "download_url": f"/utility/reports/download/{filename}",
+            })
+    
+    reports.sort(key=lambda x: x["created"], reverse=True)
+    
+    return {"status": "success", "reports": reports, "count": len(reports)}
+
+
+@utility_router.delete("/reports/{filename}")
+async def delete_report(filename: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """Delete a report file. Requires admin role."""
+    filepath = os.path.join("reports", filename)
+    
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    try:
+        os.remove(filepath)
+        return {"status": "success", "message": f"Report {filename} deleted"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@utility_router.get("/auth/role")
+async def get_auth_role(role: str = Depends(get_current_role)) -> Dict[str, Any]:
+    """
+    Get current authentication role.
+    
+    Returns the user's role based on the X-Auth-Token header.
+    """
+    return {
+        "role": role,
+        "is_admin": role == Role.ADMIN,
+        "is_authorized": role in (Role.ADMIN, Role.VIEWER),
+    }

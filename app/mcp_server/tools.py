@@ -185,43 +185,35 @@ async def read_file_content(file_path: str) -> Dict[str, Any]:
 
 
 @mcp.tool(
-    name="Создание файла.",
-    description="Создаёт текстовый файл (.txt) с указанным содержимым.",
-    tags={"catalog", "filesystem"},
+    name="Сохранение отчёта.",
+    description="Сохраняет отчёт анализа в файл (.md или .txt).",
+    tags={"catalog", "filesystem", "reports"},
 )
-async def create_note(
-    note_content: str, note_name: Optional[str] = None
+async def save_report(
+    content: str, filename: Optional[str] = None, format: str = "md"
 ) -> Dict[str, Any]:
-    """Создаёт текстовый файл (.txt) с указанным содержимым.
+    """Сохраняет отчёт анализа в файл.
 
-    Используй, только если пользователь явно просит 'сохранить', 'записать в файл', 'создать заметку'.
-    Не используй, если в запросе есть 'заметку не создавай' или подобное ограничение.
+    Используй для сохранения результатов анализа в файл.
 
     Аргументы:
-        note_content (str): текст для сохранения (обязательный)
-        note_name (str, опционально): имя файла. Если не задано — генерируется автоматически.
-
-    Поведение:
-        - Генерирует имя по названию компании и времени, если не задано.
-        - Очищает имя от недопустимых символов.
-        - Предотвращает перезапись, добавляя суффикс _1, _2 и т.д.
-        - Создаёт папку 'notes', если её нет.
+        content (str): Содержимое отчёта (обязательный)
+        filename (str, опционально): Имя файла. Генерируется автоматически, если не задано.
+        format (str): Формат файла - md или txt (по умолчанию md)
 
     Возвращает:
-        Словарь с:
-        - file_path: полный путь к файлу
-        - filename: имя файла
-        - size_bytes: размер в байтах
-        При ошибке — объект с полем 'error'.
+        Словарь с путём к сохранённому файлу.
     """
     try:
-        if note_name and (
-            "{" in note_name or "}" in note_name or "(" in note_name or ")" in note_name
+        if filename and (
+            "{" in filename or "}" in filename or "(" in filename or ")" in filename
         ):
-            note_name = None
+            filename = None
 
-        if not note_name:
-            lines = note_content.splitlines()
+        ext = ".md" if format == "md" else ".txt"
+        
+        if not filename:
+            lines = content.splitlines()
             company_line = next(
                 (
                     line
@@ -233,52 +225,52 @@ async def create_note(
             )
             if company_line:
                 match = re.search(r'"([^"]+)"', company_line)
-                company_name = match.group(1).replace(" ", "_") if match else "client"
+                company_name = match.group(1).replace(" ", "_") if match else "report"
             else:
-                company_name = "client"
+                company_name = "report"
 
             now = datetime.now()
             timestamp = now.strftime("%Y%m%d_%H%M%S")
-            note_name = f"{company_name}-{timestamp}.txt"
+            filename = f"{company_name}-{timestamp}{ext}"
         else:
-            note_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", note_name)
-            if not note_name.endswith((".txt", ".md")):
-                note_name += ".txt"
+            filename = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", filename)
+            if not filename.endswith((".txt", ".md")):
+                filename += ext
 
-        notes_dir = os.path.join(os.getcwd(), "notes")
-        os.makedirs(notes_dir, exist_ok=True)
-        filepath = os.path.join(notes_dir, note_name)
+        reports_dir = os.path.join(os.getcwd(), "reports")
+        os.makedirs(reports_dir, exist_ok=True)
+        filepath = os.path.join(reports_dir, filename)
 
         counter = 1
-        original_name, ext = os.path.splitext(note_name)
+        original_name, file_ext = os.path.splitext(filename)
         while os.path.exists(filepath):
-            note_name = f"{original_name}_{counter}{ext}"
-            filepath = os.path.join(notes_dir, note_name)
+            filename = f"{original_name}_{counter}{file_ext}"
+            filepath = os.path.join(reports_dir, filename)
             counter += 1
 
         async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
-            await f.write(note_content)
+            await f.write(content)
 
         return {
             "status": "success",
             "file_path": filepath,
-            "filename": note_name,
-            "size_bytes": len(note_content.encode("utf-8")),
-            "message": f"Note created successfully at {filepath}",
-            "summary": f"Note '{note_name}' saved with {len(note_content)} characters",
+            "filename": filename,
+            "size_bytes": len(content.encode("utf-8")),
+            "message": f"Report saved successfully at {filepath}",
+            "summary": f"Report '{filename}' saved with {len(content)} characters",
         }
     except PermissionError:
         return {
             "error": {
                 "type": "permission_denied",
-                "message": "Permission denied: cannot create note file",
+                "message": "Permission denied: cannot create report file",
             }
         }
     except Exception as e:
         return {
             "error": {
                 "type": "creation_error",
-                "message": f"Error creating note: {str(e)}",
+                "message": f"Error creating report: {str(e)}",
             }
         }
 
