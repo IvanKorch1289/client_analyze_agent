@@ -5,8 +5,8 @@ import time
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="Мультиагентная система", layout="wide")
-st.title("Мультиагентная система")
+st.set_page_config(page_title="Система анализа контрагентов", layout="wide")
+st.title("Система анализа контрагентов")
 
 BACKEND_PORT = os.getenv("BACKEND_PORT", "8000")
 API_BASE_URL = f"http://localhost:{BACKEND_PORT}"

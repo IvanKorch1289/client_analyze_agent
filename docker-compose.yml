@@ -1,4 +1,25 @@
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: counterparty-analyzer
+    ports:
+      - "5000:5000"
+      - "8000:8000"
+    environment:
+      - BACKEND_PORT=8000
+      - STREAMLIT_SERVER_PORT=5000
+      - TARANTOOL_HOST=tarantool
+      - TARANTOOL_PORT=3302
+    env_file:
+      - .env
+    depends_on:
+      - tarantool
+    restart: unless-stopped
+    networks:
+      - app-network
+
   tarantool:
     image: tarantool/tarantool:2.11
     container_name: tarantool-cache
@@ -11,23 +32,12 @@ services:
       - tarantool_data:/var/lib/tarantool
     command: ["tarantool", "/opt/tarantool/init.lua"]
     restart: unless-stopped
+    networks:
+      - app-network
 
 volumes:
   tarantool_data:
 
-
-# services:
-#   ollama:
-#     image: ollama/ollama:latest
-#     container_name: ollama_qwen
-#     ports:
-#       - '11434:11434'
-#     volumes:
-#       - ./ollama_data:/root/.ollama
-#       - /tmp:/tmp
-#     environment:
-#       - OLLAMA_HOST=0.0.0.0
-#       - OLLAMA_ORIGINS=*
-#     restart: unless-stopped
-  
-# sudo docker exec -it ollama_qwen ollama pull qwen2.5:7b
+networks:
+  app-network:
+    driver: bridge

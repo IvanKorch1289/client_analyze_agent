@@ -1,7 +1,7 @@
-# GigaChat MCP AI-Agent with Tools and Caching
+# Система анализа контрагентов
 
 ## Overview
-A multi-agent system built with GigaChat (Russian LLM), LangGraph, LangChain, FastAPI, and Streamlit. The system supports tool calling for company analysis via Russian data providers (DaData, InfoSphere, Casebook).
+Мультиагентная система для анализа потенциальных клиентов и контрагентов. Использует OpenRouter LLM, LangGraph, FastAPI и Streamlit. Поддерживает анализ компаний через российские источники данных (DaData, InfoSphere, Casebook) и веб-поиск (Perplexity, Tavily).
 
 ## Project Structure
 ```
