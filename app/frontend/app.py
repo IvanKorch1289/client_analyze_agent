@@ -419,73 +419,70 @@ elif page == "Утилиты":
                 "tavily": check_service_status("Tavily", "/utility/tavily/status"),
                 "tarantool": check_service_status("Tarantool", "/utility/tarantool/status"),
                 "email": check_service_status("Email", "/utility/email/status"),
-                "tcp": check_service_status("TCP", "/utility/tcp/healthcheck"),
                 "health": check_service_status("Здоровье", "/utility/health"),
             }
 
-    st.markdown("##### Основные сервисы")
-    cols = st.columns(4)
-    
-    services = [
-        (cols[0], "LLM (OpenRouter)", "openrouter"),
-        (cols[1], "Perplexity", "perplexity"),
-        (cols[2], "Tavily", "tavily"),
-        (cols[3], "Кэш (Tarantool)", "tarantool"),
-    ]
+    with st.container(border=True):
+        st.markdown("##### Основные сервисы")
+        cols = st.columns(3)
+        
+        services = [
+            (cols[0], "LLM (OpenRouter)", "openrouter"),
+            (cols[1], "Perplexity", "perplexity"),
+            (cols[2], "Tavily", "tavily"),
+        ]
 
-    for col, name, key in services:
-        with col:
-            status = st.session_state.service_statuses.get(key, {})
-            st.markdown(f"**{name}**")
-            if not status:
-                st.info("Ожидание")
-            elif status.get("status") == "ok":
-                latency = status.get("latency", 0)
-                st.success(f"ОК ({latency:.2f}с)")
-                data = status.get("data", {})
-                if key == "openrouter":
-                    st.caption(f"Модель: {data.get('model', 'Н/Д')}")
-                elif key == "perplexity":
-                    st.caption(f"Настроен: {'Да' if data.get('configured') else 'Нет'}")
-                elif key == "tavily":
-                    st.caption(f"Настроен: {'Да' if data.get('configured') else 'Нет'}")
-                elif key == "tarantool":
-                    st.caption(f"Режим: {data.get('mode', 'Н/Д')}")
-                    cache = data.get("cache", {})
-                    st.caption(f"Записей: {cache.get('size', 0)}")
-            else:
-                st.error(f"{status.get('error', 'Ошибка')}")
+        for col, name, key in services:
+            with col:
+                status = st.session_state.service_statuses.get(key, {})
+                st.markdown(f"**{name}**")
+                if not status:
+                    st.info("Ожидание")
+                elif status.get("status") == "ok":
+                    latency = status.get("latency", 0)
+                    st.success(f"ОК ({latency:.2f}с)")
+                    data = status.get("data", {})
+                    if key == "openrouter":
+                        st.caption(f"Модель: {data.get('model', 'Н/Д')}")
+                    elif key == "perplexity":
+                        st.caption(f"Настроен: {'Да' if data.get('configured') else 'Нет'}")
+                    elif key == "tavily":
+                        st.caption(f"Настроен: {'Да' if data.get('configured') else 'Нет'}")
+                else:
+                    st.error(f"{status.get('error', 'Ошибка')}")
 
-    st.markdown("##### Инфраструктура")
-    cols2 = st.columns(2)
-    
-    infra_services = [
-        (cols2[0], "Email (SMTP)", "email"),
-        (cols2[1], "TCP Server", "tcp"),
-    ]
+    with st.container(border=True):
+        st.markdown("##### Инфраструктура")
+        cols2 = st.columns(2)
+        
+        infra_services = [
+            (cols2[0], "Кэш (Tarantool)", "tarantool"),
+            (cols2[1], "Email (SMTP)", "email"),
+        ]
 
-    for col, name, key in infra_services:
-        with col:
-            status = st.session_state.service_statuses.get(key, {})
-            st.markdown(f"**{name}**")
-            if not status:
-                st.info("Ожидание")
-            elif status.get("status") == "ok":
-                latency = status.get("latency", 0)
-                st.success(f"ОК ({latency:.2f}с)")
-                data = status.get("data", {})
-                if key == "email":
-                    health = data.get("health", {})
-                    email_status = health.get("status", "unknown")
-                    if email_status == "not_configured":
-                        st.caption("SMTP не настроен")
-                    else:
-                        st.caption(f"SMTP: {data.get('smtp_host', 'Н/Д')}")
-                elif key == "tcp":
-                    st.caption(f"Статус: {data.get('status', 'Н/Д')}")
-                    st.caption(f"Подключён: {'Да' if data.get('connected') else 'Нет'}")
-            else:
-                st.warning(f"{status.get('error', 'Не доступен')}")
+        for col, name, key in infra_services:
+            with col:
+                status = st.session_state.service_statuses.get(key, {})
+                st.markdown(f"**{name}**")
+                if not status:
+                    st.info("Ожидание")
+                elif status.get("status") == "ok":
+                    latency = status.get("latency", 0)
+                    st.success(f"ОК ({latency:.2f}с)")
+                    data = status.get("data", {})
+                    if key == "tarantool":
+                        st.caption(f"Режим: {data.get('mode', 'Н/Д')}")
+                        cache = data.get("cache", {})
+                        st.caption(f"Записей: {cache.get('size', 0)}")
+                    elif key == "email":
+                        health = data.get("health", {})
+                        email_status = health.get("status", "unknown")
+                        if email_status == "not_configured":
+                            st.caption("SMTP не настроен")
+                        else:
+                            st.caption(f"SMTP: {data.get('smtp_host', 'Н/Д')}")
+                else:
+                    st.warning(f"{status.get('error', 'Не доступен')}")
 
     st.divider()
 

@@ -10,7 +10,6 @@
 - **Оценка рисков** с автоматическим формированием отчётов
 - **Генерация PDF-отчётов** с оценкой рисков и рекомендациями
 - **Кэширование** через Tarantool (с in-memory fallback)
-- **TCP-клиент** для интеграции с внешними системами
 - **Email-уведомления** через SMTP
 - **MCP-сервер** для интеграции с IDE
 - **Ролевой доступ** (admin/viewer/guest) для защиты административных функций
@@ -92,9 +91,6 @@ SMTP_PORT=587
 SMTP_USER=your_email
 SMTP_PASSWORD=your_password
 
-# TCP сервер (опционально)
-TCP_HOST=localhost
-TCP_PORT=9000
 ```
 
 ## API Endpoints
@@ -144,9 +140,6 @@ curl http://localhost:8000/utility/circuit-breakers
 
 # Статус email
 curl http://localhost:8000/utility/email/status
-
-# Статус TCP
-curl http://localhost:8000/utility/tcp/healthcheck
 ```
 
 ### Административные операции (требуют ADMIN_TOKEN)
@@ -197,7 +190,7 @@ app/
 │   ├── openrouter_client.py
 │   ├── perplexity_client.py
 │   ├── tavily_client.py
-│   └── email_client.py  # SMTP клиент
+│   └── email_client.py  # SMTP клиент для уведомлений
 └── storage/             # Кэширование
     └── tarantool.py
 ```
@@ -227,7 +220,6 @@ Streamlit UI включает панель мониторинга сервисо
 - **Tavily** - конфигурация и метрики
 - **Tarantool** - режим и количество записей
 - **Email (SMTP)** - доступность почтового сервера
-- **TCP Server** - статус подключения
 
 ## Разработка
 
