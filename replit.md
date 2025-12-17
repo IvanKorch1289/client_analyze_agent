@@ -141,6 +141,13 @@ Optimized cache client with batch operations and compression:
 - `DELETE /utility/cache/prefix/{prefix}` - Delete keys by prefix
 
 ## Recent Changes
+- 2025-12-17: Streamlit UI Reorganization & Timeout Improvements
+  - New "Внешние запросы" tab for Perplexity/Tavily search tests
+  - Simplified "Утилиты" tab: service dashboard, health check, cache management
+  - All Streamlit UI text translated to Russian
+  - Increased Perplexity timeout: read=150s (was 90s)
+  - Increased Tavily timeout: read=120s (was 60s)
+  - Settings loads .env via pydantic-settings (model_config env_file)
 - 2025-12-17: LLM Provider & Dashboard Upgrade
   - Replaced HuggingFace LLM with OpenRouter (Claude 3.5 Sonnet default)
   - Created OpenRouterClient (app/services/openrouter_client.py) with httpx

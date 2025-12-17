@@ -3,21 +3,12 @@ import os
 import requests
 import streamlit as st
 
-# ========================
-# Настройка страницы
-# ========================
-st.set_page_config(page_title="Multi-Agent System", layout="wide")
-st.title("Multi-Agent System Console")
+st.set_page_config(page_title="Мультиагентная система", layout="wide")
+st.title("Мультиагентная система")
 
-# ========================
-# Константы
-# ========================
 BACKEND_PORT = os.getenv("BACKEND_PORT", "8000")
 API_BASE_URL = f"http://localhost:{BACKEND_PORT}"
 
-# ========================
-# Инициализация состояния
-# ========================
 if "last_response" not in st.session_state:
     st.session_state.last_response = None
 if "last_thread_id" not in st.session_state:
@@ -27,10 +18,7 @@ if "threads" not in st.session_state:
 if "page" not in st.session_state:
     st.session_state.page = "Запрос агенту"
 
-# ========================
-# Боковая панель навигации
-# ========================
-PAGES = ["Запрос агенту", "История", "Внешние данные", "Утилиты"]
+PAGES = ["Запрос агенту", "История", "Внешние данные", "Внешние запросы", "Утилиты"]
 st.sidebar.title("Навигация")
 page = st.sidebar.radio(
     "Выберите раздел",
@@ -40,11 +28,8 @@ page = st.sidebar.radio(
 )
 st.session_state.page = page
 
-# ========================
-# Страница: Запрос агенту
-# ========================
 if page == "Запрос агенту":
-    st.header("📝 Отправить запрос агенту")
+    st.header("Отправить запрос агенту")
 
     with st.form("agent_query_form"):
         query = st.text_area(
@@ -52,7 +37,7 @@ if page == "Запрос агенту":
             height=150,
             placeholder="Например: Проанализируй компанию с ИНН 7707083893",
         )
-        submitted = st.form_submit_button("🚀 Отправить запрос")
+        submitted = st.form_submit_button("Отправить запрос")
 
     if submitted and query.strip():
         with st.spinner("Агенты работают..."):
@@ -72,51 +57,45 @@ if page == "Запрос агенту":
                         f"Ошибка сервера: {response.status_code} - {response.text}"
                     )
             except requests.exceptions.Timeout:
-                st.error("⏳ Таймаут: запрос занимает слишком много времени.")
+                st.error("Таймаут: запрос занимает слишком много времени.")
             except Exception as e:
-                st.error(f"❌ Ошибка подключения: {e}")
+                st.error(f"Ошибка подключения: {e}")
 
-    # Отображение результата
     if st.session_state.last_response:
         result = st.session_state.last_response
-        st.success("✅ Запрос выполнен!")
+        st.success("Запрос выполнен!")
 
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.markdown("### 📊 Результат:")
+            st.markdown("### Результат:")
             st.markdown(result.get("response", "Нет ответа"))
         with col2:
-            st.markdown("### 🧩 Метаданные:")
-            st.write(f"**Thread ID:** `{result.get('thread_id', 'N/A')}`")
+            st.markdown("### Метаданные:")
+            st.write(f"**Thread ID:** `{result.get('thread_id', 'Н/Д')}`")
             st.write(f"**Инструменты:** {'Да' if result.get('tools_used') else 'Нет'}")
-            st.write(f"**Время:** {result.get('timestamp', 'N/A')}")
+            st.write(f"**Время:** {result.get('timestamp', 'Н/Д')}")
 
-        # Кнопка копирования
         st.code(result.get("response", ""), language="text")
         st.download_button(
-            "💾 Скачать ответ",
+            "Скачать ответ",
             data=result.get("response", ""),
             file_name=f"response_{result.get('thread_id', 'unknown')}.txt",
             mime="text/plain",
         )
 
-        # Кнопка перехода к истории
-        if st.button("📋 Просмотреть в истории"):
+        if st.button("Просмотреть в истории"):
             st.session_state.selected_thread_id = result.get("thread_id")
             st.session_state.page = "История"
             st.rerun()
 
         st.divider()
 
-# ========================
-# Страница: История
-# ========================
 elif page == "История":
-    st.header("📚 История запросов")
+    st.header("История запросов")
 
     col1, col2 = st.columns([3, 1])
     with col1:
-        if st.button("🔄 Обновить список", type="primary"):
+        if st.button("Обновить список", type="primary"):
             try:
                 with st.spinner("Загрузка..."):
                     resp = requests.get(f"{API_BASE_URL}/agent/threads", timeout=10)
@@ -129,17 +108,16 @@ elif page == "История":
             except Exception as e:
                 st.error(f"Ошибка загрузки: {e}")
 
-    # Отображение списка
     if st.session_state.threads:
         for thread in st.session_state.threads:
-            with st.expander(f"📌 {thread['user_prompt']}"):
+            with st.expander(f"{thread['user_prompt']}"):
                 st.write(f"**ID:** `{thread['thread_id']}`")
                 st.write(f"**Создано:** {thread['created_at']}")
                 st.write(f"**Сообщений:** {thread['message_count']}")
 
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button("👁️ Просмотреть", key=f"view_{thread['thread_id']}"):
+                    if st.button("Просмотреть", key=f"view_{thread['thread_id']}"):
                         try:
                             resp = requests.get(
                                 f"{API_BASE_URL}/agent/thread_history/{thread['thread_id']}",
@@ -152,16 +130,13 @@ elif page == "История":
                         except Exception as e:
                             st.error(f"Ошибка: {e}")
                 with col2:
-                    if st.button("🗑️ Удалить", key=f"del_{thread['thread_id']}"):
+                    if st.button("Удалить", key=f"del_{thread['thread_id']}"):
                         st.warning("Удаление пока не реализовано")
     else:
         st.info("История пуста. Отправьте первый запрос!")
 
-# ========================
-# Страница: Внешние данные
-# ========================
 elif page == "Внешние данные":
-    st.header("🌍 Запросы к внешним источникам")
+    st.header("Запросы к внешним источникам (по ИНН)")
 
     with st.form("external_data_form"):
         inn = st.text_input("ИНН", value="7707083893", max_chars=12)
@@ -175,7 +150,7 @@ elif page == "Внешние данные":
             ],
             format_func=lambda x: x[1],
         )
-        submitted = st.form_submit_button("🔍 Получить данные")
+        submitted = st.form_submit_button("Получить данные")
 
     if submitted and inn.strip():
         with st.spinner("Запрос к внешним API..."):
@@ -183,20 +158,97 @@ elif page == "Внешние данные":
                 url = f"{API_BASE_URL}/data/client/{source[0]}/{inn.strip()}"
                 resp = requests.get(url, timeout=30)
                 if resp.status_code == 200:
-                    st.success("✅ Данные получены")
+                    st.success("Данные получены")
                     st.json(resp.json())
                 else:
                     st.error(f"Ошибка: {resp.status_code} - {resp.text}")
             except requests.exceptions.Timeout:
-                st.error("⏳ Таймаут: внешний сервис не ответил.")
+                st.error("Таймаут: внешний сервис не ответил.")
             except Exception as e:
-                st.error(f"❌ Ошибка: {e}")
+                st.error(f"Ошибка: {e}")
 
-# ========================
-# Страница: Утилиты (Service Dashboard)
-# ========================
+elif page == "Внешние запросы":
+    st.header("Поиск через внешние сервисы")
+
+    search_tab1, search_tab2 = st.tabs(["Perplexity", "Tavily"])
+
+    with search_tab1:
+        st.subheader("Поиск через Perplexity AI")
+        with st.form("perplexity_search_form"):
+            perp_query = st.text_input("Поисковый запрос:", placeholder="Например: Последние новости об ИИ")
+            perp_submit = st.form_submit_button("Искать через Perplexity")
+
+        if perp_submit and perp_query.strip():
+            with st.spinner("Поиск через Perplexity..."):
+                try:
+                    resp = requests.post(
+                        f"{API_BASE_URL}/utility/perplexity/search",
+                        json={"query": perp_query.strip()},
+                        timeout=180,
+                    )
+                    if resp.status_code == 200:
+                        result = resp.json()
+                        if result.get("status") == "success":
+                            st.success("Поиск завершён!")
+                            st.markdown("**Ответ:**")
+                            st.markdown(result.get("content", "Нет содержимого"))
+                            if result.get("citations"):
+                                with st.expander("Источники"):
+                                    for cite in result.get("citations", []):
+                                        st.write(f"- {cite}")
+                        else:
+                            st.error(result.get("message", "Неизвестная ошибка"))
+                    else:
+                        st.error(f"Ошибка API: {resp.status_code}")
+                except requests.exceptions.Timeout:
+                    st.error("Таймаут: Perplexity не ответил вовремя")
+                except Exception as e:
+                    st.error(f"Ошибка: {e}")
+
+    with search_tab2:
+        st.subheader("Поиск через Tavily")
+        with st.form("tavily_search_form"):
+            tav_query = st.text_input("Поисковый запрос:", placeholder="Например: Лучшие практики Python 2024")
+            tav_depth = st.selectbox("Глубина поиска:", ["basic", "advanced"], format_func=lambda x: "Базовый" if x == "basic" else "Расширенный")
+            tav_max = st.slider("Макс. результатов:", 1, 10, 5)
+            tav_submit = st.form_submit_button("Искать через Tavily")
+
+        if tav_submit and tav_query.strip():
+            with st.spinner("Поиск через Tavily..."):
+                try:
+                    resp = requests.post(
+                        f"{API_BASE_URL}/utility/tavily/search",
+                        json={
+                            "query": tav_query.strip(),
+                            "search_depth": tav_depth,
+                            "max_results": tav_max,
+                            "include_answer": True,
+                        },
+                        timeout=180,
+                    )
+                    if resp.status_code == 200:
+                        result = resp.json()
+                        if result.get("status") == "success":
+                            st.success("Поиск завершён!")
+                            if result.get("answer"):
+                                st.markdown("**Ответ:**")
+                                st.markdown(result.get("answer"))
+                            st.markdown("**Результаты:**")
+                            for item in result.get("results", []):
+                                with st.expander(item.get("title", "Без заголовка")):
+                                    st.write(item.get("content", ""))
+                                    st.caption(item.get("url", ""))
+                        else:
+                            st.error(result.get("message", "Неизвестная ошибка"))
+                    else:
+                        st.error(f"Ошибка API: {resp.status_code}")
+                except requests.exceptions.Timeout:
+                    st.error("Таймаут: Tavily не ответил вовремя")
+                except Exception as e:
+                    st.error(f"Ошибка: {e}")
+
 elif page == "Утилиты":
-    st.header("📊 Service Dashboard")
+    st.header("Панель сервисов")
 
     if "service_statuses" not in st.session_state:
         st.session_state.service_statuses = {}
@@ -208,193 +260,118 @@ elif page == "Утилиты":
                 return {"status": "ok", "data": resp.json(), "latency": resp.elapsed.total_seconds()}
             return {"status": "error", "error": f"HTTP {resp.status_code}"}
         except requests.exceptions.Timeout:
-            return {"status": "error", "error": "Timeout"}
+            return {"status": "error", "error": "Таймаут"}
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
-    st.subheader("🔌 Service Status Cards")
+    st.subheader("Статус сервисов")
 
-    if st.button("🔄 Check All Services", type="primary"):
-        with st.spinner("Checking services..."):
+    if st.button("Проверить все сервисы", type="primary"):
+        with st.spinner("Проверка сервисов..."):
             st.session_state.service_statuses = {
                 "openrouter": check_service_status("OpenRouter LLM", "/utility/openrouter/status"),
                 "perplexity": check_service_status("Perplexity", "/utility/perplexity/status"),
                 "tavily": check_service_status("Tavily", "/utility/tavily/status"),
-                "tarantool": check_service_status("Tarantool/Redis", "/utility/tarantool/status"),
-                "health": check_service_status("Health", "/utility/health"),
+                "tarantool": check_service_status("Tarantool", "/utility/tarantool/status"),
+                "health": check_service_status("Здоровье", "/utility/health"),
             }
 
     col1, col2, col3, col4 = st.columns(4)
 
-    def render_status_card(col, name, icon, key):
+    def render_status_card(col, name, key):
         with col:
             status = st.session_state.service_statuses.get(key, {})
             if not status:
-                st.markdown(f"### {icon} {name}")
-                st.info("Click 'Check All Services'")
+                st.markdown(f"### {name}")
+                st.info("Нажмите 'Проверить все сервисы'")
             elif status.get("status") == "ok":
-                st.markdown(f"### {icon} {name}")
-                st.success(f"OK ({status.get('latency', 0):.2f}s)")
+                st.markdown(f"### {name}")
+                st.success(f"ОК ({status.get('latency', 0):.2f}с)")
                 data = status.get("data", {})
                 if key == "openrouter":
-                    st.caption(f"Model: {data.get('model', 'N/A')}")
-                    st.caption(f"Available: {'Yes' if data.get('available') else 'No'}")
+                    st.caption(f"Модель: {data.get('model', 'Н/Д')}")
+                    st.caption(f"Доступен: {'Да' if data.get('available') else 'Нет'}")
                 elif key == "perplexity":
-                    st.caption(f"Configured: {'Yes' if data.get('configured') else 'No'}")
+                    st.caption(f"Настроен: {'Да' if data.get('configured') else 'Нет'}")
                 elif key == "tavily":
-                    st.caption(f"Configured: {'Yes' if data.get('configured') else 'No'}")
+                    st.caption(f"Настроен: {'Да' if data.get('configured') else 'Нет'}")
                 elif key == "tarantool":
-                    st.caption(f"Mode: {data.get('mode', 'N/A')}")
+                    st.caption(f"Режим: {data.get('mode', 'Н/Д')}")
                     cache = data.get("cache", {})
-                    st.caption(f"Cache size: {cache.get('size', 0)}")
+                    st.caption(f"Размер кэша: {cache.get('size', 0)}")
             else:
-                st.markdown(f"### {icon} {name}")
-                st.error(f"Error: {status.get('error', 'Unknown')}")
+                st.markdown(f"### {name}")
+                st.error(f"Ошибка: {status.get('error', 'Неизвестно')}")
 
-    render_status_card(col1, "LLM (OpenRouter)", "🤖", "openrouter")
-    render_status_card(col2, "Perplexity", "🔍", "perplexity")
-    render_status_card(col3, "Tavily", "🌐", "tavily")
-    render_status_card(col4, "Cache", "🗄️", "tarantool")
-
-    st.divider()
-
-    st.subheader("🔍 Search Tools Test")
-
-    search_tab1, search_tab2 = st.tabs(["Perplexity Search", "Tavily Search"])
-
-    with search_tab1:
-        with st.form("perplexity_search_form"):
-            perp_query = st.text_input("Search query:", placeholder="e.g., Latest news about AI")
-            perp_submit = st.form_submit_button("Search via Perplexity")
-
-        if perp_submit and perp_query.strip():
-            with st.spinner("Searching with Perplexity..."):
-                try:
-                    resp = requests.post(
-                        f"{API_BASE_URL}/utility/perplexity/search",
-                        json={"query": perp_query.strip()},
-                        timeout=60,
-                    )
-                    if resp.status_code == 200:
-                        result = resp.json()
-                        if result.get("status") == "success":
-                            st.success("Search completed!")
-                            st.markdown("**Response:**")
-                            st.markdown(result.get("content", "No content"))
-                            if result.get("citations"):
-                                with st.expander("Citations"):
-                                    for cite in result.get("citations", []):
-                                        st.write(f"- {cite}")
-                        else:
-                            st.error(result.get("message", "Unknown error"))
-                    else:
-                        st.error(f"API Error: {resp.status_code}")
-                except Exception as e:
-                    st.error(f"Error: {e}")
-
-    with search_tab2:
-        with st.form("tavily_search_form"):
-            tav_query = st.text_input("Search query:", placeholder="e.g., Python best practices 2024")
-            tav_depth = st.selectbox("Search depth:", ["basic", "advanced"])
-            tav_max = st.slider("Max results:", 1, 10, 5)
-            tav_submit = st.form_submit_button("Search via Tavily")
-
-        if tav_submit and tav_query.strip():
-            with st.spinner("Searching with Tavily..."):
-                try:
-                    resp = requests.post(
-                        f"{API_BASE_URL}/utility/tavily/search",
-                        json={
-                            "query": tav_query.strip(),
-                            "search_depth": tav_depth,
-                            "max_results": tav_max,
-                            "include_answer": True,
-                        },
-                        timeout=60,
-                    )
-                    if resp.status_code == 200:
-                        result = resp.json()
-                        if result.get("status") == "success":
-                            st.success("Search completed!")
-                            if result.get("answer"):
-                                st.markdown("**Answer:**")
-                                st.markdown(result.get("answer"))
-                            st.markdown("**Results:**")
-                            for item in result.get("results", []):
-                                with st.expander(item.get("title", "No title")):
-                                    st.write(item.get("content", ""))
-                                    st.caption(item.get("url", ""))
-                        else:
-                            st.error(result.get("message", "Unknown error"))
-                    else:
-                        st.error(f"API Error: {resp.status_code}")
-                except Exception as e:
-                    st.error(f"Error: {e}")
+    render_status_card(col1, "LLM (OpenRouter)", "openrouter")
+    render_status_card(col2, "Perplexity", "perplexity")
+    render_status_card(col3, "Tavily", "tavily")
+    render_status_card(col4, "Кэш (Tarantool)", "tarantool")
 
     st.divider()
 
-    st.subheader("🧹 Cache Management")
+    st.subheader("Управление кэшем")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        if st.button("Clear Perplexity Cache"):
+        if st.button("Очистить кэш Perplexity"):
             try:
                 resp = requests.post(f"{API_BASE_URL}/utility/perplexity/cache/clear", timeout=10)
                 if resp.status_code == 200:
-                    st.success("Perplexity cache cleared!")
+                    st.success("Кэш Perplexity очищен!")
                 else:
-                    st.error(f"Error: {resp.status_code}")
+                    st.error(f"Ошибка: {resp.status_code}")
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Ошибка: {e}")
 
     with col2:
-        if st.button("Clear Tavily Cache"):
+        if st.button("Очистить кэш Tavily"):
             try:
                 resp = requests.post(f"{API_BASE_URL}/utility/tavily/cache/clear", timeout=10)
                 if resp.status_code == 200:
-                    st.success("Tavily cache cleared!")
+                    st.success("Кэш Tavily очищен!")
                 else:
-                    st.error(f"Error: {resp.status_code}")
+                    st.error(f"Ошибка: {resp.status_code}")
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Ошибка: {e}")
 
     with col3:
-        confirm = st.checkbox("Confirm full cache clear")
-        if st.button("Clear All Cache", disabled=not confirm):
+        confirm = st.checkbox("Подтвердить полную очистку")
+        if st.button("Очистить весь кэш", disabled=not confirm):
             try:
                 resp = requests.get(f"{API_BASE_URL}/utility/validate_cache?confirm=true", timeout=10)
                 if resp.status_code == 200:
-                    st.success("All cache cleared!")
+                    st.success("Весь кэш очищен!")
                 else:
-                    st.error(f"Error: {resp.status_code}")
+                    st.error(f"Ошибка: {resp.status_code}")
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Ошибка: {e}")
 
     st.divider()
 
-    st.subheader("📈 System Health")
+    st.subheader("Состояние системы")
 
-    health_status = st.session_state.service_statuses.get("health", {})  # type: ignore
+    health_status = st.session_state.service_statuses.get("health", {})
     if health_status.get("status") == "ok":
         data = health_status.get("data", {})
         overall = data.get("status", "unknown")
 
         if overall == "healthy":
-            st.success(f"System Status: {overall.upper()}")
+            st.success(f"Состояние системы: ЗДОРОВА")
         elif overall == "degraded":
-            st.warning(f"System Status: {overall.upper()}")
+            st.warning(f"Состояние системы: ЧАСТИЧНО РАБОТАЕТ")
             issues = data.get("issues", [])
             if issues:
-                st.markdown("**Issues:**")
+                st.markdown("**Проблемы:**")
                 for issue in issues:
                     st.write(f"- {issue}")
         else:
-            st.error(f"System Status: {overall.upper()}")
+            st.error(f"Состояние системы: {overall.upper()}")
 
         components = data.get("components", {})
         if components:
-            with st.expander("Component Details"):
+            with st.expander("Детали компонентов"):
                 st.json(components)
     else:
-        st.info("Click 'Check All Services' to see system health")
+        st.info("Нажмите 'Проверить все сервисы' для просмотра состояния системы")
