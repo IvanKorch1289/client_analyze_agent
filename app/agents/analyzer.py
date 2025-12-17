@@ -16,13 +16,13 @@ def analyzer_agent(state: dict) -> dict:
 
 Формат ответа:
 ### Анализ:
-{текст}
+{{текст}}
 
 ### Вывод:
-{чёткий вывод}
+{{чёткий вывод}}
 
 ### Рекомендации:
-{если есть}
+{{если есть}}
 """,
             ),
             ("human", "Результаты: {tool_results}"),
@@ -31,4 +31,5 @@ def analyzer_agent(state: dict) -> dict:
     chain = analyzer_prompt | llm
     tool_results_str = json.dumps(state["tool_results"], ensure_ascii=False, indent=2)
     response = chain.invoke({"tool_results": tool_results_str})
-    return {**state, "analysis_result": response.content, "current_step": "saving"}
+    result_content = response.content if hasattr(response, 'content') else str(response)
+    return {**state, "analysis_result": result_content, "current_step": "saving"}

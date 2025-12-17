@@ -19,7 +19,7 @@ async def planner_agent(state: dict) -> dict:
         ]
     )
 
-    json_example = '{"plan": "описание плана", "tool_sequence": ["tool_name1", "tool_name2", ...]}'
+    json_example = '{{"plan": "описание плана", "tool_sequence": ["tool_name1", "tool_name2", ...]}}'
 
     system_content = f"""Ты — строгий планировщик. Твоя задача — РАЗЛОЖИТЬ запрос на последовательность шагов с указанием ТОЧНОГО порядка вызова инструментов.
 
@@ -43,7 +43,7 @@ async def planner_agent(state: dict) -> dict:
     response = await chain.ainvoke({"input": state["user_input"]})
 
     try:
-        content = response.content.strip()
+        content = response.content.strip() if hasattr(response, 'content') else str(response).strip()
         if content.startswith("```json"):
             content = content[7:]
         if content.endswith("```"):

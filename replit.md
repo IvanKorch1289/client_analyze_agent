@@ -141,6 +141,10 @@ Optimized cache client with batch operations and compression:
 - `DELETE /utility/cache/prefix/{prefix}` - Delete keys by prefix
 
 ## Recent Changes
+- 2025-12-16: Fixed ChatPromptTemplate missing variables error
+  - Escaped curly braces in JSON examples in planner.py: `{"plan"...}` -> `{{"plan"...}}`
+  - Escaped placeholder text in analyzer.py: `{текст}` -> `{{текст}}`
+  - Added hasattr check for response.content for better type safety
 - 2025-12-16: Multi-Source Parallel Data Collection
   - New data_collector agent: parallel API calls to Casebook, InfoSphere, DaData, Perplexity, Tavily
   - Updated workflow: orchestrator -> data_collector -> analyzer -> file_writer
