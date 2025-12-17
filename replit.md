@@ -142,8 +142,10 @@ Optimized cache client with batch operations and compression:
 
 ## Recent Changes
 - 2025-12-17: Streamlit UI Reorganization & Timeout Improvements
-  - New "Внешние запросы" tab for Perplexity/Tavily search tests
-  - Simplified "Утилиты" tab: service dashboard, health check, cache management
+  - Merged "Внешние запросы" into "Внешние данные" tab
+  - Sources now include: DaData, Casebook, InfoSphere, Perplexity, Tavily
+  - "Все источники" queries all 5 sources (INN + search providers)
+  - Simplified "Утилиты" tab: aligned service dashboard, Tarantool cache only
   - All Streamlit UI text translated to Russian
   - Increased Perplexity timeout: read=150s (was 90s)
   - Increased Tavily timeout: read=120s (was 60s)
