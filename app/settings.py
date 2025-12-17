@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     hugging_face_token: Optional[str] = None
     huging_face_model: str = "meta-llama/Meta-Llama-3-8B-Instruct"
 
+    # OpenRouter
+    openrouter_api_key: Optional[str] = None
+    openrouter_model: str = "anthropic/claude-3.5-sonnet"
+
     tavily_token: Optional[str] = None
     gigachat_token: Optional[str] = None
 

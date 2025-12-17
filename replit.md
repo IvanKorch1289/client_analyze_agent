@@ -141,6 +141,17 @@ Optimized cache client with batch operations and compression:
 - `DELETE /utility/cache/prefix/{prefix}` - Delete keys by prefix
 
 ## Recent Changes
+- 2025-12-17: LLM Provider & Dashboard Upgrade
+  - Replaced HuggingFace LLM with OpenRouter (Claude 3.5 Sonnet default)
+  - Created OpenRouterClient (app/services/openrouter_client.py) with httpx
+  - OpenRouterLLM class extends LangChain LLM for compatibility
+  - New endpoint: GET /utility/openrouter/status
+  - Updated /utility/health to include OpenRouter status
+  - Refactored Streamlit Utilities page to Service Dashboard
+    - Status cards for LLM, Perplexity, Tavily, Cache
+    - Search Tools Test section (Perplexity/Tavily tabs)
+    - Cache Management buttons
+    - System Health display
 - 2025-12-16: Fixed ChatPromptTemplate missing variables error
   - Escaped curly braces in JSON examples in planner.py: `{"plan"...}` -> `{{"plan"...}}`
   - Escaped placeholder text in analyzer.py: `{текст}` -> `{{текст}}`

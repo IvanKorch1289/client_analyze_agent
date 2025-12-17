@@ -193,115 +193,208 @@ elif page == "Внешние данные":
                 st.error(f"❌ Ошибка: {e}")
 
 # ========================
-# Страница: Утилиты
+# Страница: Утилиты (Service Dashboard)
 # ========================
 elif page == "Утилиты":
-    st.header("⚙️ Служебные функции")
+    st.header("📊 Service Dashboard")
 
-    # Статус Tarantool
-    st.subheader("🗄️ Статус Tarantool")
-    if st.button("🔄 Проверить Tarantool", key="check_tarantool"):
+    if "service_statuses" not in st.session_state:
+        st.session_state.service_statuses = {}
+
+    def check_service_status(service_name, endpoint, timeout=10):
         try:
-            resp = requests.get(f"{API_BASE_URL}/utility/tarantool/status", timeout=10)
+            resp = requests.get(f"{API_BASE_URL}{endpoint}", timeout=timeout)
             if resp.status_code == 200:
-                data = resp.json()
-                if data.get("available"):
-                    mode = data.get("mode", "unknown")
-                    if mode == "in-memory":
-                        st.warning("⚠️ Tarantool: режим in-memory (fallback)")
-                    else:
-                        st.success("✅ Tarantool: подключен")
+                return {"status": "ok", "data": resp.json(), "latency": resp.elapsed.total_seconds()}
+            return {"status": "error", "error": f"HTTP {resp.status_code}"}
+        except requests.exceptions.Timeout:
+            return {"status": "error", "error": "Timeout"}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
 
-                    col1, col2, col3 = st.columns(3)
+    st.subheader("🔌 Service Status Cards")
+
+    if st.button("🔄 Check All Services", type="primary"):
+        with st.spinner("Checking services..."):
+            st.session_state.service_statuses = {
+                "openrouter": check_service_status("OpenRouter LLM", "/utility/openrouter/status"),
+                "perplexity": check_service_status("Perplexity", "/utility/perplexity/status"),
+                "tavily": check_service_status("Tavily", "/utility/tavily/status"),
+                "tarantool": check_service_status("Tarantool/Redis", "/utility/tarantool/status"),
+                "health": check_service_status("Health", "/utility/health"),
+            }
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    def render_status_card(col, name, icon, key):
+        with col:
+            status = st.session_state.service_statuses.get(key, {})
+            if not status:
+                st.markdown(f"### {icon} {name}")
+                st.info("Click 'Check All Services'")
+            elif status.get("status") == "ok":
+                st.markdown(f"### {icon} {name}")
+                st.success(f"OK ({status.get('latency', 0):.2f}s)")
+                data = status.get("data", {})
+                if key == "openrouter":
+                    st.caption(f"Model: {data.get('model', 'N/A')}")
+                    st.caption(f"Available: {'Yes' if data.get('available') else 'No'}")
+                elif key == "perplexity":
+                    st.caption(f"Configured: {'Yes' if data.get('configured') else 'No'}")
+                elif key == "tavily":
+                    st.caption(f"Configured: {'Yes' if data.get('configured') else 'No'}")
+                elif key == "tarantool":
+                    st.caption(f"Mode: {data.get('mode', 'N/A')}")
                     cache = data.get("cache", {})
-                    with col1:
-                        st.metric("Записей в кэше", cache.get("size", 0))
-                    with col2:
-                        st.metric("Hit Rate", f"{cache.get('hit_rate', 0):.1%}")
-                    with col3:
-                        st.metric(
-                            "Hits / Misses",
-                            f"{cache.get('hits', 0)} / {cache.get('misses', 0)}",
-                        )
+                    st.caption(f"Cache size: {cache.get('size', 0)}")
+            else:
+                st.markdown(f"### {icon} {name}")
+                st.error(f"Error: {status.get('error', 'Unknown')}")
 
-                    conn = data.get("connection", {})
-                    comp = data.get("compression", {})
-                    with st.expander("Подробности"):
-                        st.write(f"**Режим:** {mode}")
-                        st.write(f"**Host:** {conn.get('host', 'N/A')}")
-                        st.write(f"**Port:** {conn.get('port', 'N/A')}")
-                        st.write(
-                            f"**Fallback:** {'Да' if conn.get('fallback') else 'Нет'}"
-                        )
-                        st.write(
-                            f"**Сжатие:** {'Вкл' if comp.get('enabled') else 'Выкл'}"
-                        )
-                        if comp.get("enabled"):
-                            st.write(
-                                f"**Сжато объектов:** {comp.get('compressed_count', 0)}"
-                            )
-                            st.write(
-                                f"**Сэкономлено байт:** {comp.get('bytes_saved', 0)}"
-                            )
-                else:
-                    st.error(
-                        f"❌ Tarantool недоступен: {data.get('message', 'Unknown error')}"
+    render_status_card(col1, "LLM (OpenRouter)", "🤖", "openrouter")
+    render_status_card(col2, "Perplexity", "🔍", "perplexity")
+    render_status_card(col3, "Tavily", "🌐", "tavily")
+    render_status_card(col4, "Cache", "🗄️", "tarantool")
+
+    st.divider()
+
+    st.subheader("🔍 Search Tools Test")
+
+    search_tab1, search_tab2 = st.tabs(["Perplexity Search", "Tavily Search"])
+
+    with search_tab1:
+        with st.form("perplexity_search_form"):
+            perp_query = st.text_input("Search query:", placeholder="e.g., Latest news about AI")
+            perp_submit = st.form_submit_button("Search via Perplexity")
+
+        if perp_submit and perp_query.strip():
+            with st.spinner("Searching with Perplexity..."):
+                try:
+                    resp = requests.post(
+                        f"{API_BASE_URL}/utility/perplexity/search",
+                        json={"query": perp_query.strip()},
+                        timeout=60,
                     )
-            else:
-                st.error(f"Ошибка: {resp.status_code}")
-        except Exception as e:
-            st.error(f"❌ Ошибка проверки: {e}")
+                    if resp.status_code == 200:
+                        result = resp.json()
+                        if result.get("status") == "success":
+                            st.success("Search completed!")
+                            st.markdown("**Response:**")
+                            st.markdown(result.get("content", "No content"))
+                            if result.get("citations"):
+                                with st.expander("Citations"):
+                                    for cite in result.get("citations", []):
+                                        st.write(f"- {cite}")
+                        else:
+                            st.error(result.get("message", "Unknown error"))
+                    else:
+                        st.error(f"API Error: {resp.status_code}")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+    with search_tab2:
+        with st.form("tavily_search_form"):
+            tav_query = st.text_input("Search query:", placeholder="e.g., Python best practices 2024")
+            tav_depth = st.selectbox("Search depth:", ["basic", "advanced"])
+            tav_max = st.slider("Max results:", 1, 10, 5)
+            tav_submit = st.form_submit_button("Search via Tavily")
+
+        if tav_submit and tav_query.strip():
+            with st.spinner("Searching with Tavily..."):
+                try:
+                    resp = requests.post(
+                        f"{API_BASE_URL}/utility/tavily/search",
+                        json={
+                            "query": tav_query.strip(),
+                            "search_depth": tav_depth,
+                            "max_results": tav_max,
+                            "include_answer": True,
+                        },
+                        timeout=60,
+                    )
+                    if resp.status_code == 200:
+                        result = resp.json()
+                        if result.get("status") == "success":
+                            st.success("Search completed!")
+                            if result.get("answer"):
+                                st.markdown("**Answer:**")
+                                st.markdown(result.get("answer"))
+                            st.markdown("**Results:**")
+                            for item in result.get("results", []):
+                                with st.expander(item.get("title", "No title")):
+                                    st.write(item.get("content", ""))
+                                    st.caption(item.get("url", ""))
+                        else:
+                            st.error(result.get("message", "Unknown error"))
+                    else:
+                        st.error(f"API Error: {resp.status_code}")
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
     st.divider()
 
-    # Очистка кэша
-    st.subheader("🧹 Очистка кэша")
-    confirm = st.checkbox("⚠️ Подтверждаю очистку кэша", value=False)
-    if st.button("💥 Инвалидировать кэш", type="primary", disabled=not confirm):
-        try:
-            url = f"{API_BASE_URL}/utility/validate_cache?confirm=true"
-            resp = requests.get(url, timeout=10)
-            if resp.status_code == 200:
-                st.success("✅ Кэш успешно очищен!")
-                st.json(resp.json())
-            else:
-                st.error(f"Ошибка: {resp.status_code} - {resp.text}")
-        except Exception as e:
-            st.error(f"❌ Ошибка: {e}")
+    st.subheader("🧹 Cache Management")
 
-    st.divider()
-
-    # Статус системы
-    st.subheader("📊 Статус системы")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
-        try:
-            resp = requests.get(f"{API_BASE_URL}/agent/threads", timeout=5)
-            if resp.status_code == 200:
-                count = resp.json().get("total", 0)
-                st.metric("Всего тредов", count)
-            else:
-                st.error("Не удалось получить статус")
-        except Exception:
-            st.error("Backend недоступен")
+        if st.button("Clear Perplexity Cache"):
+            try:
+                resp = requests.post(f"{API_BASE_URL}/utility/perplexity/cache/clear", timeout=10)
+                if resp.status_code == 200:
+                    st.success("Perplexity cache cleared!")
+                else:
+                    st.error(f"Error: {resp.status_code}")
+            except Exception as e:
+                st.error(f"Error: {e}")
 
     with col2:
-        try:
-            resp = requests.get(f"{API_BASE_URL}/docs", timeout=5)
-            if resp.status_code == 200:
-                st.success("FastAPI ✅")
-            else:
-                st.error("FastAPI ❌")
-        except Exception:
-            st.error("FastAPI ❌")
+        if st.button("Clear Tavily Cache"):
+            try:
+                resp = requests.post(f"{API_BASE_URL}/utility/tavily/cache/clear", timeout=10)
+                if resp.status_code == 200:
+                    st.success("Tavily cache cleared!")
+                else:
+                    st.error(f"Error: {resp.status_code}")
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    with col3:
+        confirm = st.checkbox("Confirm full cache clear")
+        if st.button("Clear All Cache", disabled=not confirm):
+            try:
+                resp = requests.get(f"{API_BASE_URL}/utility/validate_cache?confirm=true", timeout=10)
+                if resp.status_code == 200:
+                    st.success("All cache cleared!")
+                else:
+                    st.error(f"Error: {resp.status_code}")
+            except Exception as e:
+                st.error(f"Error: {e}")
 
     st.divider()
 
-    # Тест подключения
-    if st.button("🔌 Проверить подключение к FastAPI"):
-        try:
-            resp = requests.get(f"{API_BASE_URL}/agent/threads", timeout=5)
-            st.success(f"✅ Подключение успешно! Статус: {resp.status_code}")
-        except Exception as e:
-            st.error(f"❌ Ошибка подключения: {e}")
+    st.subheader("📈 System Health")
+
+    health_status = st.session_state.service_statuses.get("health", {})  # type: ignore
+    if health_status.get("status") == "ok":
+        data = health_status.get("data", {})
+        overall = data.get("status", "unknown")
+
+        if overall == "healthy":
+            st.success(f"System Status: {overall.upper()}")
+        elif overall == "degraded":
+            st.warning(f"System Status: {overall.upper()}")
+            issues = data.get("issues", [])
+            if issues:
+                st.markdown("**Issues:**")
+                for issue in issues:
+                    st.write(f"- {issue}")
+        else:
+            st.error(f"System Status: {overall.upper()}")
+
+        components = data.get("components", {})
+        if components:
+            with st.expander("Component Details"):
+                st.json(components)
+    else:
+        st.info("Click 'Check All Services' to see system health")
