@@ -221,12 +221,20 @@ elif page == "Внешние данные":
 
     with tab_search:
         st.subheader("Поисковые запросы")
-        st.caption("Perplexity, Tavily - текстовый поиск по интернету")
+        st.caption("Perplexity, Tavily - поиск информации о компании по ИНН. Возвращает только проверенные факты.")
 
         with st.form("search_data_form"):
+            search_inn = st.text_input(
+                "ИНН компании",
+                value="7707083893",
+                max_chars=12,
+                placeholder="Введите 10 или 12 цифр ИНН",
+                help="ИНН компании для поиска (10 цифр - юр.лицо, 12 цифр - ИП)"
+            )
             search_query = st.text_input(
-                "Поисковый запрос",
-                placeholder="Например: Последние новости о компании Сбербанк"
+                "Что искать",
+                placeholder="Например: судебные дела, банкротство, новости",
+                help="Укажите тему поиска. Результаты будут содержать только факты."
             )
             search_source = st.selectbox(
                 "Поисковый сервис",
@@ -240,14 +248,20 @@ elif page == "Внешние данные":
             search_submitted = st.form_submit_button("Выполнить поиск")
 
         if search_submitted:
+            inn = search_inn.strip()
             query = search_query.strip()
-            if not query:
-                st.error("Введите поисковый запрос")
+            
+            is_valid, error_msg = validate_inn(inn)
+            if not is_valid:
+                st.error(f"Ошибка ИНН: {error_msg}")
+            elif not query:
+                st.error("Укажите что искать (например: судебные дела, банкротство)")
             else:
                 source_key = search_source[0]
                 
                 if source_key == "all_search":
                     st.subheader("Результаты поиска")
+                    headers = {"X-Auth-Token": st.session_state.get("admin_token", "")}
                     
                     with st.spinner("Поиск через Perplexity..."):
                         try:
@@ -256,7 +270,8 @@ elif page == "Внешние данные":
                                 f"{API_BASE_URL}/utility/perplexity/search",
                                 max_retries=3,
                                 initial_timeout=90,
-                                json={"query": query}
+                                json={"inn": inn, "search_query": query},
+                                headers=headers
                             )
                             if resp.status_code == 200:
                                 result = resp.json()
@@ -281,7 +296,8 @@ elif page == "Внешние данные":
                                 f"{API_BASE_URL}/utility/tavily/search",
                                 max_retries=3,
                                 initial_timeout=60,
-                                json={"query": query, "max_results": 5, "include_answer": True}
+                                json={"inn": inn, "search_query": query, "max_results": 5, "include_answer": True},
+                                headers=headers
                             )
                             if resp.status_code == 200:
                                 result = resp.json()
@@ -301,6 +317,7 @@ elif page == "Внешние данные":
                             st.warning(f"Tavily: {e}")
 
                 elif source_key == "perplexity":
+                    headers = {"X-Auth-Token": st.session_state.get("admin_token", "")}
                     with st.spinner("Поиск через Perplexity..."):
                         try:
                             resp = request_with_retry(
@@ -308,7 +325,8 @@ elif page == "Внешние данные":
                                 f"{API_BASE_URL}/utility/perplexity/search",
                                 max_retries=3,
                                 initial_timeout=90,
-                                json={"query": query}
+                                json={"inn": inn, "search_query": query},
+                                headers=headers
                             )
                             if resp.status_code == 200:
                                 result = resp.json()
@@ -330,6 +348,7 @@ elif page == "Внешние данные":
                             st.error(f"Ошибка: {e}")
 
                 elif source_key == "tavily":
+                    headers = {"X-Auth-Token": st.session_state.get("admin_token", "")}
                     with st.spinner("Поиск через Tavily..."):
                         try:
                             resp = request_with_retry(
@@ -337,7 +356,8 @@ elif page == "Внешние данные":
                                 f"{API_BASE_URL}/utility/tavily/search",
                                 max_retries=3,
                                 initial_timeout=60,
-                                json={"query": query, "max_results": 5, "include_answer": True}
+                                json={"inn": inn, "search_query": query, "max_results": 5, "include_answer": True},
+                                headers=headers
                             )
                             if resp.status_code == 200:
                                 result = resp.json()
