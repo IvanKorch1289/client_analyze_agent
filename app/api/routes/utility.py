@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.services.http_client import AsyncHttpClient
+from app.services.openrouter_client import get_openrouter_client
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
 from app.storage.tarantool import TarantoolClient
@@ -33,6 +34,7 @@ class TavilyRequest(BaseModel):
 async def health_check() -> Dict[str, Any]:
     perplexity = PerplexityClient.get_instance()
     tavily = TavilyClient.get_instance()
+    openrouter = get_openrouter_client()
     issues: List[str] = []
 
     try:
@@ -59,11 +61,15 @@ async def health_check() -> Dict[str, Any]:
 
     perplexity_status = "ready" if perplexity.is_configured() else "not_configured"
     tavily_status = "ready" if tavily.is_configured() else "not_configured"
+    openrouter_configured = bool(openrouter.api_key)
+    openrouter_status = "ready" if openrouter_configured else "not_configured"
 
     if not perplexity.is_configured():
         issues.append("Perplexity API not configured")
     if not tavily.is_configured():
         issues.append("Tavily API not configured")
+    if not openrouter_configured:
+        issues.append("OpenRouter API not configured")
 
     overall_status = "healthy" if not issues else "degraded"
 
@@ -73,6 +79,11 @@ async def health_check() -> Dict[str, Any]:
         "components": {
             "http_client": http_status,
             "tarantool": tarantool_status,
+            "openrouter": {
+                "configured": openrouter_configured,
+                "status": openrouter_status,
+                "model": openrouter.model,
+            },
             "perplexity": {
                 "configured": perplexity.is_configured(),
                 "status": perplexity_status,
@@ -218,6 +229,18 @@ async def clear_perplexity_cache():
     client = PerplexityClient.get_instance()
     client.clear_cache()
     return {"status": "success", "message": "Perplexity cache cleared"}
+
+
+@utility_router.get("/openrouter/status")
+async def openrouter_status() -> Dict[str, Any]:
+    client = get_openrouter_client()
+    status = await client.check_status()
+    return {
+        "status": "success" if status.get("available") else "error",
+        "available": status.get("available", False),
+        "model": status.get("model", client.model),
+        "error": status.get("error"),
+    }
 
 
 @utility_router.get("/cache/metrics")
