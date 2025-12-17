@@ -190,8 +190,8 @@ async def validate_cache(confirm: bool, role: str = Depends(require_admin)):
 
 
 @utility_router.post("/perplexity/search")
-async def perplexity_search(request: PerplexityRequest, role: str = Depends(require_admin)):
-    """Search via Perplexity. Requires admin role."""
+async def perplexity_search(request: PerplexityRequest):
+    """Search via Perplexity."""
     if not validate_inn(request.inn):
         return {"status": "error", "message": "Неверный формат ИНН (должно быть 10 или 12 цифр)"}
     
@@ -223,8 +223,8 @@ async def perplexity_status():
 
 
 @utility_router.post("/tavily/search")
-async def tavily_search(request: TavilyRequest, role: str = Depends(require_admin)):
-    """Search via Tavily. Requires admin role."""
+async def tavily_search(request: TavilyRequest):
+    """Search via Tavily."""
     if not validate_inn(request.inn):
         return {"status": "error", "message": "Неверный формат ИНН (должно быть 10 или 12 цифр)"}
     
