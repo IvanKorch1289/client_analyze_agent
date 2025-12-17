@@ -64,9 +64,8 @@ python run.py
 Создайте файл `.env` на основе `.env.example`:
 
 ```env
-# Аутентификация
+# Аутентификация (требуется для административных функций)
 ADMIN_TOKEN=your_admin_token
-VIEWER_TOKEN=your_viewer_token
 
 # LLM
 OPENROUTER_API_KEY=your_openrouter_api_key

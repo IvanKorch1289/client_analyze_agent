@@ -3,12 +3,12 @@ LLM initialization module.
 Provides both sync LangChain-compatible LLM and async OpenRouter client.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langchain_core.language_models.llms import LLM
 
-from app.services.openrouter_client import OpenRouterClient, get_openrouter_client
+from app.services.openrouter_client import get_openrouter_client
 
 
 class OpenRouterLLM(LLM):

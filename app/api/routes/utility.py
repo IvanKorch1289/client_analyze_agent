@@ -6,6 +6,7 @@ cache operations, and external service status monitoring.
 """
 
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,7 +20,7 @@ from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
 from app.storage.tarantool import TarantoolClient
 from app.utility.auth import Role, get_current_role, require_admin
-from app.utility.pdf_generator import generate_analysis_pdf, save_pdf_report
+from app.utility.pdf_generator import save_pdf_report
 
 utility_router = APIRouter(
     prefix="/utility",
@@ -28,18 +29,33 @@ utility_router = APIRouter(
 )
 
 
+def validate_inn(inn: str) -> bool:
+    """Validate Russian INN format (10 or 12 digits)."""
+    return bool(re.match(r"^\d{10}$|^\d{12}$", inn))
+
+
 class PerplexityRequest(BaseModel):
-    query: str
+    inn: str
+    search_query: str
     search_recency: str = "month"
+    
+    @property
+    def query(self) -> str:
+        return f"ИНН {self.inn}: {self.search_query}. Ответь только фактами без предположений."
 
 
 class TavilyRequest(BaseModel):
-    query: str
+    inn: str
+    search_query: str
     search_depth: str = "basic"
     max_results: int = 5
     include_answer: bool = True
     include_domains: Optional[List[str]] = None
     exclude_domains: Optional[List[str]] = None
+    
+    @property
+    def query(self) -> str:
+        return f"ИНН {self.inn} {self.search_query}"
 
 
 @utility_router.get("/health")
@@ -174,7 +190,11 @@ async def validate_cache(confirm: bool, role: str = Depends(require_admin)):
 
 
 @utility_router.post("/perplexity/search")
-async def perplexity_search(request: PerplexityRequest):
+async def perplexity_search(request: PerplexityRequest, role: str = Depends(require_admin)):
+    """Search via Perplexity. Requires admin role."""
+    if not validate_inn(request.inn):
+        return {"status": "error", "message": "Неверный формат ИНН (должно быть 10 или 12 цифр)"}
+    
     client = PerplexityClient.get_instance()
 
     if not client.is_configured():
@@ -187,6 +207,7 @@ async def perplexity_search(request: PerplexityRequest):
     if result.get("success"):
         return {
             "status": "success",
+            "inn": request.inn,
             "content": result.get("content", ""),
             "citations": result.get("citations", []),
             "model": result.get("model"),
@@ -202,7 +223,11 @@ async def perplexity_status():
 
 
 @utility_router.post("/tavily/search")
-async def tavily_search(request: TavilyRequest):
+async def tavily_search(request: TavilyRequest, role: str = Depends(require_admin)):
+    """Search via Tavily. Requires admin role."""
+    if not validate_inn(request.inn):
+        return {"status": "error", "message": "Неверный формат ИНН (должно быть 10 или 12 цифр)"}
+    
     client = TavilyClient.get_instance()
 
     if not client.is_configured():
@@ -223,6 +248,7 @@ async def tavily_search(request: TavilyRequest):
     if result.get("success"):
         return {
             "status": "success",
+            "inn": request.inn,
             "answer": result.get("answer", ""),
             "results": result.get("results", []),
             "query": request.query,
@@ -466,5 +492,24 @@ async def get_auth_role(role: str = Depends(get_current_role)) -> Dict[str, Any]
     return {
         "role": role,
         "is_admin": role == Role.ADMIN,
-        "is_authorized": role in (Role.ADMIN, Role.VIEWER),
+    }
+
+
+@utility_router.get("/cache/entries")
+async def get_cache_entries(
+    limit: int = 10,
+    role: str = Depends(require_admin)
+) -> Dict[str, Any]:
+    """
+    Get first N cache entries. Requires admin role.
+    
+    Args:
+        limit: Maximum number of entries to return (default: 10)
+    """
+    client = await TarantoolClient.get_instance()
+    entries = await client.get_entries(limit=limit)
+    return {
+        "status": "success",
+        "entries": entries,
+        "count": len(entries),
     }

@@ -503,6 +503,57 @@ class TarantoolClient:
             return len(_memory_cache)
         return 0
 
+    async def get_entries(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get first N cache entries for dashboard display."""
+        await self._ensure_connection()
+        entries = []
+        
+        if self._use_memory:
+            now = time.time()
+            for i, (key, (value_packed, expires_at)) in enumerate(_memory_cache.items()):
+                if i >= limit:
+                    break
+                if now <= expires_at:
+                    try:
+                        data = self._decompress(value_packed)
+                        value = msgpack.unpackb(data, raw=False)
+                        entries.append({
+                            "key": key,
+                            "expires_in": int(expires_at - now),
+                            "size_bytes": len(value_packed),
+                            "preview": str(value)[:100] + "..." if len(str(value)) > 100 else str(value),
+                        })
+                    except Exception:
+                        entries.append({"key": key, "error": "unpack failed"})
+            return entries
+        
+        def do_get_entries():
+            result_entries = []
+            try:
+                result = self._connection.select(self._space, limit=limit)
+                now = time.time()
+                for row in result[:limit]:
+                    if len(row) >= 3:
+                        key, value_packed, expires_at = row[0], row[1], row[2]
+                        if now <= expires_at:
+                            try:
+                                data = self._decompress(value_packed)
+                                value = msgpack.unpackb(data, raw=False)
+                                result_entries.append({
+                                    "key": key,
+                                    "expires_in": int(expires_at - now),
+                                    "size_bytes": len(value_packed) if isinstance(value_packed, bytes) else 0,
+                                    "preview": str(value)[:100] + "..." if len(str(value)) > 100 else str(value),
+                                })
+                            except Exception:
+                                result_entries.append({"key": key, "error": "unpack failed"})
+            except Exception as e:
+                logger.error(f"Error getting entries: {e}", component="tarantool")
+            return result_entries
+        
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, do_get_entries)
+
     def get_config(self) -> Dict[str, Any]:
         return {
             "compression_threshold": self._config.compression_threshold,

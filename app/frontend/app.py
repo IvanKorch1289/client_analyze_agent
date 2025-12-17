@@ -491,9 +491,41 @@ elif page == "Утилиты":
     if not st.session_state.is_admin:
         st.info("Для управления кэшем необходимы права администратора. Введите токен в боковой панели.")
     else:
-        col1, col2 = st.columns(2)
-
         headers = {"X-Auth-Token": st.session_state.admin_token}
+        
+        with st.container(border=True):
+            st.markdown("##### Записи в кэше (первые 10)")
+            if st.button("Загрузить записи кэша"):
+                try:
+                    resp = requests.get(
+                        f"{API_BASE_URL}/utility/cache/entries?limit=10",
+                        headers=headers,
+                        timeout=15
+                    )
+                    if resp.status_code == 200:
+                        cache_data = resp.json()
+                        entries = cache_data.get("entries", [])
+                        if entries:
+                            for entry in entries:
+                                col1, col2, col3 = st.columns([3, 1, 1])
+                                with col1:
+                                    st.text(entry.get("key", "N/A")[:50])
+                                with col2:
+                                    size = entry.get("size_bytes", 0)
+                                    st.text(f"{size} байт")
+                                with col3:
+                                    expires = entry.get("expires_in", 0)
+                                    st.text(f"{expires}с")
+                        else:
+                            st.info("Кэш пуст")
+                    elif resp.status_code == 403:
+                        st.error("Доступ запрещён")
+                    else:
+                        st.error(f"Ошибка: {resp.status_code}")
+                except Exception as e:
+                    st.error(f"Ошибка: {e}")
+        
+        col1, col2 = st.columns(2)
 
         with col1:
             if st.button("Очистить кэш поиска"):
@@ -585,27 +617,3 @@ elif page == "Утилиты":
     except Exception as e:
         st.warning(f"Не удалось загрузить список отчётов: {e}")
 
-    st.divider()
-
-    st.subheader("TCP-сервер сообщений")
-
-    if st.button("Проверить TCP-сервер"):
-        try:
-            resp = requests.get(f"{API_BASE_URL}/utility/tcp/healthcheck", timeout=10)
-            if resp.status_code == 200:
-                tcp_data = resp.json()
-                status = tcp_data.get("status", "unknown")
-                
-                if status == "healthy":
-                    st.success(f"TCP-сервер: ЗДОРОВ")
-                elif status == "disconnected":
-                    st.warning("TCP-сервер: ОТКЛЮЧЁН")
-                else:
-                    st.info(f"TCP-сервер: {status}")
-                
-                with st.expander("Детали подключения"):
-                    st.json(tcp_data)
-            else:
-                st.error(f"Ошибка: {resp.status_code}")
-        except Exception as e:
-            st.error(f"Ошибка проверки: {e}")
