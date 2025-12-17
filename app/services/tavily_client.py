@@ -19,7 +19,7 @@ class TavilyClient:
     _instance: Optional["TavilyClient"] = None
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("TAVILY_TOKEN")
+        self.api_key = api_key or os.getenv("TAVILY_API_KEY")
         self._http_client: Optional[AsyncHttpClient] = None
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._cache_ttl = 300

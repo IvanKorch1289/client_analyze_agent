@@ -15,7 +15,7 @@ load_dotenv('.env')
 
 class PerplexityClient:
     BASE_URL = "https://api.perplexity.ai/chat/completions"
-    DEFAULT_MODEL = "sonar"
+    DEFAULT_MODEL = "sonar-pro"
 
     _instance: Optional["PerplexityClient"] = None
 

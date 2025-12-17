@@ -4,7 +4,7 @@ import logging
 import time
 import traceback
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -64,7 +64,7 @@ class AppLogger:
         self._add_timed_file_handler()
 
     def _add_timed_file_handler(self):
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         file_path = LOGS_DIR / f"{today}.log"
         file_handler = logging.FileHandler(file_path, encoding="utf-8")
         file_formatter = logging.Formatter(
@@ -80,7 +80,7 @@ class AppLogger:
         self._add_timed_file_handler()
 
     def _ensure_daily_log(self):
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         current_file = LOGS_DIR / f"{today}.log"
         if not any(
             isinstance(h, logging.FileHandler) and Path(h.baseFilename) == current_file
@@ -159,7 +159,7 @@ class AppLogger:
     def structured(self, level: str, event: str, component: str = "app", **extra: Any):
         self._ensure_daily_log()
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
             "level": level.upper(),
             "event": event,
             "component": component,
