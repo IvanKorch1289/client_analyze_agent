@@ -7,6 +7,7 @@ from app.services.http_client import AsyncHttpClient
 from app.services.openrouter_client import get_openrouter_client
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
+from app.services.tcp_message_client import get_tcp_client, TCPClientConfig
 from app.storage.tarantool import TarantoolClient
 
 utility_router = APIRouter(
@@ -319,3 +320,88 @@ async def tarantool_status() -> Dict[str, Any]:
             "mode": "unavailable",
             "message": str(e),
         }
+
+
+class TCPMessageRequest(BaseModel):
+    message: Dict[str, Any]
+    wait_response: bool = False
+
+
+class TCPConnectRequest(BaseModel):
+    host: str = "localhost"
+    port: int = 9000
+
+
+@utility_router.get("/tcp/status")
+async def tcp_status() -> Dict[str, Any]:
+    try:
+        client = await get_tcp_client()
+        return {
+            "status": "success",
+            "connected": client.is_connected,
+            "state": client.state.value,
+            "metrics": client.metrics.to_dict(),
+            "config": {
+                "host": client.config.host,
+                "port": client.config.port,
+            },
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@utility_router.post("/tcp/connect")
+async def tcp_connect(request: TCPConnectRequest) -> Dict[str, Any]:
+    try:
+        config = TCPClientConfig(host=request.host, port=request.port)
+        client = await get_tcp_client(config)
+        success = await client.connect()
+        return {
+            "status": "success" if success else "failed",
+            "connected": client.is_connected,
+            "host": request.host,
+            "port": request.port,
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@utility_router.post("/tcp/disconnect")
+async def tcp_disconnect() -> Dict[str, Any]:
+    try:
+        client = await get_tcp_client()
+        await client.disconnect()
+        return {"status": "success", "connected": False}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@utility_router.post("/tcp/send")
+async def tcp_send_message(request: TCPMessageRequest) -> Dict[str, Any]:
+    try:
+        client = await get_tcp_client()
+        if not client.is_connected:
+            return {"status": "error", "message": "Not connected to TCP server"}
+        
+        result = await client.send_message(request.message, wait_response=request.wait_response)
+        return {
+            "status": "success",
+            "result": result,
+            "metrics": client.metrics.to_dict(),
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@utility_router.post("/tcp/send-async")
+async def tcp_send_async(request: TCPMessageRequest) -> Dict[str, Any]:
+    try:
+        client = await get_tcp_client()
+        await client.send_message_async(request.message)
+        return {
+            "status": "queued",
+            "message": "Message added to send queue",
+            "queue_size": client._message_queue.qsize(),
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

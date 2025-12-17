@@ -141,6 +141,14 @@ Optimized cache client with batch operations and compression:
 - `DELETE /utility/cache/prefix/{prefix}` - Delete keys by prefix
 
 ## Recent Changes
+- 2025-12-17: External Data Tab Split & TCP Client
+  - Split "Внешние данные" into two tabs: "По ИНН" and "Поисковые запросы"
+  - INN validation (10 or 12 digits) for DaData/Casebook/InfoSphere
+  - Search queries for Perplexity/Tavily (text search)
+  - Added TCPMessageClient for async message sending with TCP server
+  - TCP endpoints: /utility/tcp/status, /utility/tcp/connect, /utility/tcp/send
+  - Added retry logic with increasing timeouts (60s -> 120s -> 240s, max 600s)
+  - Up to 3 retry attempts for timeout errors
 - 2025-12-17: Streamlit UI Reorganization & Timeout Improvements
   - Merged "Внешние запросы" into "Внешние данные" tab
   - Sources now include: DaData, Casebook, InfoSphere, Perplexity, Tavily
