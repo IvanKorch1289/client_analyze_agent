@@ -5,7 +5,7 @@ Report Analyzer Agent: анализирует результаты поиска 
 from datetime import datetime
 from typing import Any, Dict, List
 
-from app.advanced_funcs.logging_client import logger
+from app.utility.logging_client import logger
 
 
 def calculate_risk_score(search_results: List[Dict[str, Any]]) -> Dict[str, Any]:

@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 import time
 
-from app.advanced_funcs.logging_client import logger
+from app.utility.logging_client import logger
 
 
 class ConnectionState(Enum):

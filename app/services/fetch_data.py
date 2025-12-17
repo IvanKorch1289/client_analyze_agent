@@ -3,8 +3,8 @@ from typing import Any, Dict
 
 import xmltodict
 
-from app.advanced_funcs.logging_client import logger
-from app.advanced_funcs.utils import cache_response, clean_xml_dict
+from app.utility.logging_client import logger
+from app.utility import cache_response, clean_xml_dict
 from app.services.http_client import AsyncHttpClient
 from app.settings import settings
 

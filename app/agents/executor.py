@@ -1,5 +1,5 @@
-from app.advanced_funcs.logging_client import logger
-from app.server.mcp_server import execute_tool
+from app.utility.logging_client import logger
+from app.mcp_server.server import execute_tool
 
 
 async def tool_executor_agent(state: dict) -> dict:

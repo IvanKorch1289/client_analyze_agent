@@ -41,11 +41,6 @@ def set_request_id(request_id: Optional[str] = None) -> str:
 
 
 class AppLogger:
-    """
-    Универсальный логгер с цветным выводом в терминал и ежедневными файлами.
-    Может использоваться в любом месте приложения.
-    """
-
     _instance = None
     _console = Console()
 
@@ -56,8 +51,6 @@ class AppLogger:
         return cls._instance
 
     def _setup_handlers(self):
-        """Настройка: цветной терминал + файлы по дням"""
-        # 1. Терминал
         rich_handler = RichHandler(
             console=self._console,
             show_time=True,
@@ -68,15 +61,11 @@ class AppLogger:
         )
         rich_handler.setFormatter(logging.Formatter("%(message)s"))
         app_logger.addHandler(rich_handler)
-
-        # 2. Файл (ежедневный)
         self._add_timed_file_handler()
 
     def _add_timed_file_handler(self):
-        """Добавляет хэндлер для записи в файл с именем по дате"""
         today = datetime.now().strftime("%Y-%m-%d")
         file_path = LOGS_DIR / f"{today}.log"
-
         file_handler = logging.FileHandler(file_path, encoding="utf-8")
         file_formatter = logging.Formatter(
             "[%(asctime)s] %(levelname)s | %(name)s | %(message)s", datefmt="%H:%M:%S"
@@ -85,14 +74,12 @@ class AppLogger:
         app_logger.addHandler(file_handler)
 
     def _renew_file_handler(self):
-        """Обновляет файловый хэндлер при смене дня"""
         for handler in app_logger.handlers[:]:
             if isinstance(handler, logging.FileHandler):
                 app_logger.removeHandler(handler)
         self._add_timed_file_handler()
 
     def _ensure_daily_log(self):
-        """Проверяет, нужно ли обновить файл лога (смена дня)"""
         today = datetime.now().strftime("%Y-%m-%d")
         current_file = LOGS_DIR / f"{today}.log"
         if not any(
@@ -102,49 +89,38 @@ class AppLogger:
             self._renew_file_handler()
 
     def log_request(self, request: httpx.Request):
-        """Логирует HTTP-запрос"""
         self._ensure_daily_log()
-
         table = Table.grid(padding=(0, 1))
         table.add_column(style="bold cyan", width=10)
         table.add_column()
-
         table.add_row("➡️ ЗАПРОС", "")
         table.add_row("Метод", request.method)
         table.add_row("URL", str(request.url))
         table.add_row("Заголовки", self._format_headers(request.headers))
-
         if request.content:
             body = request.content.decode("utf-8", errors="replace")
             table.add_row("Тело", self._truncate(body, 500))
-
         app_logger.info("")
         self._console.print(table)
 
     def log_response(self, response: httpx.Response, duration: float = 0.0):
-        """Логирует HTTP-ответ (с обязательным duration)"""
         self._ensure_daily_log()
-
         request = response.request
         status_color = "red" if response.is_error else "green"
-
         table = Table.grid(padding=(0, 1))
         table.add_column(style="bold cyan", width=12)
         table.add_column()
-
         table.add_row("⬅️ ОТВЕТ", "")
         table.add_row("Метод", request.method)
         table.add_row("URL", str(request.url))
         table.add_row("Статус", Text(str(response.status_code), style=status_color))
         table.add_row("Время", f"{duration:.2f} с")
-
         try:
             body = response.text
             if body:
                 table.add_row("Тело", self._truncate(body, 500))
         except Exception as e:
             app_logger.debug(f"Failed to add body to table: {e}")
-
         app_logger.info("")
         self._console.print(table)
 
@@ -159,8 +135,6 @@ class AppLogger:
         if len(text) <= max_len:
             return text
         return text[:max_len] + "..."
-
-    # === Удобные методы для общего логирования ===
 
     def info(self, message: str, component: str = "app"):
         self._ensure_daily_log()
@@ -183,9 +157,7 @@ class AppLogger:
         app_logger.exception(f"[{component.upper()}] {message}")
 
     def structured(self, level: str, event: str, component: str = "app", **extra: Any):
-        """Structured JSON logging for machine parsing."""
         self._ensure_daily_log()
-
         log_entry = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "level": level.upper(),
@@ -194,7 +166,6 @@ class AppLogger:
             "request_id": get_request_id(),
             **extra,
         }
-
         json_str = json.dumps(log_entry, ensure_ascii=False, default=str)
         log_func = getattr(app_logger, level.lower(), app_logger.info)
         log_func(f"[STRUCTURED] {json_str}")
@@ -205,9 +176,7 @@ class AppLogger:
         component: str = "app",
         context: Optional[Dict[str, Any]] = None,
     ):
-        """Enhanced exception logging with full context."""
         self._ensure_daily_log()
-
         exc_info = {
             "exception_type": type(exc).__name__,
             "exception_message": str(exc),
@@ -216,17 +185,13 @@ class AppLogger:
         }
         if context:
             exc_info["context"] = context
-
         self.structured("error", "exception", component=component, **exc_info)
 
     def timed(self, operation: str, component: str = "app"):
-        """Context manager for timing operations."""
         return TimedOperation(operation, component, self)
 
 
 class TimedOperation:
-    """Context manager for timing and logging operations."""
-
     def __init__(self, operation: str, component: str, logger_instance: "AppLogger"):
         self.operation = operation
         self.component = component
@@ -244,7 +209,6 @@ class TimedOperation:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         duration_ms = (time.perf_counter() - self.start_time) * 1000
-
         if exc_type is not None:
             self.logger.structured(
                 "error",
@@ -262,7 +226,6 @@ class TimedOperation:
                 duration_ms=round(duration_ms, 2),
                 **self.extra,
             )
-
         return False
 
     async def __aenter__(self):

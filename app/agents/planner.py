@@ -2,9 +2,9 @@ import json
 
 from langchain_core.prompts import ChatPromptTemplate
 
-from app.advanced_funcs.logging_client import logger
+from app.utility.logging_client import logger
 from app.agents.llm_init import llm
-from app.server.mcp_server import get_available_tools
+from app.mcp_server.server import get_available_tools
 
 
 async def planner_agent(state: dict) -> dict:

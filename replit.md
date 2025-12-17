@@ -6,20 +6,31 @@
 ## Project Structure
 ```
 app/
-├── main.py            # FastAPI app entry point
-├── settings.py        # Configuration settings
-├── streamlit_app.py   # Streamlit frontend
-├── advanced_funcs/    # Logging utilities
-├── agents/            # LangGraph workflow agents
-│   ├── workflow.py    # Main agent graph
-│   ├── planner.py     # Planning agent
-│   ├── executor.py    # Tool execution
-│   └── analyzer.py    # Analysis agent
-├── api/routes/        # FastAPI API routes
-├── server/            # MCP server
-├── services/          # HTTP client, data fetching
-├── storage/           # Tarantool/in-memory cache
-└── templates/         # HTML templates
+├── main.py              # FastAPI app entry point
+├── settings.py          # Configuration settings
+├── frontend/            # Streamlit web interface
+│   └── app.py           # Streamlit application
+├── utility/             # Logging, caching, helpers
+│   ├── logging_client.py
+│   ├── cache.py
+│   ├── helpers.py
+│   └── tcp_client.py    # TCP message client
+├── agents/              # LangGraph workflow agents
+│   ├── workflow.py      # Main agent graph
+│   ├── orchestrator.py  # Orchestrator agent
+│   ├── search.py        # Search agent
+│   └── report_analyzer.py
+├── api/routes/          # FastAPI API routes
+├── mcp_server/          # MCP server
+│   ├── server.py        # MCP server core
+│   └── tools.py         # MCP tools
+├── services/            # External API clients
+│   ├── http_client.py   # HTTP client with resilience
+│   ├── perplexity_client.py
+│   ├── tavily_client.py
+│   └── openrouter_client.py
+├── storage/             # Tarantool/in-memory cache
+└── templates/           # HTML templates
 ```
 
 ## Architecture

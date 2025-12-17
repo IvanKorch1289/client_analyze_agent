@@ -115,23 +115,30 @@ curl http://localhost:8000/utility/circuit-breakers
 ```
 app/
 ├── main.py              # FastAPI приложение
-├── streamlit_app.py     # Streamlit UI
 ├── settings.py          # Конфигурация
+├── frontend/            # Web-интерфейс
+│   └── app.py           # Streamlit UI
+├── utility/             # Утилиты
+│   ├── logging_client.py  # Логирование
+│   ├── cache.py         # Декоратор кэширования
+│   ├── helpers.py       # Вспомогательные функции
+│   └── tcp_client.py    # TCP-клиент
 ├── agents/              # LangGraph агенты
 │   ├── orchestrator.py  # Оркестратор
 │   ├── search.py        # Поисковый агент
 │   ├── report_analyzer.py  # Анализатор
 │   └── workflow.py      # Граф workflow
 ├── api/routes/          # API роуты
+├── mcp_server/          # MCP сервер
+│   ├── server.py        # MCP ядро
+│   └── tools.py         # Инструменты MCP
 ├── services/            # Клиенты внешних сервисов
 │   ├── http_client.py   # HTTP с circuit breaker
 │   ├── openrouter_client.py
 │   ├── perplexity_client.py
-│   ├── tavily_client.py
-│   └── tcp_message_client.py
-├── storage/             # Кэширование
-│   └── tarantool.py
-└── server/              # MCP сервер
+│   └── tavily_client.py
+└── storage/             # Кэширование
+    └── tarantool.py
 ```
 
 ## Уровни риска

@@ -7,7 +7,7 @@ import asyncio
 import time
 from typing import Any, Dict, Optional
 
-from app.advanced_funcs.logging_client import logger
+from app.utility.logging_client import logger
 from app.services.perplexity_client import PerplexityClient
 
 MAX_CONCURRENT_SEARCHES = 3

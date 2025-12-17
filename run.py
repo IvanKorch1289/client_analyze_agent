@@ -23,7 +23,7 @@ def run_streamlit():
     time.sleep(2)
     subprocess.run([
         sys.executable, "-m", "streamlit", "run",
-        "app/streamlit_app.py",
+        "app/frontend/app.py",
         "--server.port=5000",
         "--server.address=0.0.0.0",
         "--server.headless=true",

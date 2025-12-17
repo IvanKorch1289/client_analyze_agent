@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from typing import Any, Dict
 
-from app.advanced_funcs.logging_client import logger
+from app.utility.logging_client import logger
 
 REPORTS_DIR = "reports"
 

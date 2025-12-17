@@ -5,7 +5,7 @@ Agent-Orchestrator: координирует workflow анализа клиен�
 
 from typing import Any, Dict, List
 
-from app.advanced_funcs.logging_client import logger
+from app.utility.logging_client import logger
 
 SEARCH_INTENTS = [
     {

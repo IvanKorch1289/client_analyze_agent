@@ -5,7 +5,7 @@ from typing import List, Literal, TypedDict
 from langchain_core.runnables import Runnable
 from langgraph.graph import END, StateGraph
 
-from app.advanced_funcs.logging_client import logger
+from app.utility.logging_client import logger
 from app.agents.analyzer import analyzer_agent
 from app.agents.executor import tool_executor_agent
 from app.agents.planner import planner_agent

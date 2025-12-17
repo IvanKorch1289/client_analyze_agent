@@ -10,11 +10,11 @@ import uvicorn
 from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.advanced_funcs.logging_client import get_request_id, logger, set_request_id
+from app.utility.logging_client import get_request_id, logger, set_request_id
 from app.api.routes.agent import agent_router
 from app.api.routes.data import data_router
 from app.api.routes.utility import utility_router
-from app.server.mcp_server import run_mcp_server
+from app.mcp_server.server import run_mcp_server
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
 
@@ -39,7 +39,7 @@ def run_streamlit():
             "-m",
             "streamlit",
             "run",
-            "app/streamlit_app.py",
+            "app/frontend/app.py",
             f"--server.port={STREAMLIT_PORT}",
             "--server.address=0.0.0.0",
             "--server.headless=true",

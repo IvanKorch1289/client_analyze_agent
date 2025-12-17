@@ -14,7 +14,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from app.advanced_funcs.logging_client import logger
+from app.utility.logging_client import logger
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 

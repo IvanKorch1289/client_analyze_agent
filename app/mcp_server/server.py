@@ -2,14 +2,13 @@ from typing import Any, Dict, List
 
 from fastmcp import Client, FastMCP
 
-from app.advanced_funcs.logging_client import logger
+from app.utility.logging_client import logger
 
 mcp = FastMCP("AgentToolsServer")
 mcp_client = Client(mcp)
 
 
 async def get_available_tools() -> List[Dict[str, Any]]:
-    """Получает список доступных инструментов с MCP-сервера."""
     async with mcp_client:
         tools = await mcp_client.list_tools()
         tool_descriptions = []
@@ -29,7 +28,6 @@ async def get_available_tools() -> List[Dict[str, Any]]:
 
 
 async def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> Any:
-    """Выполняет инструмент на MCP-сервере."""
     try:
         async with mcp_client:
             result = await mcp_client.call_tool(

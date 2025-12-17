@@ -7,7 +7,7 @@ import asyncio
 import time
 from typing import Any, Dict, List
 
-from app.advanced_funcs.logging_client import logger
+from app.utility.logging_client import logger
 from app.services.fetch_data import (
     fetch_from_casebook,
     fetch_from_dadata,

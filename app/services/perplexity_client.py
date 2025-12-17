@@ -2,7 +2,7 @@ import hashlib
 import os
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from app.advanced_funcs.logging_client import logger
+from app.utility.logging_client import logger
 from app.services.http_client import (
     AsyncHttpClient,
     CircuitBreakerOpenError,

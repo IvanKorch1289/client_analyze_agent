@@ -10,7 +10,7 @@ from typing import Any, AsyncGenerator, Dict, List, Literal, Optional, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from app.advanced_funcs.logging_client import logger
+from app.utility.logging_client import logger
 from app.agents.data_collector import data_collector_agent
 from app.agents.file_writer import file_writer_agent
 from app.agents.orchestrator import orchestrator_agent

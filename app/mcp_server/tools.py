@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 import aiofiles
 
-from app.server.mcp_server import mcp
+from app.mcp_server.server import mcp
 from app.services.fetch_data import fetch_company_info
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient

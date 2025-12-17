@@ -7,7 +7,7 @@ from app.services.http_client import AsyncHttpClient
 from app.services.openrouter_client import get_openrouter_client
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
-from app.services.tcp_message_client import get_tcp_client, TCPClientConfig
+from app.utility.tcp_client import get_tcp_client, TCPClientConfig
 from app.storage.tarantool import TarantoolClient
 
 utility_router = APIRouter(
