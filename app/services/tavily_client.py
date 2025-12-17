@@ -7,6 +7,10 @@ from app.services.http_client import (
     AsyncHttpClient,
     CircuitBreakerOpenError,
 )
+from dotenv import load_dotenv
+
+
+load_dotenv('.env')
 
 
 class TavilyClient:
