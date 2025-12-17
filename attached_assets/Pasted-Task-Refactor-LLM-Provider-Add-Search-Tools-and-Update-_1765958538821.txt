@@ -1,0 +1,55 @@
+Task: Refactor LLM Provider, Add Search Tools, and Update Streamlit UI
+Act as a Senior Python Developer. We need to perform a major update on the current project involving FastAPI, LangChain, and Streamlit. Follow these steps sequentially.
+
+1. Fix LLM Provider (Critical)
+The current HuggingFace model implementation is insufficient for text analysis tasks.
+
+Action: Replace the current HuggingFace LLM implementation with OpenRouter.
+
+Implementation Details:
+
+Use langchain_openai.ChatOpenAI.
+
+Set base_url to "https://openrouter.ai/api/v1".
+
+Use the OPENROUTER_API_KEY from environment variables.
+
+Set the default model to a capable analysis model (e.g., anthropic/claude-3.5-sonnet or openai/gpt-4o, depending on what's available/cheaper in your context, or perplexity/sonar if available via OpenRouter).
+
+Verification: Ensure the analysis agents now use this new OpenRouter client.
+
+2. Add Search Service Routes
+We need direct access to search tools.
+
+Backend (FastAPI):
+
+Create new API endpoints (routes) for Perplexity search and Tavily search.
+
+Ensure these endpoints accept a query string and return the search results (JSON).
+
+Handle API keys for these services securely from .env.
+
+Verification: Test these endpoints to ensure they return data.
+
+3. Update Streamlit Utilities Page (Dashboard)
+Refactor the existing "Utilities" page in Streamlit.
+
+Design: Convert the layout into a Service Dashboard.
+
+Components:
+
+Instead of a simple list, display Status Cards for each service (LLM, Perplexity, Tavily, Redis/Tarantool).
+
+Add a "Check Status" button for each service.
+
+When clicked, the button should call the backend health/check endpoints and update the card color (Green for OK, Red for Error) and display latency/status.
+
+Add a section to test the new Search Routes (input field + "Search via Perplexity" / "Search via Tavily" buttons) and display results.
+
+4. Code Cleanup
+Analyze the project for unused imports, deprecated functions from the old HuggingFace implementation, and dead code.
+
+Remove them to keep the codebase clean.
+
+5. Execution Rule
+IMPORTANT: After applying changes for each step above, automatically run make all in the shell to ensure tests pass and linting is correct. Do not proceed to the next step if make all fails.
