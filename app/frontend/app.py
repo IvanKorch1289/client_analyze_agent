@@ -365,6 +365,38 @@ elif page == "Утилиты":
 
     if "service_statuses" not in st.session_state:
         st.session_state.service_statuses = {}
+    if "admin_token" not in st.session_state:
+        st.session_state.admin_token = ""
+    if "is_admin" not in st.session_state:
+        st.session_state.is_admin = False
+
+    with st.sidebar:
+        st.divider()
+        st.subheader("Авторизация")
+        admin_token = st.text_input(
+            "Токен администратора",
+            type="password",
+            value=st.session_state.admin_token,
+            help="Введите ADMIN_TOKEN для доступа к административным функциям"
+        )
+        if admin_token != st.session_state.admin_token:
+            st.session_state.admin_token = admin_token
+            try:
+                resp = requests.get(
+                    f"{API_BASE_URL}/utility/auth/role",
+                    headers={"X-Auth-Token": admin_token},
+                    timeout=5
+                )
+                if resp.status_code == 200:
+                    role_data = resp.json()
+                    st.session_state.is_admin = role_data.get("is_admin", False)
+            except:
+                st.session_state.is_admin = False
+        
+        if st.session_state.is_admin:
+            st.success("Администратор")
+        elif st.session_state.admin_token:
+            st.warning("Неверный токен")
 
     def check_service_status(service_name: str, endpoint: str, timeout: int = 10) -> dict:
         try:
@@ -423,32 +455,49 @@ elif page == "Утилиты":
 
     st.divider()
 
-    st.subheader("Управление кэшем Tarantool")
+    st.subheader("Управление кэшем")
 
-    col1, col2 = st.columns(2)
+    if not st.session_state.is_admin:
+        st.info("Для управления кэшем необходимы права администратора. Введите токен в боковой панели.")
+    else:
+        col1, col2 = st.columns(2)
 
-    with col1:
-        if st.button("Очистить кэш Tarantool"):
-            try:
-                resp = requests.delete(f"{API_BASE_URL}/utility/cache/prefix/search:", timeout=10)
-                if resp.status_code == 200:
-                    st.success("Кэш Tarantool очищен!")
-                else:
-                    st.error(f"Ошибка: {resp.status_code}")
-            except Exception as e:
-                st.error(f"Ошибка: {e}")
+        headers = {"X-Auth-Token": st.session_state.admin_token}
 
-    with col2:
-        confirm = st.checkbox("Подтвердить полную очистку")
-        if st.button("Очистить весь кэш", disabled=not confirm):
-            try:
-                resp = requests.get(f"{API_BASE_URL}/utility/validate_cache?confirm=true", timeout=10)
-                if resp.status_code == 200:
-                    st.success("Весь кэш очищен!")
-                else:
-                    st.error(f"Ошибка: {resp.status_code}")
-            except Exception as e:
-                st.error(f"Ошибка: {e}")
+        with col1:
+            if st.button("Очистить кэш поиска"):
+                try:
+                    resp = requests.delete(
+                        f"{API_BASE_URL}/utility/cache/prefix/search:",
+                        headers=headers,
+                        timeout=10
+                    )
+                    if resp.status_code == 200:
+                        st.success("Кэш поиска очищен!")
+                    elif resp.status_code == 403:
+                        st.error("Доступ запрещён. Проверьте токен.")
+                    else:
+                        st.error(f"Ошибка: {resp.status_code}")
+                except Exception as e:
+                    st.error(f"Ошибка: {e}")
+
+        with col2:
+            confirm = st.checkbox("Подтвердить полную очистку")
+            if st.button("Очистить весь кэш", disabled=not confirm):
+                try:
+                    resp = requests.get(
+                        f"{API_BASE_URL}/utility/validate_cache?confirm=true",
+                        headers=headers,
+                        timeout=10
+                    )
+                    if resp.status_code == 200:
+                        st.success("Весь кэш очищен!")
+                    elif resp.status_code == 403:
+                        st.error("Доступ запрещён. Проверьте токен.")
+                    else:
+                        st.error(f"Ошибка: {resp.status_code}")
+                except Exception as e:
+                    st.error(f"Ошибка: {e}")
 
     st.divider()
 
@@ -477,3 +526,55 @@ elif page == "Утилиты":
                 st.json(components)
     else:
         st.info("Нажмите 'Проверить все сервисы' для просмотра состояния системы")
+
+    st.divider()
+
+    st.subheader("Отчёты PDF")
+
+    try:
+        resp = requests.get(f"{API_BASE_URL}/utility/reports/list", timeout=10)
+        if resp.status_code == 200:
+            reports_data = resp.json()
+            reports = reports_data.get("reports", [])
+            
+            if reports:
+                st.write(f"Найдено отчётов: {len(reports)}")
+                for report in reports[:10]:
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    with col1:
+                        st.text(report.get("filename", "Без имени"))
+                    with col2:
+                        size_kb = report.get("size_bytes", 0) / 1024
+                        st.text(f"{size_kb:.1f} KB")
+                    with col3:
+                        download_url = f"{API_BASE_URL}{report.get('download_url', '')}"
+                        st.markdown(f"[Скачать]({download_url})")
+            else:
+                st.info("Нет сохранённых отчётов")
+    except Exception as e:
+        st.warning(f"Не удалось загрузить список отчётов: {e}")
+
+    st.divider()
+
+    st.subheader("TCP-сервер сообщений")
+
+    if st.button("Проверить TCP-сервер"):
+        try:
+            resp = requests.get(f"{API_BASE_URL}/utility/tcp/healthcheck", timeout=10)
+            if resp.status_code == 200:
+                tcp_data = resp.json()
+                status = tcp_data.get("status", "unknown")
+                
+                if status == "healthy":
+                    st.success(f"TCP-сервер: ЗДОРОВ")
+                elif status == "disconnected":
+                    st.warning("TCP-сервер: ОТКЛЮЧЁН")
+                else:
+                    st.info(f"TCP-сервер: {status}")
+                
+                with st.expander("Детали подключения"):
+                    st.json(tcp_data)
+            else:
+                st.error(f"Ошибка: {resp.status_code}")
+        except Exception as e:
+            st.error(f"Ошибка проверки: {e}")

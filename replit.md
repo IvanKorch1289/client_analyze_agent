@@ -152,6 +152,16 @@ Optimized cache client with batch operations and compression:
 - `DELETE /utility/cache/prefix/{prefix}` - Delete keys by prefix
 
 ## Recent Changes
+- 2025-12-17: Role-Based Access Control & PDF Reports
+  - Added auth module (app/utility/auth.py) with token-based roles (admin, viewer, guest)
+  - Protected cache management endpoints with admin role (X-Auth-Token header)
+  - Added PDF report generator (app/utility/pdf_generator.py) using fpdf2
+  - New endpoints: /utility/reports/pdf, /utility/reports/list, /utility/reports/download/{filename}
+  - Added TCP healthcheck endpoint: /utility/tcp/healthcheck
+  - Updated Streamlit UI with admin authentication and PDF reports section
+  - Removed unused templates folder and notes functionality
+  - Replaced notes with reports directory for file storage
+  - Added PostgreSQL database for future persistence needs
 - 2025-12-17: External Data Tab Split & TCP Client
   - Split "Внешние данные" into two tabs: "По ИНН" and "Поисковые запросы"
   - INN validation (10 or 12 digits) for DaData/Casebook/InfoSphere

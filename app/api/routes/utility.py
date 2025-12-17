@@ -119,7 +119,8 @@ async def get_circuit_breakers(service: Optional[str] = None) -> Dict[str, Any]:
 
 
 @utility_router.post("/circuit-breakers/{service}/reset")
-async def reset_circuit_breaker(service: str) -> Dict[str, Any]:
+async def reset_circuit_breaker(service: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """Reset circuit breaker for a service. Requires admin role."""
     try:
         http_client = await AsyncHttpClient.get_instance()
         success = http_client.reset_circuit_breaker(service)
@@ -144,7 +145,8 @@ async def get_metrics(service: Optional[str] = None) -> Dict[str, Any]:
 
 
 @utility_router.post("/metrics/reset")
-async def reset_metrics(service: Optional[str] = None) -> Dict[str, Any]:
+async def reset_metrics(service: Optional[str] = None, role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """Reset HTTP metrics. Requires admin role."""
     try:
         http_client = await AsyncHttpClient.get_instance()
         http_client.reset_metrics(service)
