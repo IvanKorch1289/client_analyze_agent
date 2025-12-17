@@ -3,10 +3,10 @@ from typing import Any, Dict
 
 import xmltodict
 
-from app.utility.logging_client import logger
-from app.utility import cache_response, clean_xml_dict
 from app.services.http_client import AsyncHttpClient
 from app.settings import settings
+from app.utility import cache_response, clean_xml_dict
+from app.utility.logging_client import logger
 
 
 @cache_response(ttl=7200)

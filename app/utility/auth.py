@@ -9,7 +9,7 @@ import os
 import secrets
 from typing import Optional
 
-from fastapi import Depends, HTTPException, Header, status
+from fastapi import Depends, Header, HTTPException, status
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 VIEWER_TOKEN = os.getenv("VIEWER_TOKEN", "")

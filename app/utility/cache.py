@@ -2,8 +2,8 @@ import hashlib
 from functools import wraps
 from typing import Any, Callable
 
-from app.utility.logging_client import logger
 from app.storage.tarantool import TarantoolClient
+from app.utility.logging_client import logger
 
 
 def cache_response(ttl: int = 3600):

@@ -12,14 +12,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from app.services.email_client import EmailClient
 from app.services.http_client import AsyncHttpClient
 from app.services.openrouter_client import get_openrouter_client
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
-from app.utility.auth import get_current_role, require_admin, Role
-from app.utility.tcp_client import get_tcp_client, TCPClientConfig
-from app.utility.pdf_generator import generate_analysis_pdf, save_pdf_report
 from app.storage.tarantool import TarantoolClient
+from app.utility.auth import Role, get_current_role, require_admin
+from app.utility.pdf_generator import generate_analysis_pdf, save_pdf_report
+from app.utility.tcp_client import TCPClientConfig, get_tcp_client
 
 utility_router = APIRouter(
     prefix="/utility",
@@ -477,6 +478,20 @@ async def tcp_healthcheck() -> Dict[str, Any]:
             "connected": False,
             "message": str(e),
         }
+
+
+@utility_router.get("/email/status")
+async def email_status() -> Dict[str, Any]:
+    """Get email service status and health check."""
+    client = EmailClient.get_instance()
+    return client.get_status()
+
+
+@utility_router.get("/email/healthcheck")
+async def email_healthcheck() -> Dict[str, Any]:
+    """Perform SMTP server health check."""
+    client = EmailClient.get_instance()
+    return client.check_health()
 
 
 class PDFReportRequest(BaseModel):

@@ -2,13 +2,14 @@ import hashlib
 import os
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from app.utility.logging_client import logger
+import httpx
+from dotenv import load_dotenv
+
 from app.services.http_client import (
     AsyncHttpClient,
     CircuitBreakerOpenError,
 )
-from dotenv import load_dotenv
-
+from app.utility.logging_client import logger
 
 load_dotenv('.env')
 
@@ -132,19 +133,36 @@ class PerplexityClient:
                 "circuit_breaker": True,
             }
 
-        except Exception as e:
-            error_msg = str(e)
+        except httpx.TimeoutException as e:
             logger.error(
-                f"Perplexity request failed: {error_msg}", component="perplexity"
+                f"Perplexity request timeout: {type(e).__name__}",
+                component="perplexity",
             )
+            return {
+                "success": False,
+                "error": "Perplexity request timeout - сервис не ответил вовремя",
+                "timeout": True,
+            }
 
-            if "status_code" in error_msg:
-                if "401" in error_msg or "403" in error_msg:
-                    return {"success": False, "error": "Invalid Perplexity API key"}
-                elif "429" in error_msg:
-                    return {"success": False, "error": "Perplexity rate limit exceeded"}
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code
+            logger.error(
+                f"Perplexity HTTP error: {status_code} - {e.response.text[:200]}",
+                component="perplexity",
+            )
+            if status_code in (401, 403):
+                return {"success": False, "error": "Invalid Perplexity API key"}
+            elif status_code == 429:
+                return {"success": False, "error": "Perplexity rate limit exceeded"}
+            return {"success": False, "error": f"HTTP {status_code}: {e.response.text[:100]}"}
 
-            return {"success": False, "error": error_msg}
+        except Exception as e:
+            error_msg = str(e) or type(e).__name__
+            logger.error(
+                f"Perplexity request failed: {type(e).__name__}: {error_msg}",
+                component="perplexity",
+            )
+            return {"success": False, "error": error_msg or "Неизвестная ошибка"}
 
     async def ask(
         self,

@@ -7,8 +7,8 @@ import asyncio
 import time
 from typing import Any, Dict, Optional
 
-from app.utility.logging_client import logger
 from app.services.perplexity_client import PerplexityClient
+from app.utility.logging_client import logger
 
 MAX_CONCURRENT_SEARCHES = 3
 API_DELAY_SECONDS = 0.5

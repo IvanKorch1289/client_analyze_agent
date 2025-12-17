@@ -5,8 +5,8 @@ Provides both sync LangChain-compatible LLM and async OpenRouter client.
 
 from typing import Any, Dict, List, Optional
 
-from langchain_core.language_models.llms import LLM
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+from langchain_core.language_models.llms import LLM
 
 from app.services.openrouter_client import OpenRouterClient, get_openrouter_client
 
@@ -42,8 +42,9 @@ class OpenRouterLLM(LLM):
         **kwargs: Any,
     ) -> str:
         """Synchronous call to OpenRouter API."""
-        import httpx
         import os
+
+        import httpx
 
         api_key = self.api_key or os.getenv("OPENROUTER_API_KEY")
 

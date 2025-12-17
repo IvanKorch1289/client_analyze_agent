@@ -9,9 +9,9 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.utility.logging_client import logger
 from app.agents.client_workflow import run_client_analysis_streaming
 from app.agents.workflow import AgentState, invoke_graph_with_persistence
+from app.utility.logging_client import logger
 
 agent_router = APIRouter(prefix="/agent", tags=["Агент"])
 

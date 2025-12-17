@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import msgpack
 
-from app.utility.logging_client import logger
 from app.settings import settings
+from app.utility.logging_client import logger
 
 try:
     import tarantool

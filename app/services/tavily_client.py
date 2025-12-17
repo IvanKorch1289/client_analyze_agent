@@ -2,13 +2,14 @@ import hashlib
 import os
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from app.utility.logging_client import logger
+import httpx
+from dotenv import load_dotenv
+
 from app.services.http_client import (
     AsyncHttpClient,
     CircuitBreakerOpenError,
 )
-from dotenv import load_dotenv
-
+from app.utility.logging_client import logger
 
 load_dotenv('.env')
 
@@ -146,17 +147,36 @@ class TavilyClient:
                 "circuit_breaker": True,
             }
 
+        except httpx.TimeoutException as e:
+            logger.error(
+                f"Tavily request timeout: {type(e).__name__}",
+                component="tavily",
+            )
+            return {
+                "success": False,
+                "error": "Tavily request timeout - сервис не ответил вовремя",
+                "timeout": True,
+            }
+
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code
+            logger.error(
+                f"Tavily HTTP error: {status_code}",
+                component="tavily",
+            )
+            if status_code in (401, 403):
+                return {"success": False, "error": "Invalid Tavily API key"}
+            elif status_code == 429:
+                return {"success": False, "error": "Tavily rate limit exceeded"}
+            return {"success": False, "error": f"HTTP {status_code}"}
+
         except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Tavily request failed: {error_msg}", component="tavily")
-
-            if "status_code" in error_msg:
-                if "401" in error_msg or "403" in error_msg:
-                    return {"success": False, "error": "Invalid Tavily API key"}
-                elif "429" in error_msg:
-                    return {"success": False, "error": "Tavily rate limit exceeded"}
-
-            return {"success": False, "error": error_msg}
+            error_msg = str(e) or type(e).__name__
+            logger.error(
+                f"Tavily request failed: {type(e).__name__}: {error_msg}",
+                component="tavily",
+            )
+            return {"success": False, "error": error_msg or "Неизвестная ошибка"}
 
     async def search_with_fallback(
         self,

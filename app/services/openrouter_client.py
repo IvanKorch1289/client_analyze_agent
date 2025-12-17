@@ -3,8 +3,8 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from app.utility.logging_client import logger
 from app.settings import settings
+from app.utility.logging_client import logger
 
 
 class OpenRouterClient:

@@ -7,9 +7,9 @@ Russian text and structured report formatting.
 
 import io
 import os
+import unicodedata
 from datetime import datetime
 from typing import Any, Dict, Optional
-import unicodedata
 
 from fpdf import FPDF
 

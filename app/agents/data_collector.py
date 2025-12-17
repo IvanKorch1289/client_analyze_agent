@@ -7,7 +7,6 @@ import asyncio
 import time
 from typing import Any, Dict, List
 
-from app.utility.logging_client import logger
 from app.services.fetch_data import (
     fetch_from_casebook,
     fetch_from_dadata,
@@ -15,6 +14,7 @@ from app.services.fetch_data import (
 )
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
+from app.utility.logging_client import logger
 
 MAX_CONCURRENT = 5
 SEARCH_TIMEOUT = 60

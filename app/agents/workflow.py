@@ -5,11 +5,11 @@ from typing import List, Literal, TypedDict
 from langchain_core.runnables import Runnable
 from langgraph.graph import END, StateGraph
 
-from app.utility.logging_client import logger
 from app.agents.analyzer import analyzer_agent
 from app.agents.executor import tool_executor_agent
 from app.agents.planner import planner_agent
 from app.storage.tarantool import save_thread_to_tarantool
+from app.utility.logging_client import logger
 
 
 class AgentState(TypedDict):

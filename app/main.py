@@ -10,13 +10,13 @@ import uvicorn
 from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.utility.logging_client import get_request_id, logger, set_request_id
 from app.api.routes.agent import agent_router
 from app.api.routes.data import data_router
 from app.api.routes.utility import utility_router
 from app.mcp_server.server import run_mcp_server
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
+from app.utility.logging_client import get_request_id, logger, set_request_id
 
 # Get backend port from environment or use default
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))

@@ -418,9 +418,12 @@ elif page == "Утилиты":
                 "perplexity": check_service_status("Perplexity", "/utility/perplexity/status"),
                 "tavily": check_service_status("Tavily", "/utility/tavily/status"),
                 "tarantool": check_service_status("Tarantool", "/utility/tarantool/status"),
+                "email": check_service_status("Email", "/utility/email/status"),
+                "tcp": check_service_status("TCP", "/utility/tcp/healthcheck"),
                 "health": check_service_status("Здоровье", "/utility/health"),
             }
 
+    st.markdown("##### Основные сервисы")
     cols = st.columns(4)
     
     services = [
@@ -433,7 +436,7 @@ elif page == "Утилиты":
     for col, name, key in services:
         with col:
             status = st.session_state.service_statuses.get(key, {})
-            st.markdown(f"#### {name}")
+            st.markdown(f"**{name}**")
             if not status:
                 st.info("Ожидание")
             elif status.get("status") == "ok":
@@ -452,6 +455,37 @@ elif page == "Утилиты":
                     st.caption(f"Записей: {cache.get('size', 0)}")
             else:
                 st.error(f"{status.get('error', 'Ошибка')}")
+
+    st.markdown("##### Инфраструктура")
+    cols2 = st.columns(2)
+    
+    infra_services = [
+        (cols2[0], "Email (SMTP)", "email"),
+        (cols2[1], "TCP Server", "tcp"),
+    ]
+
+    for col, name, key in infra_services:
+        with col:
+            status = st.session_state.service_statuses.get(key, {})
+            st.markdown(f"**{name}**")
+            if not status:
+                st.info("Ожидание")
+            elif status.get("status") == "ok":
+                latency = status.get("latency", 0)
+                st.success(f"ОК ({latency:.2f}с)")
+                data = status.get("data", {})
+                if key == "email":
+                    health = data.get("health", {})
+                    email_status = health.get("status", "unknown")
+                    if email_status == "not_configured":
+                        st.caption("SMTP не настроен")
+                    else:
+                        st.caption(f"SMTP: {data.get('smtp_host', 'Н/Д')}")
+                elif key == "tcp":
+                    st.caption(f"Статус: {data.get('status', 'Н/Д')}")
+                    st.caption(f"Подключён: {'Да' if data.get('connected') else 'Нет'}")
+            else:
+                st.warning(f"{status.get('error', 'Не доступен')}")
 
     st.divider()
 

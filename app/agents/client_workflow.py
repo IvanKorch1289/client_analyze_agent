@@ -10,12 +10,12 @@ from typing import Any, AsyncGenerator, Dict, List, Literal, Optional, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from app.utility.logging_client import logger
 from app.agents.data_collector import data_collector_agent
 from app.agents.file_writer import file_writer_agent
 from app.agents.orchestrator import orchestrator_agent
 from app.agents.report_analyzer import report_analyzer_agent
 from app.storage.tarantool import save_thread_to_tarantool
+from app.utility.logging_client import logger
 
 
 class ClientAnalysisState(TypedDict, total=False):
