@@ -11,7 +11,10 @@ from typing import Optional
 
 from fastapi import Depends, Header, HTTPException, status
 
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+
+def get_admin_token() -> str:
+    """Get admin token from environment (reads at request time)."""
+    return os.getenv("ADMIN_TOKEN", "")
 
 
 class Role:
@@ -43,7 +46,8 @@ def get_current_role(x_auth_token: Optional[str] = Header(None, alias="X-Auth-To
     if not x_auth_token:
         return Role.GUEST
     
-    if ADMIN_TOKEN and x_auth_token == ADMIN_TOKEN:
+    admin_token = get_admin_token()
+    if admin_token and x_auth_token.strip() == admin_token.strip():
         return Role.ADMIN
     
     return Role.GUEST
