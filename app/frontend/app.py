@@ -51,9 +51,55 @@ if "threads" not in st.session_state:
     st.session_state.threads = []
 if "page" not in st.session_state:
     st.session_state.page = "Запрос агенту"
+if "admin_token" not in st.session_state:
+    st.session_state.admin_token = ""
+if "is_admin" not in st.session_state:
+    st.session_state.is_admin = False
 
-PAGES = ["Запрос агенту", "История", "Внешние данные", "Утилиты", "Метрики (Админ)"]
 st.sidebar.title("Навигация")
+
+st.sidebar.subheader("Авторизация")
+admin_token = st.sidebar.text_input(
+    "Токен администратора",
+    type="password",
+    value=st.session_state.admin_token,
+    key="global_admin_token",
+    help="Введите ADMIN_TOKEN для доступа к административным функциям"
+)
+if admin_token != st.session_state.admin_token:
+    st.session_state.admin_token = admin_token
+    try:
+        resp = requests.get(
+            f"{API_BASE_URL}/utility/auth/role",
+            headers={"X-Auth-Token": admin_token},
+            timeout=5
+        )
+        if resp.status_code == 200:
+            role_data = resp.json()
+            st.session_state.is_admin = role_data.get("is_admin", False)
+        else:
+            st.session_state.is_admin = False
+    except:
+        st.session_state.is_admin = False
+
+if st.session_state.is_admin:
+    st.sidebar.success("Администратор")
+elif st.session_state.admin_token:
+    st.sidebar.warning("Неверный токен")
+
+st.sidebar.divider()
+
+PAGES_BASE = ["Запрос агенту", "История", "Внешние данные"]
+PAGES_ADMIN = ["Утилиты", "Метрики"]
+
+if st.session_state.is_admin:
+    PAGES = PAGES_BASE + PAGES_ADMIN
+else:
+    PAGES = PAGES_BASE
+
+if st.session_state.page not in PAGES:
+    st.session_state.page = PAGES[0]
+
 page = st.sidebar.radio(
     "Выберите раздел",
     PAGES,
@@ -385,38 +431,6 @@ elif page == "Утилиты":
 
     if "service_statuses" not in st.session_state:
         st.session_state.service_statuses = {}
-    if "admin_token" not in st.session_state:
-        st.session_state.admin_token = ""
-    if "is_admin" not in st.session_state:
-        st.session_state.is_admin = False
-
-    with st.sidebar:
-        st.divider()
-        st.subheader("Авторизация")
-        admin_token = st.text_input(
-            "Токен администратора",
-            type="password",
-            value=st.session_state.admin_token,
-            help="Введите ADMIN_TOKEN для доступа к административным функциям"
-        )
-        if admin_token != st.session_state.admin_token:
-            st.session_state.admin_token = admin_token
-            try:
-                resp = requests.get(
-                    f"{API_BASE_URL}/utility/auth/role",
-                    headers={"X-Auth-Token": admin_token},
-                    timeout=5
-                )
-                if resp.status_code == 200:
-                    role_data = resp.json()
-                    st.session_state.is_admin = role_data.get("is_admin", False)
-            except:
-                st.session_state.is_admin = False
-        
-        if st.session_state.is_admin:
-            st.success("Администратор")
-        elif st.session_state.admin_token:
-            st.warning("Неверный токен")
 
     def check_service_status(service_name: str, endpoint: str, timeout: int = 10) -> dict:
         try:
@@ -637,46 +651,10 @@ elif page == "Утилиты":
     except Exception as e:
         st.warning(f"Не удалось загрузить список отчётов: {e}")
 
-elif page == "Метрики (Админ)":
+elif page == "Метрики":
     st.header("Панель метрик администратора")
     
-    if "admin_token" not in st.session_state:
-        st.session_state.admin_token = ""
-    if "is_admin" not in st.session_state:
-        st.session_state.is_admin = False
-    
-    with st.sidebar:
-        st.divider()
-        st.subheader("Авторизация")
-        admin_token = st.text_input(
-            "Токен администратора",
-            type="password",
-            value=st.session_state.admin_token,
-            key="metrics_admin_token",
-            help="Введите ADMIN_TOKEN для доступа"
-        )
-        if admin_token != st.session_state.admin_token:
-            st.session_state.admin_token = admin_token
-            try:
-                resp = requests.get(
-                    f"{API_BASE_URL}/utility/auth/role",
-                    headers={"X-Auth-Token": admin_token},
-                    timeout=5
-                )
-                if resp.status_code == 200:
-                    role_data = resp.json()
-                    st.session_state.is_admin = role_data.get("is_admin", False)
-            except:
-                st.session_state.is_admin = False
-        
-        if st.session_state.is_admin:
-            st.success("Администратор")
-        elif st.session_state.admin_token:
-            st.warning("Неверный токен")
-    
-    if not st.session_state.is_admin:
-        st.warning("Для доступа к метрикам введите токен администратора в боковой панели.")
-    else:
+    if st.session_state.is_admin:
         headers = {"X-Auth-Token": st.session_state.admin_token}
         
         col_refresh, col_reset = st.columns(2)
