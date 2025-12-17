@@ -52,7 +52,7 @@ if "threads" not in st.session_state:
 if "page" not in st.session_state:
     st.session_state.page = "Запрос агенту"
 
-PAGES = ["Запрос агенту", "История", "Внешние данные", "Утилиты"]
+PAGES = ["Запрос агенту", "История", "Внешние данные", "Утилиты", "Метрики (Админ)"]
 st.sidebar.title("Навигация")
 page = st.sidebar.radio(
     "Выберите раздел",
@@ -267,7 +267,7 @@ elif page == "Внешние данные":
                         try:
                             resp = request_with_retry(
                                 "post",
-                                f"{API_BASE_URL}/utility/perplexity/search",
+                                f"{API_BASE_URL}/data/search/perplexity",
                                 max_retries=3,
                                 initial_timeout=90,
                                 json={"inn": inn, "search_query": query},
@@ -293,7 +293,7 @@ elif page == "Внешние данные":
                         try:
                             resp = request_with_retry(
                                 "post",
-                                f"{API_BASE_URL}/utility/tavily/search",
+                                f"{API_BASE_URL}/data/search/tavily",
                                 max_retries=3,
                                 initial_timeout=60,
                                 json={"inn": inn, "search_query": query, "max_results": 5, "include_answer": True},
@@ -322,7 +322,7 @@ elif page == "Внешние данные":
                         try:
                             resp = request_with_retry(
                                 "post",
-                                f"{API_BASE_URL}/utility/perplexity/search",
+                                f"{API_BASE_URL}/data/search/perplexity",
                                 max_retries=3,
                                 initial_timeout=90,
                                 json={"inn": inn, "search_query": query},
@@ -353,7 +353,7 @@ elif page == "Внешние данные":
                         try:
                             resp = request_with_retry(
                                 "post",
-                                f"{API_BASE_URL}/utility/tavily/search",
+                                f"{API_BASE_URL}/data/search/tavily",
                                 max_retries=3,
                                 initial_timeout=60,
                                 json={"inn": inn, "search_query": query, "max_results": 5, "include_answer": True},
@@ -636,4 +636,211 @@ elif page == "Утилиты":
                 st.info("Нет сохранённых отчётов")
     except Exception as e:
         st.warning(f"Не удалось загрузить список отчётов: {e}")
+
+elif page == "Метрики (Админ)":
+    st.header("Панель метрик администратора")
+    
+    if "admin_token" not in st.session_state:
+        st.session_state.admin_token = ""
+    if "is_admin" not in st.session_state:
+        st.session_state.is_admin = False
+    
+    with st.sidebar:
+        st.divider()
+        st.subheader("Авторизация")
+        admin_token = st.text_input(
+            "Токен администратора",
+            type="password",
+            value=st.session_state.admin_token,
+            key="metrics_admin_token",
+            help="Введите ADMIN_TOKEN для доступа"
+        )
+        if admin_token != st.session_state.admin_token:
+            st.session_state.admin_token = admin_token
+            try:
+                resp = requests.get(
+                    f"{API_BASE_URL}/utility/auth/role",
+                    headers={"X-Auth-Token": admin_token},
+                    timeout=5
+                )
+                if resp.status_code == 200:
+                    role_data = resp.json()
+                    st.session_state.is_admin = role_data.get("is_admin", False)
+            except:
+                st.session_state.is_admin = False
+        
+        if st.session_state.is_admin:
+            st.success("Администратор")
+        elif st.session_state.admin_token:
+            st.warning("Неверный токен")
+    
+    if not st.session_state.is_admin:
+        st.warning("Для доступа к метрикам введите токен администратора в боковой панели.")
+    else:
+        headers = {"X-Auth-Token": st.session_state.admin_token}
+        
+        col_refresh, col_reset = st.columns(2)
+        with col_refresh:
+            refresh_metrics = st.button("Обновить метрики", type="primary")
+        with col_reset:
+            reset_metrics = st.button("Сбросить метрики", type="secondary")
+        
+        if reset_metrics:
+            try:
+                resp = requests.post(
+                    f"{API_BASE_URL}/utility/metrics/reset",
+                    headers=headers,
+                    timeout=10
+                )
+                if resp.status_code == 200:
+                    st.success("Метрики сброшены")
+                else:
+                    st.error(f"Ошибка сброса: {resp.status_code}")
+            except Exception as e:
+                st.error(f"Ошибка: {e}")
+        
+        st.divider()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("HTTP клиент")
+            try:
+                resp = requests.get(f"{API_BASE_URL}/utility/metrics", timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    metrics = data.get("metrics", {})
+                    
+                    if metrics:
+                        total_requests = 0
+                        total_errors = 0
+                        
+                        for service, service_metrics in metrics.items():
+                            if isinstance(service_metrics, dict):
+                                total_requests += service_metrics.get("total_requests", 0)
+                                total_errors += service_metrics.get("errors", 0)
+                        
+                        metric_col1, metric_col2, metric_col3 = st.columns(3)
+                        with metric_col1:
+                            st.metric("Всего запросов", total_requests)
+                        with metric_col2:
+                            st.metric("Ошибок", total_errors)
+                        with metric_col3:
+                            error_rate = (total_errors / total_requests * 100) if total_requests > 0 else 0
+                            st.metric("Ошибок %", f"{error_rate:.1f}%")
+                        
+                        with st.expander("Детали по сервисам"):
+                            for service, service_metrics in metrics.items():
+                                if isinstance(service_metrics, dict):
+                                    st.markdown(f"**{service}**")
+                                    st.json(service_metrics)
+                    else:
+                        st.info("Нет данных о метриках HTTP")
+                else:
+                    st.error(f"Ошибка загрузки: {resp.status_code}")
+            except Exception as e:
+                st.error(f"Ошибка: {e}")
+        
+        with col2:
+            st.subheader("Кэш (Tarantool)")
+            try:
+                resp = requests.get(f"{API_BASE_URL}/utility/cache/metrics", timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    metrics = data.get("metrics", {})
+                    cache_size = data.get("cache_size", 0)
+                    
+                    metric_col1, metric_col2, metric_col3 = st.columns(3)
+                    with metric_col1:
+                        st.metric("Записей", cache_size)
+                    with metric_col2:
+                        hits = metrics.get("hits", 0)
+                        misses = metrics.get("misses", 0)
+                        hit_rate = metrics.get("hit_rate", 0)
+                        st.metric("Hit Rate", f"{hit_rate:.1f}%")
+                    with metric_col3:
+                        st.metric("Hits / Misses", f"{hits} / {misses}")
+                    
+                    config = data.get("config", {})
+                    if config:
+                        with st.expander("Конфигурация кэша"):
+                            st.json(config)
+                else:
+                    st.error(f"Ошибка загрузки: {resp.status_code}")
+            except Exception as e:
+                st.error(f"Ошибка: {e}")
+        
+        st.divider()
+        
+        st.subheader("Circuit Breakers")
+        try:
+            resp = requests.get(f"{API_BASE_URL}/utility/circuit-breakers", timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                breakers = data.get("circuit_breakers", {})
+                
+                if breakers:
+                    cols = st.columns(min(len(breakers), 4))
+                    for idx, (service, cb_data) in enumerate(breakers.items()):
+                        with cols[idx % 4]:
+                            state = cb_data.get("state", "unknown") if isinstance(cb_data, dict) else "unknown"
+                            if state == "closed":
+                                st.success(f"{service}: ЗАКРЫТ")
+                            elif state == "open":
+                                st.error(f"{service}: ОТКРЫТ")
+                            elif state == "half_open":
+                                st.warning(f"{service}: ПОЛУОТКРЫТ")
+                            else:
+                                st.info(f"{service}: {state}")
+                            
+                            if st.button(f"Сбросить", key=f"reset_cb_{service}"):
+                                try:
+                                    reset_resp = requests.post(
+                                        f"{API_BASE_URL}/utility/circuit-breakers/{service}/reset",
+                                        headers=headers,
+                                        timeout=10
+                                    )
+                                    if reset_resp.status_code == 200:
+                                        st.success("Сброшен!")
+                                        st.rerun()
+                                except Exception as e:
+                                    st.error(f"Ошибка: {e}")
+                else:
+                    st.info("Нет активных circuit breakers")
+            else:
+                st.error(f"Ошибка загрузки: {resp.status_code}")
+        except Exception as e:
+            st.error(f"Ошибка: {e}")
+        
+        st.divider()
+        
+        st.subheader("Email (SMTP)")
+        try:
+            resp = requests.get(f"{API_BASE_URL}/utility/email/status", timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    configured = data.get("configured", False)
+                    if configured:
+                        st.success("Настроен")
+                    else:
+                        st.warning("Не настроен")
+                with col2:
+                    smtp_host = data.get("smtp_host", "Н/Д")
+                    st.metric("SMTP сервер", smtp_host)
+                with col3:
+                    health = data.get("health", {})
+                    status = health.get("status", "unknown")
+                    if status == "healthy":
+                        st.success("Здоров")
+                    elif status == "not_configured":
+                        st.info("Не настроен")
+                    else:
+                        st.error(status)
+            else:
+                st.warning("Сервис недоступен")
+        except Exception as e:
+            st.error(f"Ошибка: {e}")
 

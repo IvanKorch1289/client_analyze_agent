@@ -67,3 +67,64 @@ async def get_casebook_data(inn: str):
 @data_router.get("/client/info/{inn}")
 async def get_all_client_data(inn: str):
     return await fetch_company_info(inn)
+
+
+@data_router.post("/search/perplexity")
+async def perplexity_search(request: PerplexityRequest):
+    """Search via Perplexity."""
+    if not validate_inn(request.inn):
+        return {"status": "error", "message": "Неверный формат ИНН (должно быть 10 или 12 цифр)"}
+    
+    client = PerplexityClient.get_instance()
+
+    if not client.is_configured():
+        return {"status": "error", "message": "Perplexity API key не настроен"}
+
+    result = await client.ask(
+        question=request.query, search_recency_filter=request.search_recency
+    )
+
+    if result.get("success"):
+        return {
+            "status": "success",
+            "inn": request.inn,
+            "content": result.get("content", ""),
+            "citations": result.get("citations", []),
+            "model": result.get("model"),
+        }
+    return {"status": "error", "message": result.get("error", "Неизвестная ошибка")}
+
+
+@data_router.post("/search/tavily")
+async def tavily_search(request: TavilyRequest):
+    """Search via Tavily."""
+    if not validate_inn(request.inn):
+        return {"status": "error", "message": "Неверный формат ИНН (должно быть 10 или 12 цифр)"}
+    
+    client = TavilyClient.get_instance()
+
+    if not client.is_configured():
+        return {
+            "status": "error",
+            "message": "Tavily API key не настроен. Добавьте TAVILY_TOKEN в секреты.",
+        }
+
+    result = await client.search(
+        query=request.query,
+        search_depth=request.search_depth,
+        max_results=request.max_results,
+        include_answer=request.include_answer,
+        include_domains=request.include_domains,
+        exclude_domains=request.exclude_domains,
+    )
+
+    if result.get("success"):
+        return {
+            "status": "success",
+            "inn": request.inn,
+            "answer": result.get("answer", ""),
+            "results": result.get("results", []),
+            "query": request.query,
+            "cached": result.get("cached", False),
+        }
+    return {"status": "error", "message": result.get("error", "Неизвестная ошибка")}

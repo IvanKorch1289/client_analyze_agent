@@ -6,7 +6,6 @@ cache operations, and external service status monitoring.
 """
 
 import os
-import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -27,35 +26,6 @@ utility_router = APIRouter(
     tags=["Утилиты"],
     responses={404: {"description": "Не найдено"}},
 )
-
-
-def validate_inn(inn: str) -> bool:
-    """Validate Russian INN format (10 or 12 digits)."""
-    return bool(re.match(r"^\d{10}$|^\d{12}$", inn))
-
-
-class PerplexityRequest(BaseModel):
-    inn: str
-    search_query: str
-    search_recency: str = "month"
-    
-    @property
-    def query(self) -> str:
-        return f"ИНН {self.inn}: {self.search_query}. Ответь только фактами без предположений."
-
-
-class TavilyRequest(BaseModel):
-    inn: str
-    search_query: str
-    search_depth: str = "basic"
-    max_results: int = 5
-    include_answer: bool = True
-    include_domains: Optional[List[str]] = None
-    exclude_domains: Optional[List[str]] = None
-    
-    @property
-    def query(self) -> str:
-        return f"ИНН {self.inn} {self.search_query}"
 
 
 @utility_router.get("/health")
@@ -189,72 +159,11 @@ async def validate_cache(confirm: bool, role: str = Depends(require_admin)):
     }
 
 
-@utility_router.post("/perplexity/search")
-async def perplexity_search(request: PerplexityRequest):
-    """Search via Perplexity."""
-    if not validate_inn(request.inn):
-        return {"status": "error", "message": "Неверный формат ИНН (должно быть 10 или 12 цифр)"}
-    
-    client = PerplexityClient.get_instance()
-
-    if not client.is_configured():
-        return {"status": "error", "message": "Perplexity API key не настроен"}
-
-    result = await client.ask(
-        question=request.query, search_recency_filter=request.search_recency
-    )
-
-    if result.get("success"):
-        return {
-            "status": "success",
-            "inn": request.inn,
-            "content": result.get("content", ""),
-            "citations": result.get("citations", []),
-            "model": result.get("model"),
-        }
-    return {"status": "error", "message": result.get("error", "Неизвестная ошибка")}
-
-
 @utility_router.get("/perplexity/status")
 async def perplexity_status():
     client = PerplexityClient.get_instance()
     status = await client.get_status()
     return status
-
-
-@utility_router.post("/tavily/search")
-async def tavily_search(request: TavilyRequest):
-    """Search via Tavily."""
-    if not validate_inn(request.inn):
-        return {"status": "error", "message": "Неверный формат ИНН (должно быть 10 или 12 цифр)"}
-    
-    client = TavilyClient.get_instance()
-
-    if not client.is_configured():
-        return {
-            "status": "error",
-            "message": "Tavily API key не настроен. Добавьте TAVILY_TOKEN в секреты.",
-        }
-
-    result = await client.search(
-        query=request.query,
-        search_depth=request.search_depth,
-        max_results=request.max_results,
-        include_answer=request.include_answer,
-        include_domains=request.include_domains,
-        exclude_domains=request.exclude_domains,
-    )
-
-    if result.get("success"):
-        return {
-            "status": "success",
-            "inn": request.inn,
-            "answer": result.get("answer", ""),
-            "results": result.get("results", []),
-            "query": request.query,
-            "cached": result.get("cached", False),
-        }
-    return {"status": "error", "message": result.get("error", "Неизвестная ошибка")}
 
 
 @utility_router.get("/tavily/status")
