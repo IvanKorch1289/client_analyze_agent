@@ -37,3 +37,9 @@ externalPort = 80
 [deployment]
 deploymentTarget = "autoscale"
 run = ["python", "run.py"]
+
+[userenv]
+
+[userenv.development]
+ADMIN_TOKEN = "admin123"
+VIEWER_TOKEN = "viewer123"
