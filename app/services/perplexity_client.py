@@ -1,10 +1,10 @@
 import asyncio
 import hashlib
 import os
-from typing import Any, Awaitable, Callable, Dict, List, Optional, cast
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+import httpx
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
 
 from app.utility.logging_client import logger
 
@@ -20,7 +20,7 @@ class PerplexityClient:
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or os.getenv("PERPLEXITY_API_KEY")
         self.model = model or os.getenv("PERPLEXITY_MODEL", self.DEFAULT_MODEL)
-        self._client: Optional[AsyncOpenAI] = None
+        self._client: Optional[httpx.AsyncClient] = None
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._cache_ttl = 300
 
@@ -30,12 +30,15 @@ class PerplexityClient:
             cls._instance = cls()
         return cls._instance
 
-    def _get_client(self) -> AsyncOpenAI:
+    def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = AsyncOpenAI(
-                api_key=self.api_key,
+            self._client = httpx.AsyncClient(
                 base_url=self.BASE_URL,
-                timeout=300.0,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=httpx.Timeout(300.0, connect=30.0),
             )
         return self._client
 
@@ -71,31 +74,37 @@ class PerplexityClient:
         try:
             client = self._get_client()
             
-            response = await client.chat.completions.create(
-                model=use_model,
-                messages=cast(Any, messages),
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            payload: Dict[str, Any] = {
+                "model": use_model,
+                "messages": messages,
+                "temperature": temperature,
+            }
+            if max_tokens:
+                payload["max_tokens"] = max_tokens
+
+            response = await client.post("/chat/completions", json=payload)
+            response.raise_for_status()
+            
+            data = response.json()
 
             logger.info(
-                f"Perplexity response received via OpenAI SDK, model: {use_model}",
+                f"Perplexity response received via httpx, model: {use_model}",
                 component="perplexity",
             )
 
-            content = response.choices[0].message.content if response.choices else ""
+            content = ""
+            if data.get("choices") and len(data["choices"]) > 0:
+                content = data["choices"][0].get("message", {}).get("content", "")
             
             usage = {}
-            if response.usage:
+            if data.get("usage"):
                 usage = {
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens,
-                    "total_tokens": response.usage.total_tokens,
+                    "prompt_tokens": data["usage"].get("prompt_tokens", 0),
+                    "completion_tokens": data["usage"].get("completion_tokens", 0),
+                    "total_tokens": data["usage"].get("total_tokens", 0),
                 }
 
-            citations = []
-            if hasattr(response, 'citations'):
-                citations = getattr(response, 'citations', []) or []
+            citations = data.get("citations", []) or []
 
             response_data = {
                 "success": True,
@@ -112,24 +121,30 @@ class PerplexityClient:
 
             return response_data
 
+        except httpx.TimeoutException:
+            logger.error("Perplexity request timeout", component="perplexity")
+            return {
+                "success": False,
+                "error": "Perplexity request timeout - сервис не ответил вовремя",
+                "timeout": True,
+            }
+        except httpx.HTTPStatusError as e:
+            error_msg = str(e)
+            logger.error(
+                f"Perplexity HTTP error: {e.response.status_code}: {error_msg}",
+                component="perplexity",
+            )
+            if e.response.status_code in (401, 403):
+                return {"success": False, "error": "Invalid Perplexity API key"}
+            elif e.response.status_code == 429:
+                return {"success": False, "error": "Perplexity rate limit exceeded"}
+            return {"success": False, "error": f"HTTP {e.response.status_code}: {error_msg}"}
         except Exception as e:
             error_msg = str(e) or type(e).__name__
             logger.error(
                 f"Perplexity request failed: {type(e).__name__}: {error_msg}",
                 component="perplexity",
             )
-            
-            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-                return {
-                    "success": False,
-                    "error": "Perplexity request timeout - сервис не ответил вовремя",
-                    "timeout": True,
-                }
-            elif "401" in error_msg or "403" in error_msg or "unauthorized" in error_msg.lower():
-                return {"success": False, "error": "Invalid Perplexity API key"}
-            elif "429" in error_msg or "rate limit" in error_msg.lower():
-                return {"success": False, "error": "Perplexity rate limit exceeded"}
-            
             return {"success": False, "error": error_msg or "Неизвестная ошибка"}
 
     async def ask(
@@ -177,7 +192,7 @@ class PerplexityClient:
             "configured": self.is_configured(),
             "model": self.model,
             "status": "ready" if self.is_configured() else "not_configured",
-            "integration": "openai-sdk",
+            "integration": "httpx-direct",
             "cache_stats": self.get_cache_stats(),
         }
 
@@ -186,6 +201,6 @@ class PerplexityClient:
         if cls._instance:
             cls._instance._cache.clear()
             if cls._instance._client:
-                await cls._instance._client.close()
+                await cls._instance._client.aclose()
             cls._instance._client = None
             cls._instance = None
