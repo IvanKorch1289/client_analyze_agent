@@ -5,7 +5,7 @@ Casebook, InfoSphere, DaData + Perplexity, Tavily
 
 import asyncio
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from app.services.fetch_data import (
     fetch_from_casebook,
@@ -18,46 +18,103 @@ from app.utility.logging_client import logger
 
 MAX_CONCURRENT = 5
 SEARCH_TIMEOUT = 60
+MAX_WEB_CONTENT_CHARS = 2500
 
 
-async def _fetch_perplexity(query: str, client_name: str) -> Dict[str, Any]:
+def _truncate(text: str, max_len: int = MAX_WEB_CONTENT_CHARS) -> str:
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3] + "..."
+
+
+async def _fetch_perplexity(intent_id: str, query: str, client_name: str) -> Dict[str, Any]:
     """Запрос к Perplexity AI."""
     client = PerplexityClient.get_instance()
     if not client.is_configured():
-        return {"source": "perplexity", "success": False, "error": "Not configured"}
-
-    try:
-        result = await asyncio.wait_for(
-            client.ask(
-                question=f"Информация о компании {client_name}: {query}",
-                system_prompt="Найди бизнес-информацию о компании. Выдели ключевые факты, риски, репутацию.",
-                search_recency_filter="month",
-            ),
-            timeout=SEARCH_TIMEOUT,
-        )
         return {
             "source": "perplexity",
-            "success": result.get("success", False),
-            "content": result.get("content", ""),
-            "citations": result.get("citations", []),
+            "intent_id": intent_id,
+            "success": False,
+            "error": "Not configured",
+        }
+
+    try:
+        question = (
+            "Найди проверяемые факты о компании и укажи источники.\n"
+            f"Компания: {client_name}\n"
+            f"Запрос: {query}\n"
+            "Формат: кратко, по пунктам (факты/риски/упоминания в СМИ/суды/финансы)."
+        )
+        system_prompt = (
+            "Ты аналитик комплаенса. Ищи только проверяемые факты, не выдумывай. "
+            "Пиши по-русски."
+        )
+
+        # Требование проекта: поисковый запрос через LangChain.
+        # Если по какой-то причине LangChain интеграция не сработала — fallback на прямой httpx.
+        async def _call_langchain() -> Dict[str, Any]:
+            return await client.ask_langchain(
+                question=question,
+                system_prompt=system_prompt,
+                search_recency_filter="month",
+            )
+
+        async def _call_direct() -> Dict[str, Any]:
+            return await client.ask(
+                question=question,
+                system_prompt=system_prompt,
+                search_recency_filter="month",
+            )
+
+        try:
+            result = await asyncio.wait_for(_call_langchain(), timeout=SEARCH_TIMEOUT)
+            if not result.get("success"):
+                result = await asyncio.wait_for(_call_direct(), timeout=SEARCH_TIMEOUT)
+        except Exception:
+            result = await asyncio.wait_for(_call_direct(), timeout=SEARCH_TIMEOUT)
+
+        return {
+            "source": "perplexity",
+            "intent_id": intent_id,
+            "success": bool(result.get("success", False)),
+            "content": _truncate(result.get("content", "") or ""),
+            "citations": result.get("citations", []) or [],
             "error": result.get("error"),
+            "integration": result.get("integration"),
         }
     except asyncio.TimeoutError:
-        return {"source": "perplexity", "success": False, "error": "Timeout"}
+        return {
+            "source": "perplexity",
+            "intent_id": intent_id,
+            "success": False,
+            "error": "Timeout",
+        }
     except Exception as e:
-        return {"source": "perplexity", "success": False, "error": str(e)}
+        return {
+            "source": "perplexity",
+            "intent_id": intent_id,
+            "success": False,
+            "error": str(e),
+        }
 
 
-async def _fetch_tavily(query: str, client_name: str) -> Dict[str, Any]:
+async def _fetch_tavily(intent_id: str, query: str, client_name: str) -> Dict[str, Any]:
     """Запрос к Tavily Search."""
     client = TavilyClient.get_instance()
     if not client.is_configured():
-        return {"source": "tavily", "success": False, "error": "Not configured"}
+        return {
+            "source": "tavily",
+            "intent_id": intent_id,
+            "success": False,
+            "error": "Not configured",
+        }
 
     try:
         result = await asyncio.wait_for(
             client.search(
-                query=f"{client_name} {query}",
+                query=query if client_name in query else f"{client_name} {query}",
                 search_depth="advanced",
                 max_results=10,
                 include_answer=True,
@@ -66,15 +123,16 @@ async def _fetch_tavily(query: str, client_name: str) -> Dict[str, Any]:
         )
         return {
             "source": "tavily",
-            "success": result.get("success", False),
-            "answer": result.get("answer", ""),
+            "intent_id": intent_id,
+            "success": bool(result.get("success", False)),
+            "answer": _truncate(result.get("answer", "") or "", max_len=1200),
             "results": result.get("results", []),
             "error": result.get("error"),
         }
     except asyncio.TimeoutError:
-        return {"source": "tavily", "success": False, "error": "Timeout"}
+        return {"source": "tavily", "intent_id": intent_id, "success": False, "error": "Timeout"}
     except Exception as e:
-        return {"source": "tavily", "success": False, "error": str(e)}
+        return {"source": "tavily", "intent_id": intent_id, "success": False, "error": str(e)}
 
 
 async def _fetch_dadata_wrapper(inn: str) -> Dict[str, Any]:
@@ -162,27 +220,51 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         intent_count=len(search_intents),
     )
 
-    tasks = []
-
+    # Фаза 1: параллельные источники по ИНН
+    inn_tasks: List[asyncio.Task] = []
     if inn and inn.isdigit() and len(inn) in (10, 12):
-        tasks.append(_fetch_dadata_wrapper(inn))
-        tasks.append(_fetch_infosphere_wrapper(inn))
-        tasks.append(_fetch_casebook_wrapper(inn))
+        inn_tasks = [
+            asyncio.create_task(_fetch_dadata_wrapper(inn)),
+            asyncio.create_task(_fetch_infosphere_wrapper(inn)),
+            asyncio.create_task(_fetch_casebook_wrapper(inn)),
+        ]
 
-    search_query = (
-        search_intents[0].get("query", client_name) if search_intents else client_name
-    )
-    tasks.append(_fetch_perplexity(search_query, client_name))
-    tasks.append(_fetch_tavily(search_query, client_name))
+    inn_results: List[Any] = []
+    if inn_tasks:
+        inn_results = await asyncio.gather(*inn_tasks, return_exceptions=True)
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Фаза 2: веб-поиск (после получения реестровых данных)
+    intents: List[Dict[str, str]] = []
+    if isinstance(search_intents, list) and search_intents:
+        intents = [i for i in search_intents if isinstance(i, dict) and i.get("id") and i.get("query")]
+    if not intents:
+        intents = [{"id": "reputation", "query": client_name, "description": "Общая репутация и отзывы"}]
+
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+
+    async def _bounded(coro):
+        async with semaphore:
+            return await coro
+
+    web_tasks: List[asyncio.Task] = []
+    for intent in intents:
+        intent_id = str(intent.get("id"))
+        query = str(intent.get("query") or client_name)
+        web_tasks.append(asyncio.create_task(_bounded(_fetch_perplexity(intent_id, query, client_name))))
+        web_tasks.append(asyncio.create_task(_bounded(_fetch_tavily(intent_id, query, client_name))))
+
+    web_results: List[Any] = []
+    if web_tasks:
+        web_results = await asyncio.gather(*web_tasks, return_exceptions=True)
+
+    results = [*inn_results, *web_results]
 
     source_data = {
         "dadata": None,
         "infosphere": None,
         "casebook": None,
-        "perplexity": None,
-        "tavily": None,
+        "perplexity": {"success": True, "intents": {}, "errors": []},
+        "tavily": {"success": True, "intents": {}, "errors": []},
     }
 
     for result in results:
@@ -191,13 +273,30 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
             continue
 
         source = result.get("source")
-        if source:
+        if not source:
+            continue
+
+        if source in ("dadata", "infosphere", "casebook"):
             source_data[source] = result
+            continue
+
+        if source in ("perplexity", "tavily"):
+            intent_id = result.get("intent_id") or "unknown"
+            container = source_data[source]
+            if isinstance(container, dict):
+                intents_map = container.setdefault("intents", {})
+                intents_map[intent_id] = result
+                if not result.get("success"):
+                    container.setdefault("errors", []).append(
+                        {"intent_id": intent_id, "error": result.get("error")}
+                    )
+                    container["success"] = False
+            continue
 
     successful_sources = [k for k, v in source_data.items() if v and v.get("success")]
     duration_ms = (time.perf_counter() - start_time) * 1000
 
-    search_results = _convert_to_search_results(source_data)
+    search_results = _build_search_results(source_data, intents)
 
     logger.structured(
         "info",
@@ -216,50 +315,104 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         "collection_stats": {
             "successful_sources": successful_sources,
             "duration_ms": round(duration_ms, 2),
+            "web_intents_count": len(intents),
         },
         "current_step": "analyzing",
     }
 
 
-def _convert_to_search_results(source_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Конвертирует source_data в формат search_results для report_analyzer."""
+def _build_search_results(
+    source_data: Dict[str, Any], intents: List[Dict[str, str]]
+) -> List[Dict[str, Any]]:
+    """Собирает единый массив search_results для report_analyzer."""
     search_results = []
 
-    perplexity = source_data.get("perplexity", {})
-    if perplexity and perplexity.get("success"):
-        content = perplexity.get("content", "")
+    # 1) Реестровые источники (по ИНН)
+    search_results.extend(_convert_registry_sources_to_search_results(source_data))
+
+    # 2) Веб-поиск по интентам: Perplexity + Tavily -> объединяем в один результат на интент
+    perpl = source_data.get("perplexity", {}) or {}
+    tav = source_data.get("tavily", {}) or {}
+
+    perpl_intents = perpl.get("intents", {}) if isinstance(perpl, dict) else {}
+    tav_intents = tav.get("intents", {}) if isinstance(tav, dict) else {}
+
+    for intent in intents:
+        intent_id = str(intent.get("id") or "unknown")
+        description = str(intent.get("description") or intent_id)
+        query = str(intent.get("query") or "")
+
+        perpl_res = perpl_intents.get(intent_id, {}) if isinstance(perpl_intents, dict) else {}
+        tav_res = tav_intents.get(intent_id, {}) if isinstance(tav_intents, dict) else {}
+
+        content_parts: List[str] = []
+        citations: List[str] = []
+        success = False
+
+        if isinstance(perpl_res, dict) and perpl_res.get("success"):
+            perpl_content = perpl_res.get("content", "") or ""
+            if perpl_content:
+                content_parts.append(f"[Perplexity]\n{perpl_content}")
+            citations.extend(perpl_res.get("citations", []) or [])
+            success = True
+
+        if isinstance(tav_res, dict) and tav_res.get("success"):
+            answer = tav_res.get("answer", "") or ""
+            results_text = "\n".join(
+                [
+                    (r.get("content", "") or r.get("snippet", "") or "").strip()
+                    for r in (tav_res.get("results", []) or [])[:3]
+                    if isinstance(r, dict)
+                ]
+            ).strip()
+            tav_block = "\n\n".join([p for p in [answer, results_text] if p]).strip()
+            if tav_block:
+                content_parts.append(f"[Tavily]\n{_truncate(tav_block, max_len=1600)}")
+            citations.extend(
+                [
+                    r.get("url")
+                    for r in (tav_res.get("results", []) or [])
+                    if isinstance(r, dict) and r.get("url")
+                ]
+            )
+            success = True
+
+        combined = _truncate("\n\n".join([p for p in content_parts if p]).strip())
+        if not combined:
+            # Если оба источника упали — фиксируем это как неуспех, но сохраняем intent_id/query.
+            search_results.append(
+                {
+                    "intent_id": intent_id,
+                    "description": description,
+                    "query": query,
+                    "success": False,
+                    "content": "",
+                    "citations": [],
+                    "sentiment": {"label": "neutral", "score": 0.0},
+                }
+            )
+            continue
+
         search_results.append(
             {
-                "intent_id": "perplexity_search",
-                "description": "Веб-поиск (Perplexity AI)",
-                "query": "Информация о компании",
-                "success": True,
-                "content": content,
-                "citations": perplexity.get("citations", []),
-                "sentiment": _analyze_sentiment(content),
+                "intent_id": intent_id,
+                "description": description,
+                "query": query,
+                "success": success,
+                "content": combined,
+                "citations": list(dict.fromkeys([c for c in citations if c]))[:20],
+                "sentiment": _analyze_sentiment(combined),
             }
         )
 
-    tavily = source_data.get("tavily", {})
-    if tavily and tavily.get("success"):
-        answer = tavily.get("answer", "")
-        results_text = "\n".join(
-            [r.get("content", "") for r in tavily.get("results", [])[:3]]
-        )
-        content = f"{answer}\n\n{results_text}".strip()
-        search_results.append(
-            {
-                "intent_id": "tavily_search",
-                "description": "Веб-поиск (Tavily)",
-                "query": "Информация о компании",
-                "success": True,
-                "content": content,
-                "citations": [
-                    r.get("url") for r in tavily.get("results", []) if r.get("url")
-                ],
-                "sentiment": _analyze_sentiment(content),
-            }
-        )
+    return search_results
+
+
+def _convert_registry_sources_to_search_results(
+    source_data: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Конвертирует DaData/Casebook/InfoSphere в формат search_results."""
+    search_results: List[Dict[str, Any]] = []
 
     dadata = source_data.get("dadata", {})
     if dadata and dadata.get("success"):
