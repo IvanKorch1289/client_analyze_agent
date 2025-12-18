@@ -230,17 +230,17 @@ class AsyncHttpClient:
         self._default_retry = RetryConfig()
         self._service_configs: Dict[str, Dict[str, Any]] = {
             "tavily": {
-                "timeout": TimeoutConfig(connect=15.0, read=180.0, write=30.0, pool=15.0),
-                "retry": RetryConfig(max_attempts=3, min_wait=1.0, max_wait=30.0),
+                "timeout": TimeoutConfig(connect=60.0, read=300.0, write=60.0, pool=30.0),
+                "retry": RetryConfig(max_attempts=3, min_wait=2.0, max_wait=60.0),
                 "circuit_breaker": CircuitBreakerConfig(
-                    failure_threshold=5, success_threshold=2, timeout=180.0
+                    failure_threshold=5, success_threshold=2, timeout=300.0
                 ),
             },
             "perplexity": {
-                "timeout": TimeoutConfig(connect=15.0, read=180.0, write=30.0, pool=15.0),
-                "retry": RetryConfig(max_attempts=3, min_wait=1.0, max_wait=30.0),
+                "timeout": TimeoutConfig(connect=60.0, read=300.0, write=60.0, pool=30.0),
+                "retry": RetryConfig(max_attempts=3, min_wait=2.0, max_wait=60.0),
                 "circuit_breaker": CircuitBreakerConfig(
-                    failure_threshold=5, success_threshold=2, timeout=180.0
+                    failure_threshold=5, success_threshold=2, timeout=300.0
                 ),
             },
             "dadata": {

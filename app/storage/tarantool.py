@@ -149,6 +149,9 @@ class TarantoolClient:
                     port=settings.tarantool_port,
                     user=settings.tarantool_user,
                     password=settings.tarantool_password,
+                    connect_timeout=30,
+                    reconnect_max_attempts=5,
+                    reconnect_delay=1.0,
                 )
                 return conn
             except Exception as e:
