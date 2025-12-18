@@ -6,6 +6,27 @@ import requests
 import streamlit as st
 
 st.set_page_config(page_title="Система анализа контрагентов", layout="wide")
+
+st.markdown("""
+<style>
+    [data-testid="stToolbar"] {
+        display: none !important;
+    }
+    .stDeployButton {
+        display: none !important;
+    }
+    #MainMenu {
+        display: none !important;
+    }
+    header[data-testid="stHeader"] {
+        display: none !important;
+    }
+    footer {
+        display: none !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("Система анализа контрагентов")
 
 BACKEND_PORT = os.getenv("BACKEND_PORT", "8000")
