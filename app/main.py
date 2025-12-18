@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.responses import JSONResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -215,6 +216,11 @@ app = FastAPI(
     title="Multi-Agent Client Analysis System",
     description="Сервер агентов для анализа клиентов с поддержкой Tarantool и внешних API",
     lifespan=lifespan,
+    # Root app only hosts redirects + legacy endpoints.
+    # Real OpenAPI lives under /api/v1 to avoid duplicated schemas.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 # Добавляем rate limiter в state приложения
@@ -253,6 +259,30 @@ app.state.app_circuit_breaker = app_circuit_breaker
 app.add_middleware(AppCircuitBreakerMiddleware, breaker=app_circuit_breaker)
 
 app.add_middleware(RequestIdMiddleware)
+
+# -----------------------
+# Root UX helpers
+# -----------------------
+@app.get("/", include_in_schema=False)
+async def root() -> JSONResponse:
+    return JSONResponse(
+        {
+            "status": "ok",
+            "message": "Use versioned API under /api/v1",
+            "docs": "/api/v1/docs",
+            "openapi": "/api/v1/openapi.json",
+        }
+    )
+
+
+@app.get("/docs", include_in_schema=False)
+async def root_docs_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/api/v1/docs")
+
+
+@app.get("/openapi.json", include_in_schema=False)
+async def root_openapi_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/api/v1/openapi.json")
 
 # -----------------------
 # API versioning
