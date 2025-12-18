@@ -10,6 +10,7 @@ Important constraint:
 from __future__ import annotations
 
 import threading
+import time
 from typing import Iterable, Tuple, Type
 
 from pydantic_settings import BaseSettings
@@ -19,6 +20,10 @@ from app.utility.logging_client import logger
 
 
 _reload_lock = threading.Lock()
+_state_lock = threading.Lock()
+_last_reload_ts: float | None = None
+_last_reload_reason: str | None = None
+_last_refreshed_instances: int | None = None
 
 
 def _iter_singleton_settings_instances() -> Iterable[Tuple[str, BaseSettings]]:
@@ -73,10 +78,25 @@ def reload_settings(reason: str = "config_change") -> None:
                     error=str(e),
                 )
 
+        with _state_lock:
+            global _last_reload_ts, _last_reload_reason, _last_refreshed_instances
+            _last_reload_ts = time.time()
+            _last_reload_reason = reason
+            _last_refreshed_instances = refreshed
+
         logger.structured(
             "info",
             "settings_reload_complete",
             component="config",
             refreshed_instances=refreshed,
         )
+
+
+def get_reload_state() -> dict:
+    with _state_lock:
+        return {
+            "last_reload_ts": _last_reload_ts,
+            "last_reload_reason": _last_reload_reason,
+            "last_refreshed_instances": _last_refreshed_instances,
+        }
 
