@@ -16,6 +16,7 @@ from app.config.constants import (
     RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE,
     RATE_LIMIT_SEARCH_PER_MINUTE,
 )
+from app.services.analysis_executor import execute_client_analysis
 from app.utility.logging_client import logger
 
 agent_router = APIRouter(prefix="/agent", tags=["Агент"])
@@ -87,13 +88,13 @@ async def analyze_client(request: Request, data: ClientAnalysisRequest, stream: 
         )
 
     try:
-        coro = run_client_analysis_streaming(
+        # Централизованный executor (единый путь для HTTP/RMQ/MCP/scheduler).
+        return await execute_client_analysis(
             client_name=data.client_name,
             inn=data.inn or "",
             additional_notes=data.additional_notes or "",
+            save_report=True,
         )
-        result = await coro
-        return result
     except Exception as e:
         logger.error(f"Client analysis error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка анализа: {str(e)}") from e
@@ -123,11 +124,11 @@ async def prompt_agent(request: Request, data: PromptRequest) -> Dict[str, Any]:
     if not client_name:
         client_name = prompt
 
-    result = await run_client_analysis_streaming(
+    result = await execute_client_analysis(
         client_name=client_name,
         inn=inn,
         additional_notes="",
-        stream=False,
+        save_report=True,
     )
 
     # Streamlit expects {response, thread_id, tools_used, timestamp}

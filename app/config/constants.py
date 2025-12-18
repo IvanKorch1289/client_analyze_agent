@@ -230,6 +230,10 @@ LOG_ROTATION_DAYS: Final[int] = 7
 LOG_MAX_SIZE_MB: Final[int] = 100
 """Максимальный размер файла лога (MB)"""
 
+# Backward compatibility / семантика
+LOG_RETENTION_DAYS: Final[int] = LOG_ROTATION_DAYS
+"""Alias: срок хранения логов (дней)"""
+
 # =======================
 # Performance
 # =======================

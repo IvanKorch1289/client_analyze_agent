@@ -1,10 +1,12 @@
 import contextvars
 import json
 import logging
+import logging.handlers
+import os
 import time
 import traceback
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -14,7 +16,9 @@ from rich.logging import RichHandler
 from rich.table import Table
 from rich.text import Text
 
-LOGS_DIR = Path("logs")
+from app.config.constants import LOG_MAX_SIZE_MB, LOG_ROTATION_DAYS, LOGS_DIR as _LOGS_DIR
+
+LOGS_DIR = Path(_LOGS_DIR)
 LOGS_DIR.mkdir(exist_ok=True)
 
 app_logger = logging.getLogger("mcp-server")
@@ -47,6 +51,7 @@ class AppLogger:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
+            cls._instance._last_cleanup_utc_date = None
             cls._instance._setup_handlers()
         return cls._instance
 
@@ -63,10 +68,40 @@ class AppLogger:
         app_logger.addHandler(rich_handler)
         self._add_timed_file_handler()
 
+    def _cleanup_old_logs(self) -> None:
+        """
+        Удаление файлов логов старше N дней.
+
+        N берётся из константы `LOG_ROTATION_DAYS` (по умолчанию 7 дней).
+        """
+        try:
+            retention_days = int(LOG_ROTATION_DAYS)
+        except Exception:
+            retention_days = 7
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        cutoff_ts = cutoff.timestamp()
+
+        for p in LOGS_DIR.glob("*.log*"):
+            try:
+                if p.is_file() and p.stat().st_mtime < cutoff_ts:
+                    p.unlink(missing_ok=True)
+            except Exception:
+                # Логи не должны падать из-за housekeeping.
+                continue
+
     def _add_timed_file_handler(self):
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         file_path = LOGS_DIR / f"{today}.log"
-        file_handler = logging.FileHandler(file_path, encoding="utf-8")
+        # Лимит размера + ротация по количеству бэкапов (чтобы не разрастаться).
+        max_bytes = int(LOG_MAX_SIZE_MB) * 1024 * 1024
+        backup_count = int(os.getenv("LOG_BACKUP_COUNT", "5"))
+        file_handler = logging.handlers.RotatingFileHandler(
+            file_path,
+            encoding="utf-8",
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+        )
         file_formatter = logging.Formatter(
             "[%(asctime)s] %(levelname)s | %(name)s | %(message)s", datefmt="%H:%M:%S"
         )
@@ -75,11 +110,18 @@ class AppLogger:
 
     def _renew_file_handler(self):
         for handler in app_logger.handlers[:]:
+            # RotatingFileHandler является наследником FileHandler.
             if isinstance(handler, logging.FileHandler):
                 app_logger.removeHandler(handler)
         self._add_timed_file_handler()
 
     def _ensure_daily_log(self):
+        # Housekeeping запускаем максимум 1 раз в сутки.
+        utc_today = datetime.now(timezone.utc).date()
+        if getattr(self, "_last_cleanup_utc_date", None) != utc_today:
+            self._cleanup_old_logs()
+            self._last_cleanup_utc_date = utc_today
+
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         current_file = LOGS_DIR / f"{today}.log"
         if not any(

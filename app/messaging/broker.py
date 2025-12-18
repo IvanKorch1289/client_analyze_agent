@@ -16,7 +16,7 @@ from faststream.rabbit import RabbitBroker
 from app.config import settings
 from app.messaging.models import CacheInvalidateRequest, ClientAnalysisRequest, ClientAnalysisResult
 from app.services.analysis_executor import execute_client_analysis
-from app.storage.tarantool import TarantoolClient
+from app.services.app_actions import dispatch_cache_invalidate
 from app.utility.logging_client import logger
 
 
@@ -70,15 +70,10 @@ async def handle_cache_invalidate(msg: CacheInvalidateRequest) -> Dict[str, Any]
     - invalidate_all = true
     - delete_by_prefix(prefix)
     """
-    client = await TarantoolClient.get_instance()
-
-    if msg.invalidate_all:
-        await client.clear_cache()
-        return {"status": "success", "action": "clear_cache"}
-
-    if msg.prefix:
-        await client.delete_by_prefix(msg.prefix)
-        return {"status": "success", "action": "delete_by_prefix", "prefix": msg.prefix}
-
-    return {"status": "error", "message": "prefix is required when invalidate_all=false"}
+    # В воркере выполняем строго “напрямую”, чтобы не зациклиться на публикации.
+    return await dispatch_cache_invalidate(
+        prefix=msg.prefix,
+        invalidate_all=msg.invalidate_all,
+        prefer_queue=False,
+    )
 
