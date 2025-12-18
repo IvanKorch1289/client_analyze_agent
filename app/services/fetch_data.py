@@ -66,6 +66,7 @@ async def fetch_from_dadata(inn: str) -> Dict[str, Any]:
         return {"error": f"DaData request failed: {str(e)}"}
 
 
+@cache_with_tarantool(ttl=3600, source="infosphere")
 async def fetch_from_infosphere(inn: str) -> Dict[str, Any]:
     """
     Fetch company data from InfoSphere API.
@@ -76,17 +77,6 @@ async def fetch_from_infosphere(inn: str) -> Dict[str, Any]:
     Returns:
         Dict with company data or error
     """
-    # Check cache
-    cache_key = f"infosphere:{inn}"
-    client = await TarantoolClient.get_instance()
-    cache_repo = client.get_cache_repository()
-    
-    cached = await cache_repo.get(cache_key)
-    if cached:
-        logger.debug(f"InfoSphere cache HIT for {inn}", component="infosphere")
-        return cached
-    
-    # Fetch from API
     http_client = await AsyncHttpClient.get_instance()
     url = settings.infosphere.api_url
     xml_body = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -115,13 +105,7 @@ async def fetch_from_infosphere(inn: str) -> Dict[str, Any]:
         
         raw_data = xmltodict.parse(resp.text)
         cleaned = clean_xml_dict(raw_data.get("Response", {}).get("Source", []))
-        result = {"status": "success", "data": cleaned}
-        
-        # Save to cache
-        await cache_repo.set_with_ttl(cache_key, result, ttl=3600, source="infosphere")
-        logger.debug(f"InfoSphere cache SET for {inn}", component="infosphere")
-        
-        return result
+        return {"status": "success", "data": cleaned}
         
     except Exception as e:
         logger.exception(
@@ -130,6 +114,7 @@ async def fetch_from_infosphere(inn: str) -> Dict[str, Any]:
         return {"error": f"InfoSphere request failed: {str(e)}"}
 
 
+@cache_with_tarantool(ttl=9600, source="casebook")
 async def fetch_from_casebook(inn: str) -> Dict[str, Any]:
     """
     Fetch court cases from Casebook API.
@@ -140,17 +125,6 @@ async def fetch_from_casebook(inn: str) -> Dict[str, Any]:
     Returns:
         Dict with court cases or error
     """
-    # Check cache
-    cache_key = f"casebook:{inn}"
-    client = await TarantoolClient.get_instance()
-    cache_repo = client.get_cache_repository()
-    
-    cached = await cache_repo.get(cache_key)
-    if cached:
-        logger.debug(f"Casebook cache HIT for {inn}", component="casebook")
-        return cached
-    
-    # Fetch from API
     http_client = await AsyncHttpClient.get_instance()
     url = settings.casebook.api_url
     params = {
@@ -163,19 +137,14 @@ async def fetch_from_casebook(inn: str) -> Dict[str, Any]:
     try:
         # Используем встроенную пагинацию
         all_cases = await http_client.fetch_all_pages(url=url, params=params)
-        result = {"status": "success", "data": all_cases}
-        
-        # Save to cache
-        await cache_repo.set_with_ttl(cache_key, result, ttl=9600, source="casebook")
-        logger.debug(f"Casebook cache SET for {inn}", component="casebook")
-        
-        return result
+        return {"status": "success", "data": all_cases}
         
     except Exception as e:
         logger.exception(f"Casebook request failed for INN {inn}", component="casebook")
         return {"error": f"Casebook request failed: {str(e)}"}
 
 
+@cache_with_tarantool(ttl=9600, source="company_info")
 async def fetch_company_info(inn: str) -> Dict[str, Any]:
     """
     Fetch all company info from multiple sources.
@@ -193,16 +162,6 @@ async def fetch_company_info(inn: str) -> Dict[str, Any]:
     if not inn.isdigit() or len(inn) not in (10, 12):
         logger.warning(f"Invalid INN format: {inn}", component="company_info")
         return {"error": "Invalid INN"}
-    
-    # Check cache for aggregated result
-    cache_key = f"company_info:{inn}"
-    client = await TarantoolClient.get_instance()
-    cache_repo = client.get_cache_repository()
-    
-    cached = await cache_repo.get(cache_key)
-    if cached:
-        logger.debug(f"Company info cache HIT for {inn}", component="company_info")
-        return cached
 
     # Параллельные запросы
     dadata_task = asyncio.create_task(fetch_from_dadata(inn))
@@ -224,13 +183,7 @@ async def fetch_company_info(inn: str) -> Dict[str, Any]:
         else:
             processed_results[name] = result
 
-    result = {
+    return {
         "inn": inn,
         "sources": processed_results,
     }
-    
-    # Save aggregated result to cache
-    await cache_repo.set_with_ttl(cache_key, result, ttl=9600, source="company_info")
-    logger.debug(f"Company info cache SET for {inn}", component="company_info")
-    
-    return result
