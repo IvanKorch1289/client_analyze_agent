@@ -35,6 +35,7 @@ def _error_payload(
 ) -> Dict[str, Any]:
     # Keep it stable and explicit (future-proof for clients).
     payload: Dict[str, Any] = {
+        "status": "error",
         "error": {
             "code": code,
             "message": message,

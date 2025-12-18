@@ -111,6 +111,22 @@ def request_with_retry(method: str, url: str, max_retries: int = 3, initial_time
     
     raise last_error or requests.exceptions.Timeout("Все попытки исчерпаны")
 
+def _get_request_id_from_response(resp: requests.Response) -> str:
+    return resp.headers.get("X-Request-ID") or resp.headers.get("x-request-id") or ""
+
+def _show_api_error(resp: requests.Response, prefix: str = "Ошибка API"):
+    rid = _get_request_id_from_response(resp)
+    details = None
+    try:
+        details = resp.json()
+    except Exception:
+        details = resp.text
+    if rid:
+        st.error(f"{prefix}: HTTP {resp.status_code} (request_id={rid})")
+    else:
+        st.error(f"{prefix}: HTTP {resp.status_code}")
+    st.caption(details)
+
 if "last_response" not in st.session_state:
     st.session_state.last_response = None
 if "last_thread_id" not in st.session_state:
@@ -123,8 +139,37 @@ if "admin_token" not in st.session_state:
     st.session_state.admin_token = ""
 if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
+if "api_base_url" not in st.session_state:
+    st.session_state.api_base_url = API_BASE_URL
 
 st.sidebar.title("Навигация")
+
+st.sidebar.subheader("API")
+api_base_url_input = st.sidebar.text_input(
+    "API Base URL",
+    value=st.session_state.api_base_url,
+    help="Например: http://localhost:8000/api/v1 или https://api.example.com/api/v1",
+)
+st.session_state.api_base_url = (api_base_url_input or "").rstrip("/")
+API_BASE_URL = st.session_state.api_base_url
+
+col_api_1, col_api_2 = st.sidebar.columns([1, 1])
+with col_api_1:
+    if st.button("Проверить API"):
+        try:
+            r = requests.get(f"{API_BASE_URL}/utility/health", timeout=5)
+            if r.status_code == 200:
+                data = r.json()
+                st.sidebar.success(f"OK: {data.get('status')}")
+                issues = data.get("issues") or []
+                if issues:
+                    st.sidebar.caption("\n".join(issues[:5]))
+            else:
+                _show_api_error(r, prefix="Healthcheck failed")
+        except Exception as e:
+            st.sidebar.error(f"API недоступен: {e}")
+with col_api_2:
+    st.sidebar.link_button("Docs", f"{API_BASE_URL}/docs")
 
 st.sidebar.subheader("Авторизация")
 admin_token = st.sidebar.text_input(
@@ -147,6 +192,7 @@ if admin_token != st.session_state.admin_token:
             st.session_state.is_admin = role_data.get("is_admin", False)
         else:
             st.session_state.is_admin = False
+            _show_api_error(resp, prefix="Auth check failed")
     except:
         st.session_state.is_admin = False
 
@@ -201,9 +247,7 @@ if page == "Запрос агенту":
                     st.session_state.last_thread_id = result.get("thread_id")
                     st.rerun()
                 else:
-                    st.error(
-                        f"Ошибка сервера: {response.status_code} - {response.text}"
-                    )
+                    _show_api_error(response, prefix="Ошибка сервера")
             except requests.exceptions.Timeout:
                 st.error("Таймаут: запрос занимает слишком много времени.")
             except Exception as e:

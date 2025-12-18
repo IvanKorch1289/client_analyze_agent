@@ -11,6 +11,7 @@
 from typing import List, Optional
 
 from pydantic import Field
+from pydantic import ConfigDict
 
 from app.config.config_loader import BaseSettingsWithLoader
 
@@ -54,6 +55,12 @@ class SecureSettings(BaseSettingsWithLoader):
     # IP Whitelist (опционально)
     ip_whitelist: Optional[List[str]] = Field(default=None, description="Белый список IP адресов")
     ip_blacklist: Optional[List[str]] = Field(default=None, description="Черный список IP адресов")
+
+    # Trusted hosts (recommended for prod behind a known domain)
+    trusted_hosts: Optional[List[str]] = Field(
+        default=None,
+        description="Allowed hosts list for TrustedHostMiddleware (e.g. ['example.com','*.example.com'])",
+    )
     
     # Encryption
     encryption_enabled: bool = Field(default=False, description="Включить шифрование чувствительных данных")
@@ -68,8 +75,7 @@ class SecureSettings(BaseSettingsWithLoader):
     csp_enabled: bool = Field(default=False, description="Включить CSP")
     csp_directives: Optional[str] = Field(default=None, description="CSP directives")
     
-    class Config:
-        env_prefix = "SECURITY_"
+    model_config = ConfigDict(env_prefix="SECURITY_")
 
 
 # Singleton экземпляр

@@ -6,7 +6,7 @@
 
 from typing import Optional
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from app.config.config_loader import BaseSettingsWithLoader
 
@@ -45,8 +45,7 @@ class AppBaseSettings(BaseSettingsWithLoader):
     workers: int = Field(default=1, description="Количество worker процессов")
     max_requests: int = Field(default=1000, description="Максимум запросов до перезапуска worker")
     
-    class Config:
-        env_prefix = "APP_"
+    model_config = ConfigDict(env_prefix="APP_")
 
 
 class SchedulerSettings(BaseSettingsWithLoader):
@@ -67,8 +66,7 @@ class SchedulerSettings(BaseSettingsWithLoader):
     old_reports_ttl_days: int = Field(default=30, description="TTL для старых отчётов (дни)")
     old_logs_ttl_days: int = Field(default=7, description="TTL для старых логов (дни)")
     
-    class Config:
-        env_prefix = "SCHEDULER_"
+    model_config = ConfigDict(env_prefix="SCHEDULER_")
 
 
 # Singleton экземпляры

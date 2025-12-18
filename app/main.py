@@ -1,6 +1,7 @@
 import asyncio
 import os
 import time
+import ipaddress
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -9,6 +10,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from starlette.responses import JSONResponse, RedirectResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -30,6 +32,7 @@ from app.utility.app_circuit_breaker import (
 from app.utility.helpers import get_client_ip
 from app.utility.logging_client import get_request_id, logger, set_request_id
 from app.utility.telemetry import init_telemetry
+from app.utility.app_metrics import app_metrics
 
 # Get backend port from environment or use default
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
@@ -55,6 +58,12 @@ limiter = Limiter(
     # Можно использовать Redis: "redis://localhost:6379"
     storage_uri=settings.secure.rate_limit_storage or "memory://",
 )
+
+def _bool_env(name: str, default: bool = False) -> bool:
+    val = (os.getenv(name) or "").strip().lower()
+    if not val:
+        return default
+    return val in ("1", "true", "yes", "y", "on")
 
 
 # =======================
@@ -165,6 +174,84 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
 
 # =======================
+# Request tracing & app metrics (debug)
+# =======================
+
+class RequestTraceMiddleware(BaseHTTPMiddleware):
+    """
+    Debug-friendly per-request tracing.
+
+    Enabled by:
+    - APP_DEBUG=true (settings.app.debug) OR
+    - HTTP_TRACE_ENABLED=true
+
+    Body logging (small payloads) is opt-in via HTTP_TRACE_BODY=true.
+    """
+
+    def __init__(self, app: FastAPI):
+        super().__init__(app)
+        self._enabled = bool(getattr(settings.app, "debug", False)) or _bool_env(
+            "HTTP_TRACE_ENABLED", False
+        )
+        self._log_body = _bool_env("HTTP_TRACE_BODY", False)
+        self._max_body = int(os.getenv("HTTP_TRACE_MAX_BODY_BYTES", "4096"))
+
+    async def dispatch(self, request: Request, call_next):
+        if not self._enabled:
+            return await call_next(request)
+
+        request_id = request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
+        set_request_id(request_id)
+
+        body_preview = None
+        if self._log_body and request.method in ("POST", "PUT", "PATCH"):
+            try:
+                body = await request.body()
+                if body:
+                    body_preview = body[: self._max_body].decode("utf-8", errors="replace")
+            except Exception:
+                body_preview = None
+
+        logger.structured(
+            "debug",
+            "request_start",
+            component="http",
+            request_id=request_id,
+            method=request.method,
+            path=str(request.url.path),
+            query=str(request.url.query),
+            root_path=str(request.scope.get("root_path") or ""),
+            body=body_preview,
+        )
+
+        start = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - start) * 1000
+
+        # Metrics: try to use route template if available
+        route = request.scope.get("route")
+        route_path = getattr(route, "path", None) or str(request.url.path)
+        app_metrics.observe(
+            method=request.method,
+            route=str(route_path),
+            status_code=int(response.status_code),
+            duration_ms=float(duration_ms),
+        )
+
+        logger.structured(
+            "debug",
+            "request_end",
+            component="http",
+            request_id=request_id,
+            method=request.method,
+            path=str(request.url.path),
+            status_code=int(response.status_code),
+            duration_ms=round(duration_ms, 2),
+        )
+        return response
+
+
+# =======================
 # Security Headers Middleware
 # =======================
 
@@ -207,6 +294,99 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers.setdefault("Content-Security-Policy", self._csp_value)
 
         return response
+
+
+# =======================
+# IP allow/deny filtering (optional)
+# =======================
+
+class IpFilterMiddleware(BaseHTTPMiddleware):
+    """
+    Optional IP allow/deny lists from settings.secure.
+
+    Supports:
+    - single IPs ("1.2.3.4")
+    - CIDRs ("10.0.0.0/8")
+    """
+
+    def __init__(self, app: FastAPI):
+        super().__init__(app)
+        self._enabled = bool(settings.secure.ip_whitelist or settings.secure.ip_blacklist)
+        self._allow = _parse_ip_list(settings.secure.ip_whitelist or [])
+        self._deny = _parse_ip_list(settings.secure.ip_blacklist or [])
+
+    async def dispatch(self, request: Request, call_next):
+        if not self._enabled:
+            return await call_next(request)
+
+        ip = get_client_ip(request)
+        rid = request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
+        set_request_id(rid)
+
+        if _ip_in_rules(ip, self._deny):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "status": "error",
+                    "error": {
+                        "code": "forbidden",
+                        "message": "IP is blocked",
+                        "request_id": rid,
+                    },
+                },
+                headers={"X-Request-ID": rid},
+            )
+
+        if self._allow and not _ip_in_rules(ip, self._allow):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "status": "error",
+                    "error": {
+                        "code": "forbidden",
+                        "message": "IP is not allowed",
+                        "request_id": rid,
+                    },
+                },
+                headers={"X-Request-ID": rid},
+            )
+
+        return await call_next(request)
+
+
+def _parse_ip_list(values: list[str]):
+    rules = []
+    for v in values:
+        try:
+            v = (v or "").strip()
+            if not v:
+                continue
+            if "/" in v:
+                rules.append(ipaddress.ip_network(v, strict=False))
+            else:
+                rules.append(ipaddress.ip_address(v))
+        except Exception:
+            # Ignore invalid entries (config should not crash app).
+            continue
+    return rules
+
+
+def _ip_in_rules(ip: str, rules) -> bool:
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+    except Exception:
+        return False
+    for r in rules:
+        try:
+            if isinstance(r, (ipaddress.IPv4Network, ipaddress.IPv6Network)):
+                if ip_obj in r:
+                    return True
+            else:
+                if ip_obj == r:
+                    return True
+        except Exception:
+            continue
+    return False
 
 
 # =======================
@@ -280,6 +460,7 @@ if settings.secure.cors_enabled:
 # Базовые security headers.
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(LegacyApiDeprecationMiddleware)
+app.add_middleware(IpFilterMiddleware)
 
 # Circuit breaker на уровне приложения (fail-fast при всплеске 5xx).
 app_circuit_breaker = AppCircuitBreaker(
@@ -292,7 +473,13 @@ app_circuit_breaker = AppCircuitBreaker(
 app.state.app_circuit_breaker = app_circuit_breaker
 app.add_middleware(AppCircuitBreakerMiddleware, breaker=app_circuit_breaker)
 
+# Trusted hosts (optional, recommended in prod)
+trusted_hosts = getattr(settings.secure, "trusted_hosts", None) or []
+if trusted_hosts:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
+
 app.add_middleware(RequestIdMiddleware)
+app.add_middleware(RequestTraceMiddleware)
 
 # -----------------------
 # Root UX helpers
