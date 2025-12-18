@@ -519,9 +519,9 @@ elif page == "Утилиты":
                     if key == "openrouter":
                         st.caption(f"Модель: {data.get('model', 'Н/Д')}")
                     elif key == "perplexity":
-                        st.caption(f"Настроен: {'Да' if data.get('configured') else 'Нет'}")
+                        st.caption(f"Доступен: {'Да' if data.get('available') else 'Нет'}")
                     elif key == "tavily":
-                        st.caption(f"Настроен: {'Да' if data.get('configured') else 'Нет'}")
+                        st.caption(f"Доступен: {'Да' if data.get('available') else 'Нет'}")
                 else:
                     st.error(f"{status.get('error', 'Ошибка')}")
 

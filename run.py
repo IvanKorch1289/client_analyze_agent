@@ -12,7 +12,7 @@ def run_backend():
     subprocess.run([
         sys.executable, "-m", "uvicorn",
         "app.main:app",
-        "--host", "localhost",
+        "--host", "0.0.0.0",
         "--port", "8000",
         "--reload"
     ])
@@ -21,6 +21,7 @@ def run_backend():
 def run_streamlit():
     """Run Streamlit frontend on port 5000."""
     time.sleep(2)
+    os.environ["STREAMLIT_PORT"] = "5000"
     subprocess.run([
         sys.executable, "-m", "streamlit", "run",
         "app/frontend/app.py",
