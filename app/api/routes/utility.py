@@ -30,7 +30,7 @@ utility_router = APIRouter(
 
 
 @utility_router.get("/health")
-async def health_check() -> Dict[str, Any]:
+async def health_check(deep: bool = False) -> Dict[str, Any]:
     perplexity = PerplexityClient.get_instance()
     tavily = TavilyClient.get_instance()
     openrouter = get_openrouter_client()
@@ -58,17 +58,36 @@ async def health_check() -> Dict[str, Any]:
         tarantool_status = f"unhealthy: {str(e)}"
         issues.append(f"Tarantool: {str(e)}")
 
-    perplexity_status = "ready" if perplexity.is_configured() else "not_configured"
-    tavily_status = "ready" if tavily.is_configured() else "not_configured"
     openrouter_configured = bool(openrouter.api_key)
-    openrouter_status = "ready" if openrouter_configured else "not_configured"
 
-    if not perplexity.is_configured():
-        issues.append("Perplexity API not configured")
-    if not tavily.is_configured():
-        issues.append("Tavily API not configured")
-    if not openrouter_configured:
-        issues.append("OpenRouter API not configured")
+    # По умолчанию /health = "быстрый" (проверка конфигурации).
+    # deep=true = "глубокий" (реальная проверка доступности API внешних сервисов).
+    if deep:
+        perplexity_h = await perplexity.healthcheck()
+        tavily_h = await tavily.healthcheck()
+        openrouter_h = await openrouter.check_status()
+
+        perplexity_status = perplexity_h.get("status", "unknown")
+        tavily_status = tavily_h.get("status", "unknown")
+        openrouter_status = "ready" if openrouter_h.get("available") else "error"
+
+        if not perplexity_h.get("available"):
+            issues.append(f"Perplexity unavailable: {perplexity_h.get('error')}")
+        if not tavily_h.get("available"):
+            issues.append(f"Tavily unavailable: {tavily_h.get('error')}")
+        if not openrouter_h.get("available"):
+            issues.append(f"OpenRouter unavailable: {openrouter_h.get('error')}")
+    else:
+        perplexity_status = "ready" if perplexity.is_configured() else "not_configured"
+        tavily_status = "ready" if tavily.is_configured() else "not_configured"
+        openrouter_status = "ready" if openrouter_configured else "not_configured"
+
+        if not perplexity.is_configured():
+            issues.append("Perplexity API not configured")
+        if not tavily.is_configured():
+            issues.append("Tavily API not configured")
+        if not openrouter_configured:
+            issues.append("OpenRouter API not configured")
 
     overall_status = "healthy" if not issues else "degraded"
 

@@ -250,8 +250,22 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         "dadata": None,
         "infosphere": None,
         "casebook": None,
-        "perplexity": {"success": True, "intents": {}, "errors": []},
-        "tavily": {"success": True, "intents": {}, "errors": []},
+        # Для web-поиска: храним результаты по каждому intent_id.
+        # success=True означает "хотя бы один интент успешно отработал".
+        "perplexity": {
+            "success": False,
+            "intents": {},
+            "errors": [],
+            "successful_intents": 0,
+            "failed_intents": 0,
+        },
+        "tavily": {
+            "success": False,
+            "intents": {},
+            "errors": [],
+            "successful_intents": 0,
+            "failed_intents": 0,
+        },
     }
 
     for result in results:
@@ -273,11 +287,18 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
             if isinstance(container, dict):
                 intents_map = container.setdefault("intents", {})
                 intents_map[intent_id] = result
-                if not result.get("success"):
+                if result.get("success"):
+                    container["successful_intents"] = int(
+                        container.get("successful_intents", 0)
+                    ) + 1
+                    container["success"] = True
+                else:
                     container.setdefault("errors", []).append(
                         {"intent_id": intent_id, "error": result.get("error")}
                     )
-                    container["success"] = False
+                    container["failed_intents"] = int(
+                        container.get("failed_intents", 0)
+                    ) + 1
             continue
 
     successful_sources = [k for k, v in source_data.items() if v and v.get("success")]

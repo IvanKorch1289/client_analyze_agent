@@ -1,10 +1,7 @@
 import asyncio
 import os
-import subprocess
-import sys
 import time
 from contextlib import asynccontextmanager
-from threading import Thread
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -22,32 +19,6 @@ from app.utility.telemetry import init_telemetry
 
 # Get backend port from environment or use default
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
-STREAMLIT_PORT = int(os.getenv("STREAMLIT_PORT", "5000"))
-
-
-# =======================
-# Streamlit startup
-# =======================
-
-
-def run_streamlit():
-    """Run Streamlit frontend on specified port."""
-    import time
-
-    time.sleep(2)
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "streamlit",
-            "run",
-            "app/frontend/app.py",
-            f"--server.port={STREAMLIT_PORT}",
-            "--server.address=0.0.0.0",
-            "--server.headless=true",
-            "--browser.gatherUsageStats=false",
-        ]
-    )
 
 
 # =======================
@@ -85,11 +56,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"LLM не инициализирован: {e}")
         app.state.llm = None
-
-    # Запускаем Streamlit в фоновом потоке
-    streamlit_thread = Thread(target=run_streamlit, daemon=True)
-    streamlit_thread.start()
-    logger.info(f"Streamlit запущен на порту {STREAMLIT_PORT}")
 
     logger.info("Клиенты инициализированы")
     yield
@@ -190,7 +156,7 @@ async def main():
 
     config = uvicorn.Config(
         app,
-        host="localhost",
+        host="0.0.0.0",
         port=BACKEND_PORT,
         log_level="info",
     )

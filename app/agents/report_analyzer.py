@@ -232,27 +232,6 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 }
             )
 
-    perplexity_data = source_data.get("perplexity", {})
-    if perplexity_data and perplexity_data.get("success"):
-        findings.append(
-            {
-                "category": "Веб-поиск (Perplexity)",
-                "sentiment": "neutral",
-                "key_points": perplexity_data.get("content", "")[:300],
-            }
-        )
-        all_citations.extend(perplexity_data.get("citations", []))
-
-    tavily_data = source_data.get("tavily", {})
-    if tavily_data and tavily_data.get("success"):
-        findings.append(
-            {
-                "category": "Веб-поиск (Tavily)",
-                "sentiment": "neutral",
-                "key_points": tavily_data.get("answer", "")[:300],
-            }
-        )
-
     successful_sources = sum(1 for v in source_data.values() if v and v.get("success"))
 
     report = {
