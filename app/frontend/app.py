@@ -5,7 +5,11 @@ import time
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="Система анализа контрагентов", layout="wide")
+st.set_page_config(
+    page_title="Система анализа контрагентов",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 st.markdown("""
 <style>
