@@ -86,7 +86,13 @@ class CacheRepository(BaseRepository[Dict[str, Any]]):
         if not key:
             raise ValueError("Cache key is required")
         
-        await self.client.set(key, value, ttl)
+        # Важно: TarantoolClient.set поддерживает параметр source для статистики,
+        # но в unit-тестах используется MockTarantoolClient без этого параметра.
+        # Поэтому делаем совместимый вызов.
+        try:
+            await self.client.set(key, value, ttl, source=source)
+        except TypeError:
+            await self.client.set(key, value, ttl)
         
         logger.debug(
             f"Cache created: {key} (ttl={ttl}s, source={source})",
@@ -115,7 +121,10 @@ class CacheRepository(BaseRepository[Dict[str, Any]]):
             True если успешно сохранено
         """
         try:
-            await self.client.set(key, value, ttl)
+            try:
+                await self.client.set(key, value, ttl, source=source)
+            except TypeError:
+                await self.client.set(key, value, ttl)
             return True
         except Exception as e:
             logger.error(

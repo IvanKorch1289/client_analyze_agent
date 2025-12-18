@@ -203,6 +203,24 @@ class TarantoolClient:
         if not self._connected:
             await self._connect()
 
+    async def _call(self, func_name: str, *args):
+        """
+        Вызов Lua-функций в Tarantool через connection.call в отдельном потоке.
+
+        Зачем:
+        - tarantool-python клиент синхронный, поэтому выносим IO в executor,
+        - часть операций (prefix delete, list entries, truncate) быстрее делать на стороне Tarantool.
+        """
+        await self._ensure_connection()
+        if self._use_memory or not self._connection:
+            raise RuntimeError("Tarantool недоступен (in-memory fallback)")
+
+        def do_call():
+            return self._connection.call(func_name, args)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, do_call)
+
     def _compress(self, data: bytes) -> bytes:
         if data and len(data) >= self._config.compression_threshold:
             compressed = gzip.compress(
@@ -497,7 +515,12 @@ class TarantoolClient:
         self, query: str, result: Any, service: str = "default"
     ):
         key = self._generate_search_key(query, service)
-        await self.set(key, result, ttl=self._config.search_cache_ttl)
+        await self.set(
+            key,
+            result,
+            ttl=self._config.search_cache_ttl,
+            source=f"search:{service}",
+        )
         self._search_cache[key] = (result, time.time() + self._config.search_cache_ttl)
 
     async def get_cached_search(
@@ -522,12 +545,31 @@ class TarantoolClient:
             self._metrics.deletes += len(keys_to_delete)
             return
 
-        def do_prefix_delete():
+        # Быстрый путь: Lua-процедура в Tarantool (iterator=GE по primary index)
+        try:
+            res = await self._call("cache_delete_by_prefix", prefix)
+            # tarantool-python обычно возвращает объект с .data
+            data = getattr(res, "data", res)
+            deleted = 0
+            if isinstance(data, (list, tuple)) and data:
+                payload = data[0]
+                if isinstance(payload, dict):
+                    deleted = int(payload.get("deleted", 0) or 0)
+            self._metrics.deletes += deleted
+            return
+        except Exception as e:
+            # Фоллбек: старый медленный скан (на случай отсутствия функции в Tarantool)
+            logger.warning(
+                f"delete_by_prefix() fallback to scan: {e}",
+                component="tarantool",
+            )
+
+        def do_prefix_delete_scan():
             try:
                 result = self._connection.select(self._space)
                 deleted = 0
                 for row in result:
-                    if len(row) >= 1 and row[0].startswith(prefix):
+                    if len(row) >= 1 and isinstance(row[0], str) and row[0].startswith(prefix):
                         self._connection.delete(self._space, row[0])
                         deleted += 1
                 return deleted
@@ -538,7 +580,7 @@ class TarantoolClient:
                 return 0
 
         loop = asyncio.get_event_loop()
-        deleted = await loop.run_in_executor(_executor, do_prefix_delete)
+        deleted = await loop.run_in_executor(_executor, do_prefix_delete_scan)
         self._metrics.deletes += deleted
 
     def get_metrics(self) -> Dict[str, Any]:
@@ -550,10 +592,19 @@ class TarantoolClient:
     def get_cache_size(self) -> int:
         if self._use_memory:
             return len(_memory_cache)
+        # Быстрый путь: Tarantool считает len() внутри, без скана.
+        try:
+            if self._connection:
+                res = self._connection.call("cache_len", ())
+                data = getattr(res, "data", res)
+                if isinstance(data, (list, tuple)) and data:
+                    return int(data[0] or 0)
+        except Exception:
+            pass
         return 0
 
     async def get_entries(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get first N cache entries for dashboard display."""
+        """Получить первые N записей кеша для UI (без полного скана)."""
         await self._ensure_connection()
         entries = []
         
@@ -580,6 +631,20 @@ class TarantoolClient:
                         entries.append({"key": key, "error": "unpack failed"})
             return entries
         
+        # Быстрый путь: Tarantool делает выборку на своей стороне
+        try:
+            res = await self._call("cache_get_entries", limit)
+            data = getattr(res, "data", res)
+            if isinstance(data, (list, tuple)) and data and isinstance(data[0], list):
+                return data[0]
+            if isinstance(data, (list, tuple)) and data and isinstance(data[0], dict):
+                return list(data)
+        except Exception as e:
+            logger.warning(
+                f"get_entries() fallback to scan: {e}",
+                component="tarantool",
+            )
+
         def do_get_entries():
             result_entries = []
             try:
@@ -796,12 +861,21 @@ class TarantoolClient:
         logger.warning("All cache keys invalidated", component="tarantool")
 
     async def clear_cache(self):
-        """Очистить весь кеш (backward compatibility for repositories/tests)."""
+        """Очистить весь кеш. В Tarantool — через truncate (очень быстро)."""
         await self._ensure_connection()
 
         if self._use_memory:
             _memory_cache.clear()
             return
+
+        try:
+            await self._call("cache_clear")
+            return
+        except Exception as e:
+            logger.warning(
+                f"cache_clear() not available, fallback to scan: {e}",
+                component="tarantool",
+            )
 
         def do_clear():
             try:

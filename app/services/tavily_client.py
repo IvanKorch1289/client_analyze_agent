@@ -16,8 +16,11 @@ class TavilyClient:
         self.api_key = api_key or settings.tavily.api_key or os.getenv("TAVILY_API_KEY") or os.getenv("TAVILY_TOKEN")
         if self.api_key:
             os.environ["TAVILY_API_KEY"] = self.api_key
+        # L1 кэш в памяти процесса (быстрый, но не разделяется между воркерами)
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._cache_ttl = settings.tavily.cache_ttl or 300
+        # Коалесинг (аналогично Perplexity): один внешний вызов на cache_key
+        self._inflight: Dict[str, asyncio.Future] = {}
 
     @classmethod
     def get_instance(cls) -> "TavilyClient":
@@ -88,12 +91,39 @@ class TavilyClient:
             include_domains,
             exclude_domains,
         )
-        if use_cache and cache_key in self._cache:
-            cached = self._cache[cache_key]
-            logger.info(f"Tavily cache hit for query: {query[:50]}", component="tavily")
-            return cached
+        if use_cache:
+            # 1) L1 cache
+            if cache_key in self._cache:
+                cached = self._cache[cache_key]
+                logger.info(f"Tavily cache hit (L1) for query: {query[:50]}", component="tavily")
+                return cached
+
+            # 2) L2 cache (Tarantool)
+            if settings.tavily.cache_enabled:
+                try:
+                    from app.storage.tarantool import TarantoolClient
+
+                    t = await TarantoolClient.get_instance()
+                    repo = t.get_cache_repository()
+                    l2 = await repo.get(cache_key)
+                    if l2:
+                        self._cache[cache_key] = l2
+                        logger.info(f"Tavily cache hit (L2/Tarantool) for query: {query[:50]}", component="tavily")
+                        return l2
+                except Exception:
+                    pass
+
+            # 3) Coalescing
+            inflight = self._inflight.get(cache_key)
+            if inflight is not None:
+                return await inflight
 
         try:
+            if use_cache:
+                loop = asyncio.get_event_loop()
+                fut: asyncio.Future = loop.create_future()
+                self._inflight[cache_key] = fut
+
             tool = self._get_tool(
                 max_results=max_results,
                 include_answer=include_answer,
@@ -161,6 +191,25 @@ class TavilyClient:
 
             if use_cache:
                 self._cache[cache_key] = {**response_data, "cached": True}
+                # L2 запись в Tarantool (best-effort)
+                if settings.tavily.cache_enabled:
+                    try:
+                        from app.storage.tarantool import TarantoolClient
+
+                        t = await TarantoolClient.get_instance()
+                        repo = t.get_cache_repository()
+                        await repo.set_with_ttl(
+                            cache_key,
+                            {**response_data, "cached": True},
+                            ttl=self._cache_ttl,
+                            source="tavily",
+                        )
+                    except Exception:
+                        pass
+
+                inflight = self._inflight.pop(cache_key, None)
+                if inflight is not None and not inflight.done():
+                    inflight.set_result({**response_data, "cached": True})
 
             return response_data
 
@@ -170,6 +219,9 @@ class TavilyClient:
                 f"Tavily LangChain request failed: {type(e).__name__}: {error_msg}",
                 component="tavily",
             )
+            inflight = self._inflight.pop(cache_key, None) if use_cache else None
+            if inflight is not None and not inflight.done():
+                inflight.set_result({"success": False, "error": error_msg})
             
             if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
                 return {
@@ -202,8 +254,13 @@ class TavilyClient:
         return result
 
     def clear_cache(self):
+        """
+        Очистка L1 кэша процесса.
+
+        Примечание: L2 кэш в Tarantool очищается через админ-эндпоинт `/utility/cache/prefix/tavily:`.
+        """
         self._cache.clear()
-        logger.info("Tavily cache cleared", component="tavily")
+        logger.info("Tavily cache cleared (L1)", component="tavily")
 
     def get_cache_stats(self) -> Dict[str, int]:
         return {
