@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -17,6 +18,13 @@ from tenacity import (
 from app.utility.logging_client import logger
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+def _bool_env(name: str, default: bool = False) -> bool:
+    """Простой парсер bool из переменных окружения."""
+    val = (os.getenv(name) or "").strip().lower()
+    if not val:
+        return default
+    return val in ("1", "true", "yes", "y", "on")
 
 
 class CircuitState(Enum):
@@ -253,6 +261,10 @@ class AsyncHttpClient:
         self._metrics: Dict[str, RequestMetrics] = {}
         self._default_timeout = TimeoutConfig()
         self._default_retry = RetryConfig()
+        # Важно для производительности: подробные httpx-логи (таблицы rich + body)
+        # очень дорогие под нагрузкой. По умолчанию выключаем и включаем только
+        # в debug режиме или явной переменной окружения.
+        self._http_trace_enabled: bool = _bool_env("HTTP_TRACE_ENABLED", default=False)
         self._service_configs: Dict[str, Dict[str, Any]] = {
             "dadata": {
                 "timeout": TimeoutConfig(connect=5.0, read=30.0, write=10.0, pool=5.0),
@@ -300,12 +312,14 @@ class AsyncHttpClient:
 
     async def _on_request(self, request: httpx.Request):
         request.extensions["start_time"] = asyncio.get_event_loop().time()
-        logger.log_request(request)
+        if self._http_trace_enabled:
+            logger.log_request(request)
 
     async def _on_response(self, response: httpx.Response):
         start_time = response.request.extensions.get("start_time", None)
         duration = asyncio.get_event_loop().time() - start_time if start_time else 0.0
-        logger.log_response(response, duration=duration)
+        if self._http_trace_enabled:
+            logger.log_response(response, duration=duration)
 
     def _get_circuit_breaker(self, service: str) -> CircuitBreaker:
         if service not in self._circuit_breakers:
