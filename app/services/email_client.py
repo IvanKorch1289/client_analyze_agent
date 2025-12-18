@@ -11,11 +11,8 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any, Dict, Optional
 
-from dotenv import load_dotenv
-
 from app.utility.logging_client import logger
-
-load_dotenv(".env")
+from app.settings import settings
 
 
 class EmailClient:
@@ -31,12 +28,18 @@ class EmailClient:
         smtp_password: Optional[str] = None,
         use_tls: bool = True,
     ):
-        self.smtp_host = smtp_host or os.getenv("SMTP_HOST", "")
-        self.smtp_port = smtp_port or int(os.getenv("SMTP_PORT", "587"))
-        self.smtp_user = smtp_user or os.getenv("SMTP_USER", "")
-        self.smtp_password = smtp_password or os.getenv("SMTP_PASSWORD", "")
+        self.smtp_host = smtp_host or settings.smtp_host or os.getenv("SMTP_HOST", "")
+        self.smtp_port = (
+            smtp_port or settings.smtp_port or int(os.getenv("SMTP_PORT", "587"))
+        )
+        self.smtp_user = smtp_user or settings.smtp_user or os.getenv("SMTP_USER", "")
+        self.smtp_password = (
+            smtp_password
+            or settings.smtp_password
+            or os.getenv("SMTP_PASSWORD", "")
+        )
         self.use_tls = use_tls
-        self.default_from = os.getenv("SMTP_FROM", self.smtp_user)
+        self.default_from = settings.smtp_from or os.getenv("SMTP_FROM", self.smtp_user)
 
     @classmethod
     def get_instance(cls) -> "EmailClient":

@@ -22,8 +22,10 @@ st.markdown("""
     #MainMenu {
         display: none !important;
     }
+    /* ВАЖНО: не скрываем stHeader полностью, иначе пропадает кнопка
+       сворачивания/разворачивания боковой панели. */
     header[data-testid="stHeader"] {
-        display: none !important;
+        background: transparent !important;
     }
     footer {
         display: none !important;

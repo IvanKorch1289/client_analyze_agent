@@ -4,11 +4,8 @@ import os
 import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
-from dotenv import load_dotenv
-
+from app.settings import settings
 from app.utility.logging_client import logger
-
-load_dotenv(".env")
 
 
 class PerplexityClient:
@@ -25,8 +22,10 @@ class PerplexityClient:
     _instance: Optional["PerplexityClient"] = None
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
-        self.api_key = api_key or os.getenv("PERPLEXITY_API_KEY")
-        self.model = model or os.getenv("PERPLEXITY_MODEL", self.DEFAULT_MODEL)
+        self.api_key = api_key or settings.perplexity_api_key or os.getenv("PERPLEXITY_API_KEY")
+        self.model = model or settings.perplexity_model or os.getenv(
+            "PERPLEXITY_MODEL", self.DEFAULT_MODEL
+        )
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._cache_ttl_s = 300
 

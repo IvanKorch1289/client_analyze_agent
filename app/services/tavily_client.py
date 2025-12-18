@@ -3,19 +3,17 @@ import hashlib
 import os
 from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional
 
-from dotenv import load_dotenv
 from langchain_community.tools.tavily_search import TavilySearchResults
 
+from app.settings import settings
 from app.utility.logging_client import logger
-
-load_dotenv('.env')
 
 
 class TavilyClient:
     _instance: Optional["TavilyClient"] = None
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("TAVILY_API_KEY") or os.getenv("TAVILY_TOKEN")
+        self.api_key = api_key or settings.tavily_token or os.getenv("TAVILY_API_KEY") or os.getenv("TAVILY_TOKEN")
         if self.api_key:
             os.environ["TAVILY_API_KEY"] = self.api_key
         self._cache: Dict[str, Dict[str, Any]] = {}

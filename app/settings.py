@@ -1,10 +1,15 @@
 from typing import Optional
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import SettingsConfigDict
+
+from app.config.config_loader import BaseSettingsWithLoader
+from app.config.constants import consts
 
 
-class Settings(BaseSettings):
+class Settings(BaseSettingsWithLoader):
+    yaml_group = "app"
+
     # Tarantool
     tarantool_host: str = "localhost"
     tarantool_port: int = 3302
@@ -57,11 +62,22 @@ class Settings(BaseSettings):
     perplexity_api_key: Optional[str] = None
     perplexity_model: str = "sonar"
 
+    # Email / SMTP
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+
     temperature: float = 0.1
     max_new_tokens: int = 1000
     do_sample: bool = False
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = SettingsConfigDict(
+        env_prefix="",
+        env_file=str(consts.ENV_FILE),
+        extra="ignore",
+    )
 
 
 settings = Settings()
