@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 import os
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional
 
 from dotenv import load_dotenv
 from langchain_community.tools.tavily_search import TavilySearchResults
@@ -18,7 +18,6 @@ class TavilyClient:
         self.api_key = api_key or os.getenv("TAVILY_API_KEY") or os.getenv("TAVILY_TOKEN")
         if self.api_key:
             os.environ["TAVILY_API_KEY"] = self.api_key
-        self._tool: Optional[TavilySearchResults] = None
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._cache_ttl = 300
 
@@ -70,7 +69,7 @@ class TavilyClient:
     async def search(
         self,
         query: str,
-        search_depth: str = "basic",
+        search_depth: Literal["basic", "advanced", "fast", "ultra-fast"] = "basic",
         max_results: int = 5,
         include_answer: bool = True,
         include_raw_content: bool = False,
@@ -113,29 +112,30 @@ class TavilyClient:
                 except json.JSONDecodeError:
                     results = [{"content": results, "url": ""}]
 
+            formatted_results = []
             if isinstance(results, list):
-                formatted_results = []
                 for item in results:
                     if isinstance(item, dict):
+                        content = item.get("content", "")
                         formatted_results.append({
                             "title": item.get("title", ""),
                             "url": item.get("url", ""),
-                            "content": item.get("content", ""),
+                            "content": content,
+                            "snippet": content[:500] if content else "",
                             "score": item.get("score", 0),
                         })
                     else:
-                        formatted_results.append({"content": str(item), "url": ""})
-                results = formatted_results
+                        formatted_results.append({"content": str(item), "url": "", "snippet": str(item)[:500]})
 
             logger.info(
-                f"Tavily LangChain search completed: {len(results)} results",
+                f"Tavily LangChain search completed: {len(formatted_results)} results",
                 component="tavily",
             )
 
             response_data = {
                 "success": True,
                 "answer": "",
-                "results": results,
+                "results": formatted_results,
                 "query": query,
                 "response_time": 0,
                 "cached": False,
@@ -205,5 +205,4 @@ class TavilyClient:
     async def close_global(cls):
         if cls._instance:
             cls._instance._cache.clear()
-            cls._instance._tool = None
             cls._instance = None

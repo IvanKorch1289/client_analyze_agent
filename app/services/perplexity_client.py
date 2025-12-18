@@ -1,11 +1,10 @@
 import asyncio
 import hashlib
 import os
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, cast
 
 from dotenv import load_dotenv
-from langchain_community.chat_models import ChatPerplexity
-from langchain_core.messages import HumanMessage, SystemMessage
+from openai import AsyncOpenAI
 
 from app.utility.logging_client import logger
 
@@ -14,13 +13,14 @@ load_dotenv('.env')
 
 class PerplexityClient:
     DEFAULT_MODEL = "sonar-pro"
+    BASE_URL = "https://api.perplexity.ai"
 
     _instance: Optional["PerplexityClient"] = None
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or os.getenv("PERPLEXITY_API_KEY")
         self.model = model or os.getenv("PERPLEXITY_MODEL", self.DEFAULT_MODEL)
-        self._llm: Optional[ChatPerplexity] = None
+        self._client: Optional[AsyncOpenAI] = None
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._cache_ttl = 300
 
@@ -30,18 +30,14 @@ class PerplexityClient:
             cls._instance = cls()
         return cls._instance
 
-    def _get_llm(self, temperature: float = 0.2, max_tokens: Optional[int] = None) -> ChatPerplexity:
-        if self._llm is None or self._llm.temperature != temperature:
-            kwargs = {
-                "model": self.model,
-                "temperature": temperature,
-                "pplx_api_key": self.api_key,
-                "timeout": 300,
-            }
-            if max_tokens:
-                kwargs["max_tokens"] = max_tokens
-            self._llm = ChatPerplexity(**kwargs)
-        return self._llm
+    def _get_client(self) -> AsyncOpenAI:
+        if self._client is None:
+            self._client = AsyncOpenAI(
+                api_key=self.api_key,
+                base_url=self.BASE_URL,
+                timeout=300.0,
+            )
+        return self._client
 
     def is_configured(self) -> bool:
         return bool(self.api_key)
@@ -73,35 +69,38 @@ class PerplexityClient:
             return cached
 
         try:
-            llm = self._get_llm(temperature=temperature, max_tokens=max_tokens)
+            client = self._get_client()
             
-            lc_messages = []
-            for msg in messages:
-                role = msg.get("role", "user")
-                content = msg.get("content", "")
-                if role == "system":
-                    lc_messages.append(SystemMessage(content=content))
-                else:
-                    lc_messages.append(HumanMessage(content=content))
-
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, llm.invoke, lc_messages)
+            response = await client.chat.completions.create(
+                model=use_model,
+                messages=cast(Any, messages),
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
 
             logger.info(
-                f"Perplexity response received via LangChain, model: {use_model}",
+                f"Perplexity response received via OpenAI SDK, model: {use_model}",
                 component="perplexity",
             )
 
-            content = response.content if hasattr(response, 'content') else str(response)
+            content = response.choices[0].message.content if response.choices else ""
             
             usage = {}
-            if hasattr(response, 'response_metadata'):
-                usage = response.response_metadata.get('usage', {})
+            if response.usage:
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                }
+
+            citations = []
+            if hasattr(response, 'citations'):
+                citations = getattr(response, 'citations', []) or []
 
             response_data = {
                 "success": True,
                 "content": content,
-                "citations": [],
+                "citations": citations,
                 "model": use_model,
                 "usage": usage,
                 "raw_response": {"content": content},
@@ -116,7 +115,7 @@ class PerplexityClient:
         except Exception as e:
             error_msg = str(e) or type(e).__name__
             logger.error(
-                f"Perplexity LangChain request failed: {type(e).__name__}: {error_msg}",
+                f"Perplexity request failed: {type(e).__name__}: {error_msg}",
                 component="perplexity",
             )
             
@@ -178,7 +177,7 @@ class PerplexityClient:
             "configured": self.is_configured(),
             "model": self.model,
             "status": "ready" if self.is_configured() else "not_configured",
-            "integration": "langchain-community",
+            "integration": "openai-sdk",
             "cache_stats": self.get_cache_stats(),
         }
 
@@ -186,5 +185,7 @@ class PerplexityClient:
     async def close_global(cls):
         if cls._instance:
             cls._instance._cache.clear()
-            cls._instance._llm = None
+            if cls._instance._client:
+                await cls._instance._client.close()
+            cls._instance._client = None
             cls._instance = None
