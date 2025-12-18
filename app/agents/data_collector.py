@@ -7,6 +7,7 @@ import asyncio
 import time
 from typing import Any, Dict, List, Optional
 
+from app.config import MAX_CONCURRENT_SEARCHES, MAX_CONTENT_LENGTH, SEARCH_TIMEOUT_SECONDS
 from app.services.fetch_data import (
     fetch_from_casebook,
     fetch_from_dadata,
@@ -16,12 +17,8 @@ from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
 from app.utility.logging_client import logger
 
-MAX_CONCURRENT = 5
-SEARCH_TIMEOUT = 60
-MAX_WEB_CONTENT_CHARS = 2500
 
-
-def _truncate(text: str, max_len: int = MAX_WEB_CONTENT_CHARS) -> str:
+def _truncate(text: str, max_len: int = MAX_CONTENT_LENGTH) -> str:
     if not text:
         return ""
     if len(text) <= max_len:
@@ -59,7 +56,7 @@ async def _fetch_perplexity(intent_id: str, query: str, client_name: str) -> Dic
                 system_prompt=system_prompt,
                 search_recency_filter="month",
             ),
-            timeout=SEARCH_TIMEOUT,
+            timeout=SEARCH_TIMEOUT_SECONDS,
         )
 
         return {
@@ -106,7 +103,7 @@ async def _fetch_tavily(intent_id: str, query: str, client_name: str) -> Dict[st
                 max_results=10,
                 include_answer=True,
             ),
-            timeout=SEARCH_TIMEOUT,
+            timeout=SEARCH_TIMEOUT_SECONDS,
         )
         return {
             "source": "tavily",
@@ -227,7 +224,7 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     if not intents:
         intents = [{"id": "reputation", "query": client_name, "description": "Общая репутация и отзывы"}]
 
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
 
     async def _bounded(coro):
         async with semaphore:

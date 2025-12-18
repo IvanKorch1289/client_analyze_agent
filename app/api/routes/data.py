@@ -1,4 +1,3 @@
-import re
 from typing import List, Optional
 
 from fastapi import APIRouter
@@ -12,17 +11,13 @@ from app.services.fetch_data import (
 )
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
+from app.utility.helpers import validate_inn
 
 data_router = APIRouter(
     prefix="/data",
     tags=["Внешние данные"],
     responses={404: {"description": "Не найдено"}},
 )
-
-
-def validate_inn(inn: str) -> bool:
-    """Validate Russian INN format (10 or 12 digits)."""
-    return bool(re.match(r"^\d{10}$|^\d{12}$", inn))
 
 
 class PerplexityRequest(BaseModel):
@@ -72,8 +67,9 @@ async def get_all_client_data(inn: str):
 @data_router.post("/search/perplexity")
 async def perplexity_search(request: PerplexityRequest):
     """Search via Perplexity."""
-    if not validate_inn(request.inn):
-        return {"status": "error", "message": "Неверный формат ИНН (должно быть 10 или 12 цифр)"}
+    is_valid, error_msg = validate_inn(request.inn)
+    if not is_valid:
+        return {"status": "error", "message": error_msg}
     
     client = PerplexityClient.get_instance()
 
@@ -98,8 +94,9 @@ async def perplexity_search(request: PerplexityRequest):
 @data_router.post("/search/tavily")
 async def tavily_search(request: TavilyRequest):
     """Search via Tavily."""
-    if not validate_inn(request.inn):
-        return {"status": "error", "message": "Неверный формат ИНН (должно быть 10 или 12 цифр)"}
+    is_valid, error_msg = validate_inn(request.inn)
+    if not is_valid:
+        return {"status": "error", "message": error_msg}
     
     client = TavilyClient.get_instance()
 

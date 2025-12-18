@@ -254,6 +254,12 @@ async def _run_streaming_analysis(
         yield {"type": "result", "data": final_result}
 
         try:
+            # Сохраняем через ThreadsRepository для лучшей структуры данных
+            from app.storage.tarantool import TarantoolClient
+            
+            client = await TarantoolClient.get_instance()
+            threads_repo = client.get_threads_repository()
+            
             thread_data = {
                 "input": f"Анализ клиента: {client_name}",
                 "created_at": time.time(),
@@ -262,8 +268,18 @@ async def _run_streaming_analysis(
                     {"type": "report", "data": report},
                 ],
                 "saved_files": saved_files,
+                "client_name": client_name,
+                "inn": inn,
             }
-            asyncio.create_task(save_thread_to_tarantool(session_id, thread_data))
+            
+            asyncio.create_task(
+                threads_repo.save_thread(
+                    thread_id=session_id,
+                    thread_data=thread_data,
+                    client_name=client_name,
+                    inn=inn
+                )
+            )
         except Exception as e:
             logger.error(f"Failed to save thread: {e}", component="workflow")
 
@@ -291,6 +307,12 @@ async def _run_batch_analysis(
         final_state = {**initial_state, "error": str(e), "current_step": "failed"}
 
     try:
+        # Сохраняем через ThreadsRepository
+        from app.storage.tarantool import TarantoolClient
+        
+        client_inst = await TarantoolClient.get_instance()
+        threads_repo = client_inst.get_threads_repository()
+        
         thread_data = {
             "input": f"Анализ клиента: {client_name}",
             "created_at": time.time(),
@@ -299,8 +321,18 @@ async def _run_batch_analysis(
                 {"type": "report", "data": final_state.get("report", {})},
             ],
             "final_state": final_state,
+            "client_name": client_name,
+            "inn": inn,
         }
-        asyncio.create_task(save_thread_to_tarantool(session_id, thread_data))
+        
+        asyncio.create_task(
+            threads_repo.save_thread(
+                thread_id=session_id,
+                thread_data=thread_data,
+                client_name=client_name,
+                inn=inn
+            )
+        )
     except Exception as e:
         logger.error(f"Failed to save thread: {e}", component="workflow")
 

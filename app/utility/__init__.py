@@ -16,10 +16,6 @@ from app.utility.logging_client import (
 
 def __getattr__(name: str):
     # Lazy exports to prevent circular imports at package import time.
-    if name == "cache_response":
-        from app.utility.cache import cache_response as _cache_response
-
-        return _cache_response
     if name == "clean_xml_dict":
         from app.utility.helpers import clean_xml_dict as _clean_xml_dict
 
@@ -32,6 +28,5 @@ __all__ = [
     "get_request_id",
     "set_request_id",
     "generate_request_id",
-    "cache_response",
     "clean_xml_dict",
 ]

@@ -12,10 +12,8 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.agents.client_workflow import run_client_analysis_streaming
-from app.agents.workflow import AgentState, invoke_graph_with_persistence
 from app.config.constants import (
     RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE,
-    RATE_LIMIT_PROMPT_PER_MINUTE,
     RATE_LIMIT_SEARCH_PER_MINUTE,
 )
 from app.utility.logging_client import logger
@@ -32,64 +30,16 @@ class ClientAnalysisRequest(BaseModel):
     additional_notes: Optional[str] = ""
 
 
-@agent_router.post("/prompt")
-@limiter.limit(f"{RATE_LIMIT_PROMPT_PER_MINUTE}/minute")
-async def process_prompt(request: Request, body: dict):
-    """Принимает prompt, запускает граф, возвращает ответ."""
-    thread_id = body.get("thread_id") or f"thread_{uuid.uuid4().hex}"
-    user_input = body.get("prompt")
-    if not user_input:
-        raise HTTPException(status_code=400, detail="Prompt обязателен")
-
-    llm = getattr(request.app.state, "llm", None)
-    if llm is None:
-        raise HTTPException(
-            status_code=503,
-            detail="LLM не настроен. Требуется GIGACHAT_TOKEN для работы этого endpoint. "
-            "Используйте /agent/analyze-client для анализа клиентов через Perplexity.",
-        )
-
-    initial_state: AgentState = {
-        "session_id": thread_id,
-        "user_input": user_input,
-        "llm": llm,
-        "current_step": "planning",
-        "plan": "",
-        "tool_sequence": [],
-        "tool_results": [],
-        "analysis_result": "",
-        "requires_confirmation": False,
-        "saved_file_path": "",
-        "is_confirmed": False,
-        "feedback": "",
-    }
-
-    try:
-        final_state = await invoke_graph_with_persistence(thread_id, initial_state)
-        response_text = final_state.get(
-            "analysis_result", "Не удалось сгенерировать ответ."
-        )
-
-        return {
-            "response": response_text,
-            "thread_id": thread_id,
-            "tools_used": len(final_state.get("tool_results", [])) > 0,
-            "timestamp": datetime.now().isoformat(),
-        }
-
-    except Exception as e:
-        logger.error(f"Ошибка в process_prompt: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ошибка агента: {str(e)}") from e
-
-
 @agent_router.get("/thread_history/{thread_id}")
 @limiter.limit(f"{RATE_LIMIT_SEARCH_PER_MINUTE}/minute")
 async def get_thread_history(request: Request, thread_id: str):
     from app.storage.tarantool import TarantoolClient
 
     client = await TarantoolClient.get_instance()
-    key = f"thread:{thread_id}" if not thread_id.startswith("thread:") else thread_id
-    result = await client.get_persistent(key)
+    threads_repo = client.get_threads_repository()
+    
+    # Используем ThreadsRepository
+    result = await threads_repo.get(thread_id)
     if not result:
         raise HTTPException(status_code=404, detail="Тред не найден")
     return result
@@ -198,23 +148,29 @@ async def list_threads(request: Request) -> Dict[str, Any]:
 
     try:
         client = await TarantoolClient.get_instance()
-        threads_data = await client.scan_threads()
+        threads_repo = client.get_threads_repository()
+        
+        # Используем ThreadsRepository
+        threads_list = await threads_repo.list(limit=50)
+        
         threads = [
             {
-                "thread_id": item["key"].replace("thread:", ""),
+                "thread_id": item.get("thread_id", ""),
                 "user_prompt": (
-                    item["input"][:100] + "..."
-                    if len(item["input"]) > 100
-                    else item["input"]
+                    item.get("thread_data", {}).get("input", "")[:100] + "..."
+                    if len(item.get("thread_data", {}).get("input", "")) > 100
+                    else item.get("thread_data", {}).get("input", "")
                 ),
                 "created_at": (
-                    datetime.fromtimestamp(item["created_at"]).isoformat()
-                    if item["created_at"]
+                    datetime.fromtimestamp(item.get("created_at", 0)).isoformat()
+                    if item.get("created_at")
                     else "Неизвестно"
                 ),
-                "message_count": item["message_count"],
+                "message_count": len(item.get("thread_data", {}).get("messages", [])) if isinstance(item.get("thread_data"), dict) else 0,
+                "client_name": item.get("client_name", ""),
+                "inn": item.get("inn", ""),
             }
-            for item in threads_data
+            for item in threads_list
         ]
         return {
             "total": len(threads),
