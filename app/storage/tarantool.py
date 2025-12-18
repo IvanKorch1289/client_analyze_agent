@@ -100,26 +100,48 @@ class TarantoolClient:
     """
 
     _instance: Optional["TarantoolClient"] = None
-    _lock = asyncio.Lock()
+    _lock: Optional[asyncio.Lock] = None
+    _initialized: bool = False
 
     def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
+        # Блокируем прямое создание экземпляров
+        raise RuntimeError(
+            f"Нельзя создавать экземпляр {cls.__name__} напрямую. "
+            f"Используйте {cls.__name__}.get_instance()"
+        )
 
     @classmethod
     async def get_instance(cls) -> "TarantoolClient":
-        if cls._instance is None:
-            async with cls._lock:
-                if cls._instance is None:
-                    instance = cls()
-                    await instance._connect()
-                    cls._instance = instance
+        """
+        Thread-safe singleton pattern с async/await.
+        
+        Returns:
+            TarantoolClient: Единственный экземпляр клиента
+        """
+        # Быстрая проверка без блокировки
+        if cls._instance is not None and cls._initialized:
+            return cls._instance
+        
+        # Создаем lock если еще нет
+        if cls._lock is None:
+            cls._lock = asyncio.Lock()
+        
+        # Двойная проверка с блокировкой
+        async with cls._lock:
+            if cls._instance is None:
+                # Создаем instance напрямую через object.__new__
+                instance = object.__new__(cls)
+                instance.__init_once()
+                await instance._connect()
+                
+                # Атомарно устанавливаем instance и флаг
+                cls._initialized = True
+                cls._instance = instance
+                
         return cls._instance
 
-    def __init__(self):
-        if hasattr(self, "_initialized") and self._initialized:
-            return
+    def __init_once(self):
+        """Инициализация атрибутов экземпляра (вызывается один раз)."""
         self._connection: Any = None
         self._connected: bool = False
         self._space = "cache"
@@ -127,7 +149,6 @@ class TarantoolClient:
         self._config = CacheConfig()
         self._metrics = CacheMetrics()
         self._search_cache: Dict[str, Tuple[Any, float]] = {}
-        self._initialized = True
 
     async def _connect(self):
         """Асинхронное подключение через пул"""
@@ -719,7 +740,13 @@ class TarantoolClient:
         """Закрывает глобальный экземпляр."""
         if cls._instance is not None:
             await cls._instance.close()
-            cls._instance = None
+            if cls._lock is not None:
+                async with cls._lock:
+                    cls._instance = None
+                    cls._initialized = False
+            else:
+                cls._instance = None
+                cls._initialized = False
 
 
 async def save_thread_to_tarantool(thread_id: str, data: Dict[str, Any]):

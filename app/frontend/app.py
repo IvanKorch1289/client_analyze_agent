@@ -13,6 +13,7 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    /* Скрываем элементы Streamlit UI */
     [data-testid="stToolbar"] {
         display: none !important;
     }
@@ -22,28 +23,41 @@ st.markdown("""
     #MainMenu {
         display: none !important;
     }
-    /* ВАЖНО: не скрываем stHeader полностью, иначе пропадает кнопка
-       сворачивания/разворачивания боковой панели. */
-    header[data-testid="stHeader"] {
-        background: transparent !important;
-    }
     footer {
         display: none !important;
     }
     
-    /* Кнопка открытия боковой панели */
-    [data-testid="stSidebarCollapsedControl"] {
-        display: flex !important;
+    /* Сохраняем header для корректной работы sidebar */
+    header[data-testid="stHeader"] {
+        background: transparent !important;
         visibility: visible !important;
     }
     
-    [data-testid="collapsedControl"] {
-        display: flex !important;
+    /* Фиксим отображение боковой панели */
+    section[data-testid="stSidebar"] {
+        display: block !important;
         visibility: visible !important;
     }
     
+    /* Кнопка открытия/закрытия боковой панели */
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"],
     button[kind="header"] {
         display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+    
+    /* Улучшаем стиль боковой панели */
+    section[data-testid="stSidebar"] > div {
+        background-color: #f0f2f6;
+        padding: 2rem 1rem;
+    }
+    
+    /* Стиль для навигации */
+    .stRadio > label {
+        font-weight: 600;
+        font-size: 1.1rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -53,14 +67,23 @@ st.title("Система анализа контрагентов")
 BACKEND_PORT = os.getenv("BACKEND_PORT", "8000")
 API_BASE_URL = f"http://localhost:{BACKEND_PORT}"
 
-def validate_inn(inn: str) -> tuple[bool, str]:
-    if not inn:
-        return False, "ИНН не может быть пустым"
-    if not re.match(r'^\d+$', inn):
-        return False, "ИНН должен содержать только цифры"
-    if len(inn) not in (10, 12):
-        return False, "ИНН должен содержать 10 или 12 цифр"
-    return True, ""
+def validate_inn_frontend(inn: str) -> tuple[bool, str]:
+    """Валидация ИНН на фронтенде (импортируем из helpers)."""
+    try:
+        # Импортируем функцию валидации из backend
+        import sys
+        sys.path.insert(0, '/app')
+        from app.utility.helpers import validate_inn
+        return validate_inn(inn)
+    except ImportError:
+        # Fallback на простую проверку если импорт не удался
+        if not inn:
+            return False, "ИНН не может быть пустым"
+        if not re.match(r'^\d+$', inn):
+            return False, "ИНН должен содержать только цифры"
+        if len(inn) not in (10, 12):
+            return False, "ИНН должен содержать 10 или 12 цифр"
+        return True, ""
 
 def request_with_retry(method: str, url: str, max_retries: int = 3, initial_timeout: int = 60, **kwargs) -> requests.Response:
     timeouts = [initial_timeout, initial_timeout * 2, initial_timeout * 4]
@@ -287,7 +310,7 @@ elif page == "Внешние данные":
 
         if inn_submitted:
             inn = inn_input.strip()
-            is_valid, error_msg = validate_inn(inn)
+            is_valid, error_msg = validate_inn_frontend(inn)
             
             if not is_valid:
                 st.error(f"Ошибка валидации: {error_msg}")
@@ -339,7 +362,7 @@ elif page == "Внешние данные":
             inn = search_inn.strip()
             query = search_query.strip()
             
-            is_valid, error_msg = validate_inn(inn)
+            is_valid, error_msg = validate_inn_frontend(inn)
             if not is_valid:
                 st.error(f"Ошибка ИНН: {error_msg}")
             elif not query:

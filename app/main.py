@@ -6,6 +6,9 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI, Request
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.routes.agent import agent_router
@@ -19,6 +22,25 @@ from app.utility.telemetry import init_telemetry
 
 # Get backend port from environment or use default
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
+
+# =======================
+# Rate Limiting Configuration
+# =======================
+
+from app.config.constants import (
+    RATE_LIMIT_GLOBAL_PER_HOUR,
+    RATE_LIMIT_GLOBAL_PER_MINUTE,
+)
+
+# Создаем limiter для защиты от DDoS
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=[
+        f"{RATE_LIMIT_GLOBAL_PER_MINUTE}/minute",
+        f"{RATE_LIMIT_GLOBAL_PER_HOUR}/hour",
+    ],
+    storage_uri="memory://",  # Можно использовать Redis: "redis://localhost:6379"
+)
 
 
 # =======================
@@ -124,6 +146,10 @@ app = FastAPI(
     description="Сервер агентов с поддержкой MCP, Tarantool и внешних API",
     lifespan=lifespan,
 )
+
+# Добавляем rate limiter в state приложения
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 FastAPIInstrumentor.instrument_app(app, excluded_urls="/utility/health,/utility/metrics")
 
