@@ -252,9 +252,15 @@ class LLMManager:
         Raises:
             Exception: Если все провайдеры недоступны
         """
+        import time
+        
+        start_time = time.perf_counter()
         last_error = None
+        attempts = 0
         
         for provider in self._fallback_order:
+            attempts += 1
+            
             # Пропускаем провайдеры, которые помечены как недоступные
             if not self._provider_status[provider]:
                 logger.warning(
@@ -265,15 +271,20 @@ class LLMManager:
             
             try:
                 logger.info(
-                    f"Attempting LLM call with {provider}",
+                    f"Attempting LLM call with {provider} (attempt {attempts})",
                     component="llm_manager"
                 )
+                
+                provider_start = time.perf_counter()
                 
                 response = await self.ainvoke_with_provider(
                     prompt=prompt,
                     provider=provider,
                     **kwargs
                 )
+                
+                provider_duration = time.perf_counter() - provider_start
+                total_duration = time.perf_counter() - start_time
                 
                 logger.structured(
                     "info",
@@ -282,6 +293,10 @@ class LLMManager:
                     provider=provider.value,
                     prompt_length=len(prompt),
                     response_length=len(response),
+                    duration_ms=round(provider_duration * 1000, 2),
+                    total_duration_ms=round(total_duration * 1000, 2),
+                    fallback_used=(provider != LLMProvider.OPENROUTER),
+                    attempts=attempts,
                 )
                 
                 # Помечаем провайдер как доступный при успехе
@@ -299,13 +314,17 @@ class LLMManager:
                 continue
         
         # Все провайдеры недоступны
+        total_duration = time.perf_counter() - start_time
+        
         logger.error(
             "All LLM providers failed",
             component="llm_manager",
-            exc_info=True
+            exc_info=True,
+            total_duration_ms=round(total_duration * 1000, 2),
+            attempts=attempts,
         )
         raise Exception(
-            f"All LLM providers failed. Last error: {last_error}"
+            f"All LLM providers failed after {attempts} attempts. Last error: {last_error}"
         )
     
     def invoke(self, prompt: str, **kwargs) -> str:

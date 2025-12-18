@@ -13,6 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.routes.agent import agent_router
 from app.api.routes.data import data_router
+from app.api.routes.scheduler import scheduler_router
 from app.api.routes.utility import utility_router
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
@@ -78,9 +79,20 @@ async def lifespan(app: FastAPI):
         logger.warning(f"LLM не инициализирован: {e}")
         app.state.llm = None
 
+    # Запускаем Scheduler для отложенных задач
+    from app.services.scheduler_service import get_scheduler_service
+    scheduler = get_scheduler_service()
+    scheduler.start()
+    logger.info("Scheduler запущен для отложенных задач")
+
     logger.info("Клиенты инициализированы")
     yield
     logger.info("Завершение работы приложения...")
+    
+    # Останавливаем Scheduler
+    scheduler.shutdown()
+    logger.info("Scheduler остановлен")
+    
     await TarantoolClient.close_global()
     await AsyncHttpClient.close_global()
     logger.info("Все соединения закрыты")
@@ -156,6 +168,7 @@ app.add_middleware(RequestIdMiddleware)
 
 app.include_router(agent_router)
 app.include_router(data_router)
+app.include_router(scheduler_router)
 app.include_router(utility_router)
 
 
