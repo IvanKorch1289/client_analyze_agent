@@ -105,12 +105,20 @@ class TavilyClient:
             loop = asyncio.get_event_loop()
             results = await loop.run_in_executor(None, tool.invoke, {"query": query})
 
+            answer = ""
             if isinstance(results, str):
                 import json
                 try:
                     results = json.loads(results)
                 except json.JSONDecodeError:
                     results = [{"content": results, "url": ""}]
+
+            # LangChain tool output can be either:
+            # - list[dict] (results only)
+            # - dict {"answer": str, "results": list[dict], ...}
+            if isinstance(results, dict):
+                answer = results.get("answer", "") or ""
+                results = results.get("results", []) or []
 
             formatted_results = []
             if isinstance(results, list):
@@ -134,7 +142,7 @@ class TavilyClient:
 
             response_data = {
                 "success": True,
-                "answer": "",
+                "answer": answer,
                 "results": formatted_results,
                 "query": query,
                 "response_time": 0,

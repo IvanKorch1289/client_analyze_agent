@@ -78,6 +78,8 @@ class PerplexityClient:
                 "model": use_model,
                 "messages": messages,
                 "temperature": temperature,
+                # Perplexity extension (OpenAI-compatible)
+                "search_recency_filter": search_recency_filter,
             }
             if max_tokens:
                 payload["max_tokens"] = max_tokens
@@ -114,6 +116,7 @@ class PerplexityClient:
                 "usage": usage,
                 "raw_response": {"content": content},
                 "cached": False,
+                "integration": "httpx-direct",
             }
 
             if use_cache:
@@ -143,6 +146,77 @@ class PerplexityClient:
             error_msg = str(e) or type(e).__name__
             logger.error(
                 f"Perplexity request failed: {type(e).__name__}: {error_msg}",
+                component="perplexity",
+            )
+            return {"success": False, "error": error_msg or "Неизвестная ошибка"}
+
+    async def ask_langchain(
+        self,
+        question: str,
+        system_prompt: str = "Be precise and concise. Answer in Russian if the question is in Russian.",
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: Optional[int] = None,
+        search_recency_filter: str = "month",
+    ) -> Dict[str, Any]:
+        """
+        Perplexity запрос через LangChain (ChatOpenAI-compatible).
+
+        Важно: Perplexity API является OpenAI-compatible, но отдача `citations`
+        может не прокидываться через LangChain-обёртку. В таком случае `citations`
+        будут пустыми.
+        """
+        if not self.api_key:
+            logger.error("Perplexity API key not configured", component="perplexity")
+            return {"error": "Perplexity API key not configured", "success": False}
+
+        use_model = model or self.model
+
+        try:
+            # Lazy import: dependency is optional at runtime for non-search flows.
+            from langchain_core.messages import HumanMessage, SystemMessage
+            from langchain_openai import ChatOpenAI
+
+            llm = ChatOpenAI(
+                api_key=self.api_key,
+                model=use_model,
+                base_url=self.BASE_URL,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                # Pass-through Perplexity params (best-effort)
+                model_kwargs={"search_recency_filter": search_recency_filter},
+            )
+
+            msg = await llm.ainvoke(
+                [SystemMessage(content=system_prompt), HumanMessage(content=question)]
+            )
+
+            content = getattr(msg, "content", "") or ""
+            citations = []
+
+            # Best-effort extraction: some providers put extra fields here.
+            additional = getattr(msg, "additional_kwargs", None) or {}
+            if isinstance(additional, dict):
+                citations = additional.get("citations", []) or []
+
+            response_metadata = getattr(msg, "response_metadata", None) or {}
+            if not citations and isinstance(response_metadata, dict):
+                citations = response_metadata.get("citations", []) or []
+
+            return {
+                "success": True,
+                "content": content,
+                "citations": citations,
+                "model": use_model,
+                "raw_response": {"content": content},
+                "cached": False,
+                "integration": "langchain-openai",
+            }
+
+        except Exception as e:
+            error_msg = str(e) or type(e).__name__
+            logger.error(
+                f"Perplexity LangChain request failed: {type(e).__name__}: {error_msg}",
                 component="perplexity",
             )
             return {"success": False, "error": error_msg or "Неизвестная ошибка"}

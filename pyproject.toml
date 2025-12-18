@@ -10,6 +10,7 @@ python = "^3.12"
 fastapi = "^0.116.1"
 langchain = "^0.3.27"
 langgraph = "^0.6.7"
+langchain-openai = "^0.3.19"
 fastmcp = "^2.12.2"
 tarantool = "^1.2.0"
 httpx = {extras = ["http2"], version = "^0.28.1"}
@@ -40,6 +41,7 @@ bandit = "^1.8.6"
 deptry = "^0.23.1"
 black = "^25.1.0"
 vulture = "^2.14"
+pytest = "^8.4.1"
 
 [build-system]
 requires = ["poetry-core"]
