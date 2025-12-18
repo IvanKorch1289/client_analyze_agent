@@ -1,4 +1,10 @@
-from typing import Tuple
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Tuple
+
+if TYPE_CHECKING:
+    # Optional typing only; avoids runtime dependency issues
+    from starlette.requests import Request
 
 
 def clean_xml_dict(data):
@@ -72,3 +78,35 @@ def format_inn(inn: str) -> str:
     elif len(inn) == 12:
         return f"{inn[:4]} {inn[4:6]} {inn[6:8]} {inn[8:]}"
     return inn
+
+
+def get_client_ip(request: "Request") -> str:
+    """
+    Extract client IP address from request.
+
+    Used by SlowAPI limiter in scheduler routes.
+    """
+    # Prefer X-Forwarded-For (first IP in list)
+    try:
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            return xff.split(",")[0].strip()
+    except Exception:
+        pass
+
+    # Fallback: X-Real-IP
+    try:
+        x_real = request.headers.get("x-real-ip")
+        if x_real:
+            return x_real.strip()
+    except Exception:
+        pass
+
+    # Final fallback: request.client.host
+    try:
+        if request.client and request.client.host:
+            return request.client.host
+    except Exception:
+        pass
+
+    return "unknown"
