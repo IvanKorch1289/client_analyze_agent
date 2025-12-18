@@ -10,16 +10,44 @@ Fallback последовательность:
 """
 
 import asyncio
+import threading
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from langchain_community.llms import GigaChat
 from langchain_core.language_models.llms import LLM
-from langchain_huggingface import HuggingFaceEndpoint
-from langchain_openai import ChatOpenAI
 
 from app.config import settings
 from app.utility.logging_client import logger
+
+
+def _run_coroutine_sync(coro):
+    """
+    Безопасно выполнить coroutine из sync-кода.
+
+    - Если event loop уже запущен (например, мы в async-контексте), выполняем coroutine
+      в отдельном потоке с отдельным loop. Это блокирует текущий поток (как и любой
+      sync I/O), но не приводит к ошибке "asyncio.run() cannot be called...".
+    - Если loop не запущен — используем asyncio.run().
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    result_box: Dict[str, Any] = {}
+
+    def _runner():
+        try:
+            result_box["value"] = asyncio.run(coro)
+        except Exception as e:
+            result_box["error"] = e
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    t.join()
+    if "error" in result_box:
+        raise result_box["error"]
+    return result_box.get("value")
 
 
 class LLMProvider(str, Enum):
@@ -55,11 +83,13 @@ class LLMManager:
     
     def __init__(self):
         """Инициализация LLM Manager."""
-        self._openrouter_llm: Optional[ChatOpenAI] = None
-        self._huggingface_llm: Optional[HuggingFaceEndpoint] = None
-        self._gigachat_llm: Optional[GigaChat] = None
+        # Lazy-init провайдеров. Импорты тяжёлых зависимостей делаем внутри геттеров,
+        # чтобы ускорить холодный старт и не тянуть лишнее, если провайдер не используется.
+        self._openrouter_llm: Optional[LLM] = None
+        self._huggingface_llm: Optional[LLM] = None
+        self._gigachat_llm: Optional[LLM] = None
         
-        self._provider_status: Dict[str, bool] = {
+        self._provider_status: Dict[LLMProvider, bool] = {
             LLMProvider.OPENROUTER: True,
             LLMProvider.HUGGINGFACE: True,
             LLMProvider.GIGACHAT: True,
@@ -73,16 +103,18 @@ class LLMManager:
         
         logger.info("LLMManager initialized", component="llm_manager")
     
-    def _get_openrouter_llm(self) -> ChatOpenAI:
+    def _get_openrouter_llm(self) -> LLM:
         """
         Получить OpenRouter LLM (primary).
         
         Returns:
-            ChatOpenAI: Настроенный LLM для OpenRouter
+            LLM: Настроенный LLM для OpenRouter
         """
         if self._openrouter_llm is None:
             if not settings.openrouter.api_key:
                 raise ValueError("OpenRouter API key not configured")
+            # Импортируем здесь, чтобы не замедлять импорт модуля на холодном старте.
+            from langchain_openai import ChatOpenAI
             
             self._openrouter_llm = ChatOpenAI(
                 api_key=settings.openrouter.api_key,
@@ -105,16 +137,17 @@ class LLMManager:
         
         return self._openrouter_llm
     
-    def _get_huggingface_llm(self) -> HuggingFaceEndpoint:
+    def _get_huggingface_llm(self) -> LLM:
         """
         Получить HuggingFace LLM (fallback #1).
         
         Returns:
-            HuggingFaceEndpoint: Настроенный LLM для HuggingFace
+            LLM: Настроенный LLM для HuggingFace
         """
         if self._huggingface_llm is None:
             if not settings.huggingface.api_key:
                 raise ValueError("HuggingFace API key not configured")
+            from langchain_huggingface import HuggingFaceEndpoint
             
             self._huggingface_llm = HuggingFaceEndpoint(
                 endpoint_url=None,  # Will use inference API
@@ -133,16 +166,17 @@ class LLMManager:
         
         return self._huggingface_llm
     
-    def _get_gigachat_llm(self) -> GigaChat:
+    def _get_gigachat_llm(self) -> LLM:
         """
         Получить GigaChat LLM (fallback #2).
         
         Returns:
-            GigaChat: Настроенный LLM для GigaChat
+            LLM: Настроенный LLM для GigaChat
         """
         if self._gigachat_llm is None:
             if not settings.gigachat.api_key:
                 raise ValueError("GigaChat API key (credentials) not configured")
+            from langchain_community.llms import GigaChat
             
             self._gigachat_llm = GigaChat(
                 credentials=settings.gigachat.api_key,
@@ -338,8 +372,7 @@ class LLMManager:
         Returns:
             str: Ответ от LLM
         """
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(self.ainvoke(prompt, **kwargs))
+        return _run_coroutine_sync(self.ainvoke(prompt, **kwargs))
     
     async def check_provider_health(self, provider: LLMProvider) -> bool:
         """
