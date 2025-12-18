@@ -24,6 +24,7 @@ Scheduler Service - управление отложенными задачами
 """
 
 import asyncio
+import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
@@ -227,9 +228,27 @@ class SchedulerService:
         
         Вызывается scheduler'ом в нужное время.
         """
-        from app.agents.client_workflow import run_client_analysis_batch
-        from app.storage.tarantool import TarantoolClient
-        
+        # Если включён RabbitMQ режим — отдаём выполнение воркеру (FastStream),
+        # а scheduler остаётся только “планировщиком”.
+        #
+        # Это даёт горизонтальное масштабирование и разгружает web-процесс.
+        if getattr(settings.queue, "enabled", False):
+            from app.messaging.publisher import get_rabbit_publisher
+
+            await get_rabbit_publisher().publish_client_analysis(
+                client_name=client_name,
+                inn=inn,
+                additional_notes=additional_notes,
+                save_report=True,
+            )
+            logger.info(
+                "Задача отправлена в очередь RabbitMQ",
+                component="scheduler",
+            )
+            return
+
+        # Иначе — выполняем in-process.
+        from app.services.analysis_executor import execute_client_analysis
         task_id = f"analysis_{inn}_{int(time.time())}"
         
         logger.info(
@@ -238,10 +257,11 @@ class SchedulerService:
         )
         
         try:
-            result = await run_client_analysis_batch(
+            result = await execute_client_analysis(
                 client_name=client_name,
                 inn=inn,
-                additional_notes=additional_notes
+                additional_notes=additional_notes,
+                save_report=True,
             )
             
             logger.structured(
@@ -253,24 +273,6 @@ class SchedulerService:
                 status=result.get("status"),
                 session_id=result.get("session_id"),
             )
-            
-            # Сохраняем результат в Tarantool
-            client = await TarantoolClient.get_instance()
-            
-            # Сохраняем отчет если анализ успешен
-            if result.get("status") == "completed" and result.get("report"):
-                reports_repo = client.get_reports_repository()
-                try:
-                    report_id = await reports_repo.create_from_workflow_result(result)
-                    logger.info(
-                        f"Scheduled analysis report saved: {report_id}",
-                        component="scheduler"
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to save scheduled analysis report: {e}",
-                        component="scheduler"
-                    )
             
             # Обновляем метаданные задачи
             if task_id in self._tasks_metadata:

@@ -19,6 +19,11 @@ from app.api.routes.utility import utility_router
 from app.config.settings import settings
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
+from app.utility.app_circuit_breaker import (
+    AppCircuitBreaker,
+    AppCircuitBreakerConfig,
+    AppCircuitBreakerMiddleware,
+)
 from app.utility.helpers import get_client_ip
 from app.utility.logging_client import get_request_id, logger, set_request_id
 from app.utility.telemetry import init_telemetry
@@ -233,6 +238,17 @@ if settings.secure.cors_enabled:
 
 # Базовые security headers.
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Circuit breaker на уровне приложения (fail-fast при всплеске 5xx).
+app_circuit_breaker = AppCircuitBreaker(
+    AppCircuitBreakerConfig(
+        failure_threshold=int(os.getenv("APP_CB_FAILURE_THRESHOLD", "30")),
+        window_seconds=int(os.getenv("APP_CB_WINDOW_SECONDS", "60")),
+        open_seconds=int(os.getenv("APP_CB_OPEN_SECONDS", "30")),
+    )
+)
+app.state.app_circuit_breaker = app_circuit_breaker
+app.add_middleware(AppCircuitBreakerMiddleware, breaker=app_circuit_breaker)
 
 app.add_middleware(RequestIdMiddleware)
 

@@ -81,6 +81,12 @@ class QueueSettings(BaseSettingsWithLoader):
     # Dead Letter Queue
     dlq_enabled: bool = Field(default=True, description="Включить DLQ")
     dlq_ttl: int = Field(default=86400, description="TTL сообщений в DLQ (сек)")
+
+    # Режим выполнения задач
+    enabled: bool = Field(
+        default=False,
+        description="Включить выполнение задач через RabbitMQ/FastStream (иначе in-process)",
+    )
     
     @property
     def amqp_url(self) -> str:

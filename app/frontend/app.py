@@ -4,6 +4,7 @@ import time
 
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="Система анализа контрагентов",
@@ -155,7 +156,7 @@ elif st.session_state.admin_token:
 st.sidebar.divider()
 
 PAGES_BASE = ["Запрос агенту", "История", "Внешние данные"]
-PAGES_ADMIN = ["Утилиты", "Задачи", "Метрики", "Логи"]
+PAGES_ADMIN = ["Утилиты", "Задачи", "Спецификации", "Метрики", "Логи"]
 
 if st.session_state.is_admin:
     PAGES = PAGES_BASE + PAGES_ADMIN
@@ -823,6 +824,62 @@ elif page == "Задачи":
                                 st.error(f"Ошибка отмены (HTTP {resp.status_code}): {resp.text}")
                         except Exception as e:
                             st.error(f"Ошибка отмены: {e}")
+
+elif page == "Спецификации":
+    st.header("Спецификации API")
+    st.caption("Просмотр OpenAPI (HTTP) и AsyncAPI (RabbitMQ/FastStream).")
+
+    tab_openapi, tab_asyncapi = st.tabs(["OpenAPI", "AsyncAPI"])
+
+    with tab_openapi:
+        st.subheader("OpenAPI (FastAPI)")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.link_button("Swagger UI", f"{API_BASE_URL}/docs")
+        with col2:
+            st.link_button("openapi.json", f"{API_BASE_URL}/openapi.json")
+
+        if st.button("Загрузить OpenAPI JSON", type="primary"):
+            try:
+                with st.spinner("Загрузка OpenAPI..."):
+                    resp = requests.get(f"{API_BASE_URL}/openapi.json", timeout=15)
+                    if resp.status_code == 200:
+                        st.json(resp.json())
+                    else:
+                        st.error(f"Ошибка: HTTP {resp.status_code}")
+            except Exception as e:
+                st.error(f"Ошибка загрузки: {e}")
+
+    with tab_asyncapi:
+        st.subheader("AsyncAPI (RabbitMQ)")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.link_button("AsyncAPI HTML", f"{API_BASE_URL}/utility/asyncapi")
+        with col2:
+            st.link_button("asyncapi.json", f"{API_BASE_URL}/utility/asyncapi.json")
+
+        render_html = st.checkbox("Показать HTML прямо здесь", value=False)
+        if render_html:
+            try:
+                with st.spinner("Загрузка AsyncAPI HTML..."):
+                    resp = requests.get(f"{API_BASE_URL}/utility/asyncapi", timeout=15)
+                    if resp.status_code == 200:
+                        components.html(resp.text, height=800, scrolling=True)
+                    else:
+                        st.error(f"Ошибка: HTTP {resp.status_code}")
+            except Exception as e:
+                st.error(f"Ошибка загрузки: {e}")
+        else:
+            if st.button("Загрузить AsyncAPI JSON", type="primary"):
+                try:
+                    with st.spinner("Загрузка AsyncAPI..."):
+                        resp = requests.get(f"{API_BASE_URL}/utility/asyncapi.json", timeout=15)
+                        if resp.status_code == 200:
+                            st.json(resp.json())
+                        else:
+                            st.error(f"Ошибка: HTTP {resp.status_code}")
+                except Exception as e:
+                    st.error(f"Ошибка загрузки: {e}")
 
 elif page == "Метрики":
     st.header("Панель метрик администратора")

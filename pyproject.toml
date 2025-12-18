@@ -37,6 +37,7 @@ opentelemetry-sdk = "^1.39.1"
 opentelemetry-instrumentation-fastapi = "^0.60b1"
 tavily-python = "^0.7.17"
 openai = "^2.13.0"
+faststream = {extras = ["rabbit"], version = "^0.6.4"}
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.12.11"

@@ -14,6 +14,8 @@ services:
       - TARANTOOL_PORT=3302
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
+      # По умолчанию задачи выполняются in-process.
+      # Чтобы включить очередь: RABBITMQ_ENABLED=true
     env_file:
       - .env
     depends_on:
@@ -33,6 +35,62 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: counterparty-worker
+    command: ["python", "-m", "app.messaging.worker"]
+    environment:
+      - TARANTOOL_HOST=tarantool
+      - TARANTOOL_PORT=3302
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_ENABLED=true
+    env_file:
+      - .env
+    depends_on:
+      tarantool:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+    volumes:
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: counterparty-mcp
+    command: ["python", "-m", "app.mcp_server.main"]
+    ports:
+      - "8011:8011"
+    environment:
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8011
+      - MCP_PATH=/mcp
+      - TARANTOOL_HOST=tarantool
+      - TARANTOOL_PORT=3302
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+    env_file:
+      - .env
+    depends_on:
+      tarantool:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+    volumes:
+      - ./reports:/app/reports
+      - ./logs:/app/logs
 
   tarantool:
     image: tarantool/tarantool:2.11

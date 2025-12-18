@@ -6,10 +6,11 @@ cache operations, and external service status monitoring.
 """
 
 import os
+import json
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from app.services.email_client import EmailClient
@@ -112,6 +113,55 @@ async def health_check(deep: bool = False) -> Dict[str, Any]:
             },
         },
     }
+
+
+@utility_router.get("/asyncapi.json")
+async def get_asyncapi_spec() -> Dict[str, Any]:
+    """
+    AsyncAPI спецификация очередей (RabbitMQ/FastStream).
+
+    Используется Streamlit UI и внешними интеграциями.
+    """
+    try:
+        from faststream.specification import AsyncAPI
+        from app.messaging.broker import broker
+
+        spec = AsyncAPI(broker, title="Client Analysis Messaging", version="1.0.0").to_specification()
+        return json.loads(spec.to_json())
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@utility_router.get("/asyncapi")
+async def get_asyncapi_html() -> HTMLResponse:
+    """HTML-представление AsyncAPI (удобно открывать в браузере)."""
+    from faststream.specification import AsyncAPI, get_asyncapi_html as _get_asyncapi_html
+    from app.messaging.broker import broker
+
+    spec = AsyncAPI(broker, title="Client Analysis Messaging", version="1.0.0").to_specification()
+    html = _get_asyncapi_html(spec)
+    return HTMLResponse(content=html)
+
+
+@utility_router.get("/app-circuit-breaker")
+async def app_circuit_breaker_status(request: Request) -> Dict[str, Any]:
+    """
+    Статус circuit breaker на уровне приложения (web).
+    """
+    breaker = getattr(request.app.state, "app_circuit_breaker", None)
+    if breaker is None:
+        return {"status": "error", "message": "app circuit breaker is not configured"}
+    return {"status": "success", "breaker": breaker.status()}
+
+
+@utility_router.post("/app-circuit-breaker/reset")
+async def app_circuit_breaker_reset(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """Сбросить app-level circuit breaker. Requires admin role."""
+    breaker = getattr(request.app.state, "app_circuit_breaker", None)
+    if breaker is None:
+        return {"status": "error", "message": "app circuit breaker is not configured"}
+    breaker.reset()
+    return {"status": "success", "message": "app circuit breaker reset"}
 
 
 @utility_router.get("/circuit-breakers")
