@@ -80,9 +80,8 @@ async def perplexity_search(request: PerplexityRequest):
     if not client.is_configured():
         return {"status": "error", "message": "Perplexity API key не настроен"}
 
-    result = await client.ask(
-        question=request.query, search_recency_filter=request.search_recency
-    )
+    # Клиент Perplexity работает через LangChain (OpenAI-compatible).
+    result = await client.ask(question=request.query, search_recency_filter=request.search_recency)
 
     if result.get("success"):
         return {
@@ -91,6 +90,7 @@ async def perplexity_search(request: PerplexityRequest):
             "content": result.get("content", ""),
             "citations": result.get("citations", []),
             "model": result.get("model"),
+            "integration": result.get("integration"),
         }
     return {"status": "error", "message": result.get("error", "Неизвестная ошибка")}
 
@@ -126,5 +126,6 @@ async def tavily_search(request: TavilyRequest):
             "results": result.get("results", []),
             "query": request.query,
             "cached": result.get("cached", False),
+            "integration": result.get("integration"),
         }
     return {"status": "error", "message": result.get("error", "Неизвестная ошибка")}

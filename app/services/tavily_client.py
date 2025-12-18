@@ -103,7 +103,18 @@ class TavilyClient:
             )
 
             loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(None, tool.invoke, {"query": query})
+            payload: Dict[str, Any] = {"query": query}
+            if include_domains:
+                payload["include_domains"] = include_domains
+            if exclude_domains:
+                payload["exclude_domains"] = exclude_domains
+
+            # `search_depth` is not guaranteed to be supported by all LangChain wrappers,
+            # but if supported, it's safe to pass through.
+            if search_depth:
+                payload["search_depth"] = search_depth
+
+            results = await loop.run_in_executor(None, tool.invoke, payload)
 
             answer = ""
             if isinstance(results, str):
@@ -147,6 +158,7 @@ class TavilyClient:
                 "query": query,
                 "response_time": 0,
                 "cached": False,
+                "integration": "langchain-community",
             }
 
             if use_cache:
@@ -208,6 +220,57 @@ class TavilyClient:
             "integration": "langchain-community",
             "cache_stats": self.get_cache_stats(),
         }
+
+    async def healthcheck(self, timeout_s: float = 8.0) -> Dict[str, Any]:
+        """
+        Реальная проверка доступности сервиса (не только конфигурации):
+        выполняет простой поисковый запрос и проверяет, что есть результаты/ответ.
+        """
+        import time
+
+        if not self.is_configured():
+            return {
+                "configured": False,
+                "available": False,
+                "status": "not_configured",
+                "error": "Tavily API key not configured",
+                "integration": "langchain-community",
+            }
+
+        t0 = time.perf_counter()
+        try:
+            result = await asyncio.wait_for(
+                self.search(
+                    query="site:example.com example",
+                    search_depth="basic",
+                    max_results=3,
+                    include_answer=True,
+                    use_cache=False,
+                ),
+                timeout=timeout_s,
+            )
+            latency_ms = (time.perf_counter() - t0) * 1000
+            ok = bool(result.get("success")) and (
+                bool(result.get("answer")) or bool(result.get("results"))
+            )
+            return {
+                "configured": True,
+                "available": ok,
+                "status": "ready" if ok else "error",
+                "latency_ms": round(latency_ms, 2),
+                "error": None if ok else (result.get("error") or "Unexpected response"),
+                "integration": "langchain-community",
+            }
+        except Exception as e:
+            latency_ms = (time.perf_counter() - t0) * 1000
+            return {
+                "configured": True,
+                "available": False,
+                "status": "error",
+                "latency_ms": round(latency_ms, 2),
+                "error": str(e) or type(e).__name__,
+                "integration": "langchain-community",
+            }
 
     @classmethod
     async def close_global(cls):
