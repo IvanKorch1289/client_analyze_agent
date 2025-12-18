@@ -24,6 +24,21 @@ st.markdown("""
     footer {
         display: none !important;
     }
+    
+    /* Кнопка открытия боковой панели */
+    [data-testid="stSidebarCollapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+    }
+    
+    [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+    }
+    
+    button[kind="header"] {
+        display: flex !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -373,7 +388,11 @@ elif page == "Внешние данные":
                                         if result.get("answer"):
                                             st.markdown(f"**Ответ:** {result.get('answer')}")
                                         for item in result.get("results", []):
-                                            st.markdown(f"- [{item.get('title', 'Без заголовка')}]({item.get('url', '')})")
+                                            title = item.get("title", "Без заголовка")
+                                            content = item.get("content", "") or item.get("snippet", "")
+                                            st.markdown(f"**{title}**")
+                                            if content:
+                                                st.caption(content[:300] + "..." if len(content) > 300 else content)
                                 else:
                                     st.warning(f"Tavily: {result.get('message', 'Ошибка')}")
                             else:
@@ -666,7 +685,13 @@ elif page == "Утилиты":
                         st.text(f"{size_kb:.1f} KB")
                     with col3:
                         download_url = f"{API_BASE_URL}{report.get('download_url', '')}"
-                        st.markdown(f"[Скачать]({download_url})")
+                        st.download_button(
+                            label="Скачать",
+                            data=requests.get(download_url, timeout=10).content if download_url else b"",
+                            file_name=report.get("filename", "report.pdf"),
+                            mime="application/pdf",
+                            key=f"dl_{report.get('filename', 'report')}"
+                        )
             else:
                 st.info("Нет сохранённых отчётов")
     except Exception as e:
