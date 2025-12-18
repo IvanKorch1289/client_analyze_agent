@@ -8,12 +8,22 @@ from typing import Any, AsyncGenerator, Dict, Optional
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.agents.client_workflow import run_client_analysis_streaming
 from app.agents.workflow import AgentState, invoke_graph_with_persistence
+from app.config.constants import (
+    RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE,
+    RATE_LIMIT_PROMPT_PER_MINUTE,
+    RATE_LIMIT_SEARCH_PER_MINUTE,
+)
 from app.utility.logging_client import logger
 
 agent_router = APIRouter(prefix="/agent", tags=["Агент"])
+
+# Rate limiter для агентских эндпоинтов
+limiter = Limiter(key_func=get_remote_address)
 
 
 class ClientAnalysisRequest(BaseModel):
@@ -23,6 +33,7 @@ class ClientAnalysisRequest(BaseModel):
 
 
 @agent_router.post("/prompt")
+@limiter.limit(f"{RATE_LIMIT_PROMPT_PER_MINUTE}/minute")
 async def process_prompt(request: Request, body: dict):
     """Принимает prompt, запускает граф, возвращает ответ."""
     thread_id = body.get("thread_id") or f"thread_{uuid.uuid4().hex}"
@@ -72,7 +83,8 @@ async def process_prompt(request: Request, body: dict):
 
 
 @agent_router.get("/thread_history/{thread_id}")
-async def get_thread_history(thread_id: str):
+@limiter.limit(f"{RATE_LIMIT_SEARCH_PER_MINUTE}/minute")
+async def get_thread_history(request: Request, thread_id: str):
     from app.storage.tarantool import TarantoolClient
 
     client = await TarantoolClient.get_instance()
@@ -84,12 +96,15 @@ async def get_thread_history(thread_id: str):
 
 
 @agent_router.post("/analyze-client")
-async def analyze_client(request: ClientAnalysisRequest, stream: bool = False):
+@limiter.limit(f"{RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE}/minute")
+async def analyze_client(request: Request, data: ClientAnalysisRequest, stream: bool = False):
     """
     Анализирует клиента через Perplexity AI.
     Выполняет параллельный поиск и создаёт отчёт с оценкой рисков.
 
     Args:
+        request: FastAPI Request object (для rate limiting)
+        data: Данные запроса с информацией о клиенте
         stream: Если True, возвращает SSE stream с прогрессом
     """
     from app.services.perplexity_client import PerplexityClient
@@ -104,9 +119,9 @@ async def analyze_client(request: ClientAnalysisRequest, stream: bool = False):
     if stream:
         return StreamingResponse(
             _stream_client_analysis(
-                client_name=request.client_name,
-                inn=request.inn or "",
-                additional_notes=request.additional_notes or "",
+                client_name=data.client_name,
+                inn=data.inn or "",
+                additional_notes=data.additional_notes or "",
             ),
             media_type="text/event-stream",
             headers={
@@ -118,9 +133,9 @@ async def analyze_client(request: ClientAnalysisRequest, stream: bool = False):
 
     try:
         coro = run_client_analysis_streaming(
-            client_name=request.client_name,
-            inn=request.inn or "",
-            additional_notes=request.additional_notes or "",
+            client_name=data.client_name,
+            inn=data.inn or "",
+            additional_notes=data.additional_notes or "",
         )
         result = await coro
         return result
@@ -177,7 +192,8 @@ async def _stream_client_analysis(
 
 
 @agent_router.get("/threads")
-async def list_threads() -> Dict[str, Any]:
+@limiter.limit(f"{RATE_LIMIT_SEARCH_PER_MINUTE}/minute")
+async def list_threads(request: Request) -> Dict[str, Any]:
     from app.storage.tarantool import TarantoolClient
 
     try:

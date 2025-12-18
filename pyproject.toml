@@ -9,6 +9,7 @@ packages = [{ include = "app" }]
 [tool.poetry.dependencies]
 python = "^3.12"
 fastapi = "^0.116.1"
+slowapi = "^0.1.9"
 langchain = "^0.3.27"
 langgraph = "^0.6.7"
 langchain-openai = "^0.3.19"
@@ -17,6 +18,8 @@ tarantool = "^1.2.0"
 httpx = {extras = ["http2"], version = "^0.28.1"}
 tenacity = "^9.1.2"
 python-dotenv = "^1.1.1"
+hvac = "^2.1.0"
+pyyaml = "^6.0.1"
 xmltodict = "^0.15.0"
 aiofiles = "^24.1.0"
 langchain-community = "^0.3.29"

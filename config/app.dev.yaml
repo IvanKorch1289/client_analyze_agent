@@ -1,0 +1,187 @@
+# Конфигурация приложения для Development окружения
+
+app:
+  app_name: "counterparty-analyzer"
+  app_version: "0.1.0"
+  environment: "dev"
+  backend_port: 8000
+  streamlit_port: 5000
+  mcp_server_port: 8001
+  debug: true
+  reload: true
+  log_level: "DEBUG"
+  log_format: "text"
+  workers: 1
+  max_requests: 1000
+  cors_origins:
+    - "http://localhost:5000"
+    - "http://localhost:8000"
+    - "http://127.0.0.1:5000"
+    - "http://127.0.0.1:8000"
+
+security:
+  cors_enabled: true
+  rate_limit_enabled: true
+  rate_limit_storage: "memory://"
+  enable_security_headers: true
+  hsts_enabled: false  # Выключено для dev
+  encryption_enabled: false
+
+scheduler:
+  enabled: true
+  cleanup_interval: 3600  # 1 час
+  healthcheck_interval: 300  # 5 минут
+  cache_cleanup_interval: 1800  # 30 минут
+  old_reports_ttl_days: 30
+  old_logs_ttl_days: 7
+
+tarantool:
+  host: "localhost"
+  port: 3302
+  user: "admin"
+  password: "password"
+  connect_timeout: 5.0
+  reconnect_max_attempts: 3
+  reconnect_delay: 1.0
+  pool_size: 10
+  use_memory_fallback: true
+  cache_space: "cache"
+  reports_space: "reports"
+  threads_space: "threads"
+  persistent_space: "persistent"
+
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+  password: null
+  max_connections: 10
+  socket_timeout: 5.0
+  default_ttl: 3600
+  encoding: "utf-8"
+  decode_responses: true
+
+queue:
+  host: "localhost"
+  port: 5672
+  username: "admin"
+  password: "admin123"
+  vhost: "/"
+  management_port: 15672
+  analysis_queue: "analysis.client"
+  reports_queue: "reports.generate"
+  notifications_queue: "notifications.email"
+  cache_queue: "cache.invalidate"
+  prefetch_count: 10
+  max_retries: 3
+  retry_delay: 5
+  dlq_enabled: true
+  dlq_ttl: 86400
+
+http_base:
+  connect_timeout: 5.0
+  read_timeout: 30.0
+  write_timeout: 10.0
+  pool_timeout: 5.0
+  max_retries: 3
+  retry_backoff_factor: 0.5
+  max_connections: 50
+  max_keepalive_connections: 20
+  http2_enabled: true
+
+dadata:
+  api_url: "https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party"
+  timeout: 30.0
+  cache_ttl: 7200
+  rate_limit_per_second: 10
+
+casebook:
+  arbitr_url: "https://api3.casebook.ru/arbitrage/cases"
+  timeout: 30.0
+  cache_ttl: 9600
+  page_size: 100
+
+infosphere:
+  api_url: "https://i-sphere.ru/2.00/"
+  timeout: 45.0
+  cache_ttl: 3600
+  sources: "fssp,bankrot,cbr,egrul,fns,fsin,fmsdb,fms,gosuslugi,mvd,pfr,terrorist"
+
+perplexity:
+  api_url: "https://api.perplexity.ai"
+  model: "sonar-pro"
+  temperature: 0.2
+  max_tokens: null
+  search_recency_filter: "month"
+  timeout: 60.0
+  cache_ttl: 300
+  cache_enabled: true
+
+tavily:
+  search_depth: "advanced"
+  max_results: 10
+  include_answer: true
+  include_raw_content: false
+  timeout: 60.0
+  cache_ttl: 300
+  cache_enabled: true
+
+openrouter:
+  api_url: "https://openrouter.ai/api/v1"
+  model: "anthropic/claude-3.5-sonnet"
+  temperature: 0.1
+  max_tokens: 1000
+  top_p: 1.0
+  timeout: 60.0
+
+mail:
+  smtp_host: ""
+  smtp_port: 587
+  smtp_user: ""
+  smtp_password: ""
+  smtp_from: ""
+  smtp_use_tls: true
+  smtp_use_ssl: false
+  smtp_timeout: 10
+  templates_dir: "templates/email"
+  enable_notifications: false
+  admin_emails: []
+
+tasks:
+  enabled: true
+  enable_cleanup: true
+  enable_healthchecks: true
+  enable_reports_generation: true
+  cleanup_interval: 3600
+  healthcheck_interval: 300
+
+storage:
+  local_storage_path: "./storage"
+  reports_path: "./reports"
+  logs_path: "./logs"
+  temp_path: "./temp"
+  s3_enabled: false
+  s3_bucket: null
+  s3_region: "us-east-1"
+  max_file_size_mb: 10
+  max_upload_size_mb: 100
+
+logging:
+  level: "DEBUG"
+  format: "text"
+  file_enabled: true
+  file_path: "./logs"
+  file_rotation: "daily"
+  file_max_size_mb: 100
+  file_backup_count: 7
+  structured_enabled: true
+  sentry_enabled: false
+  elasticsearch_enabled: false
+
+grpc:
+  enabled: false
+  host: "0.0.0.0"
+  port: 50051
+  max_workers: 10
+  max_message_length: 4194304  # 4MB
+  tls_enabled: false

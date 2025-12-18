@@ -1,153 +1,214 @@
-from __future__ import annotations
+"""
+Централизованный загрузчик конфигурации.
 
-from abc import ABC, abstractmethod
+Поддерживает загрузку из:
+1. HashiCorp Vault (приоритет 1)
+2. Environment variables (приоритет 2)
+3. YAML файлы (приоритет 3)
+
+Пример использования:
+    from app.config.database import DatabaseConnectionSettings
+    
+    db_settings = DatabaseConnectionSettings()
+    print(db_settings.host)  # Загружено из Vault/Env/YAML
+"""
+
+import os
 from pathlib import Path
-from typing import Any, ClassVar, Dict, Tuple, Type
+from typing import Any, Dict, Optional, Type, TypeVar
 
-from dotenv import load_dotenv
-from pydantic.fields import FieldInfo
-from pydantic_settings import (
-    BaseSettings,
-    PydanticBaseSettingsSource,
-    SettingsConfigDict,
-)
+import yaml
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.config.constants import consts
-
-__all__ = ("BaseSettingsWithLoader",)
+# Типизация для Generic Settings
+T = TypeVar("T", bound=BaseSettings)
 
 
-# Load .env once, early, for the whole app (so os.getenv also sees values).
-load_dotenv(consts.ENV_FILE)
-
-
-class FilteredSettingsSource(PydanticBaseSettingsSource, ABC):
-    """Abstract base class for filtered settings sources."""
-
-    def __init__(self, settings_cls: Type[BaseSettings]):
-        super().__init__(settings_cls)
-        self.yaml_group = getattr(settings_cls, "yaml_group", None)
-        self.model_fields = set(settings_cls.model_fields.keys())
-
-    def get_field_value(
-        self, field: FieldInfo, field_name: str
-    ) -> Tuple[Any, str, bool]:
-        return (None, field_name, False)
-
-    def __call__(self) -> Dict[str, Any]:
+class ConfigLoader:
+    """
+    Централизованный загрузчик конфигурации с каскадным приоритетом.
+    
+    Приоритет источников:
+    1. HashiCorp Vault (если доступен)
+    2. Environment variables
+    3. YAML файлы
+    """
+    
+    # Кеш для конфигураций
+    _cache: Dict[str, Any] = {}
+    
+    # Путь к YAML конфигурациям
+    YAML_CONFIG_DIR = Path("config")
+    
+    # Текущее окружение (dev, staging, prod)
+    ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
+    
+    @classmethod
+    def get_vault_client(cls):
+        """
+        Получить клиент HashiCorp Vault.
+        
+        Returns:
+            hvac.Client или None если Vault не доступен
+        """
         try:
-            raw_data = self._load_data()
-            return self._filter_data(raw_data)
-        except Exception:
-            return {}
-
-    def _filter_data(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Filter data using model fields (and optional yaml group)."""
-        if self.yaml_group:
-            group_data = raw_data.get(self.yaml_group, {})
-            if not isinstance(group_data, dict):
-                return {}
-        else:
-            group_data = raw_data
-
-        if not isinstance(group_data, dict):
-            return {}
-
-        return {k: v for k, v in group_data.items() if k in self.model_fields}
-
-    @abstractmethod
-    def _load_data(self) -> Dict[str, Any]:
-        """Load raw data from source."""
-
-
-class YamlConfigSettingsLoader(FilteredSettingsSource):
-    """YAML config loader with filtering."""
-
-    def __init__(
-        self,
-        settings_cls: Type[BaseSettings],
-        yaml_path: Path = consts.YAML_CONFIG,
-    ):
-        super().__init__(settings_cls)
-        self.yaml_path = yaml_path
-
-    def _load_data(self) -> Dict[str, Any]:
-        try:
-            from yaml import safe_load  # optional dependency
-        except Exception:
-            return {}
-
-        try:
-            with open(self.yaml_path, encoding="utf-8") as f:
-                data = safe_load(f) or {}
-            return data if isinstance(data, dict) else {}
-        except FileNotFoundError:
-            return {}
-        except Exception:
-            return {}
-
-
-class VaultConfigSettingsSource(FilteredSettingsSource):
-    """Vault config loader with filtering (optional)."""
-
-    def _load_data(self) -> Dict[str, Any]:
-        from os import getenv
-
-        vault_addr = getenv("VAULT_ADDR")
-        vault_token = getenv("VAULT_TOKEN")
-        vault_secret_path = getenv("VAULT_SECRET_PATH")
-
-        if not all([vault_addr, vault_token, vault_secret_path]):
-            return {}
-
-        try:
-            from hvac import Client  # optional dependency
-        except Exception:
-            return {}
-
-        try:
-            client = Client(url=vault_addr, token=vault_token)
+            import hvac
+            
+            vault_addr = os.getenv("VAULT_ADDR")
+            vault_token = os.getenv("VAULT_TOKEN")
+            
+            if not vault_addr or not vault_token:
+                return None
+            
+            client = hvac.Client(url=vault_addr, token=vault_token)
+            
+            # Проверка подключения
             if not client.is_authenticated():
-                return {}
-
-            response = client.secrets.kv.v2.read_secret_version(path=vault_secret_path)
-            data = response.get("data", {}).get("data", {})
-            return data if isinstance(data, dict) else {}
+                return None
+            
+            return client
+        except ImportError:
+            # hvac не установлен
+            return None
         except Exception:
-            return {}
+            # Ошибка подключения к Vault
+            return None
+    
+    @classmethod
+    def load_from_vault(cls, path: str, key: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Загрузка конфигурации из Vault.
+        
+        Args:
+            path: Путь в Vault (например: "secret/data/app/database")
+            key: Конкретный ключ (опционально, вернет весь секрет если None)
+            
+        Returns:
+            Dict с конфигурацией или None если не найдено
+        """
+        cache_key = f"vault:{path}:{key}"
+        if cache_key in cls._cache:
+            return cls._cache[cache_key]
+        
+        client = cls.get_vault_client()
+        if not client:
+            return None
+        
+        try:
+            # Читаем секрет из Vault
+            response = client.secrets.kv.v2.read_secret_version(path=path)
+            data = response["data"]["data"]
+            
+            result = data.get(key) if key else data
+            cls._cache[cache_key] = result
+            return result
+        except Exception:
+            return None
+    
+    @classmethod
+    def load_from_yaml(cls, filename: str, group: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Загрузка конфигурации из YAML файла.
+        
+        Args:
+            filename: Имя YAML файла (например: "database.yaml")
+            group: Группа конфигурации (опционально)
+            
+        Returns:
+            Dict с конфигурацией или None если не найдено
+        """
+        cache_key = f"yaml:{filename}:{group}"
+        if cache_key in cls._cache:
+            return cls._cache[cache_key]
+        
+        # Проверяем файл для текущего окружения (например: database.dev.yaml)
+        env_filename = filename.replace(".yaml", f".{cls.ENVIRONMENT}.yaml")
+        yaml_path = cls.YAML_CONFIG_DIR / env_filename
+        
+        # Если нет файла для окружения, используем базовый
+        if not yaml_path.exists():
+            yaml_path = cls.YAML_CONFIG_DIR / filename
+        
+        if not yaml_path.exists():
+            return None
+        
+        try:
+            with open(yaml_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            
+            result = data.get(group) if group else data
+            cls._cache[cache_key] = result
+            return result
+        except Exception:
+            return None
+    
+    @classmethod
+    def clear_cache(cls):
+        """Очистить кеш конфигураций."""
+        cls._cache.clear()
 
 
 class BaseSettingsWithLoader(BaseSettings):
     """
-    Base class for configuration models with multi-source loading support.
-
-    Priority order:
-    1) init kwargs
-    2) environment variables
-    3) Vault secrets (optional)
-    4) YAML config (optional)
-    5) .env (pydantic dotenv source)
-    6) file secrets
+    Базовый класс для настроек с поддержкой каскадной загрузки.
+    
+    Пример использования:
+        class DatabaseSettings(BaseSettingsWithLoader):
+            yaml_group = "database"
+            vault_path = "secret/data/app/database"
+            
+            host: str = "localhost"
+            port: int = 5432
     """
-
-    yaml_group: ClassVar[str | None] = None
-    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
-
+    
+    # Путь в Vault (переопределяется в наследниках)
+    vault_path: Optional[str] = None
+    
+    # Группа в YAML файле (переопределяется в наследниках)
+    yaml_group: Optional[str] = None
+    
+    # Имя YAML файла (по умолчанию: имя класса в lowercase + .yaml)
+    yaml_file: Optional[str] = None
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+    )
+    
+    def __init__(self, **kwargs):
+        # 1. Загружаем из Vault (высший приоритет)
+        vault_data = {}
+        if self.vault_path:
+            vault_result = ConfigLoader.load_from_vault(self.vault_path)
+            if vault_result:
+                vault_data = vault_result
+        
+        # 2. Загружаем из YAML
+        yaml_data = {}
+        if self.yaml_file or self.yaml_group:
+            yaml_filename = self.yaml_file or f"{self.__class__.__name__.lower()}.yaml"
+            yaml_result = ConfigLoader.load_from_yaml(yaml_filename, self.yaml_group)
+            if yaml_result:
+                yaml_data = yaml_result
+        
+        # 3. Environment variables загружаются автоматически через Pydantic
+        # 4. Merge: Vault > Env > YAML > kwargs > defaults
+        merged_data = {**yaml_data, **vault_data, **kwargs}
+        
+        super().__init__(**merged_data)
+    
     @classmethod
-    def settings_customise_sources(
-        cls,
-        settings_cls: Type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> Tuple[PydanticBaseSettingsSource, ...]:
-        return (
-            init_settings,
-            env_settings,
-            VaultConfigSettingsSource(settings_cls),
-            YamlConfigSettingsLoader(settings_cls),
-            dotenv_settings,
-            file_secret_settings,
-        )
-
+    def get_instance(cls: Type[T]) -> T:
+        """
+        Получить singleton экземпляр настроек.
+        
+        Returns:
+            Экземпляр настроек
+        """
+        cache_key = f"settings:{cls.__name__}"
+        if cache_key not in ConfigLoader._cache:
+            ConfigLoader._cache[cache_key] = cls()
+        return ConfigLoader._cache[cache_key]

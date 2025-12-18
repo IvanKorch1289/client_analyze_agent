@@ -199,31 +199,56 @@ class CircuitBreakerOpenError(Exception):
 
 class AsyncHttpClient:
     _instance: Optional["AsyncHttpClient"] = None
-    _lock: asyncio.Lock = asyncio.Lock()
+    _lock: Optional[asyncio.Lock] = None
+    _initialized: bool = False
 
-    def __new__(cls) -> "AsyncHttpClient":
-        return super().__new__(cls)
+    def __new__(cls):
+        # Блокируем прямое создание экземпляров
+        raise RuntimeError(
+            f"Нельзя создавать экземпляр {cls.__name__} напрямую. "
+            f"Используйте {cls.__name__}.get_instance()"
+        )
 
     @classmethod
     async def get_instance(cls) -> "AsyncHttpClient":
-        if cls._instance is None:
-            async with cls._lock:
-                if cls._instance is None:
-                    instance = super().__new__(cls)
-                    instance.__init_once()
-                    await instance._initialize()
-                    cls._instance = instance
+        """
+        Thread-safe singleton pattern с async/await.
+        
+        Returns:
+            AsyncHttpClient: Единственный экземпляр клиента
+        """
+        # Быстрая проверка без блокировки
+        if cls._instance is not None and cls._initialized:
+            return cls._instance
+        
+        # Создаем lock если еще нет
+        if cls._lock is None:
+            cls._lock = asyncio.Lock()
+        
+        # Двойная проверка с блокировкой
+        async with cls._lock:
+            if cls._instance is None:
+                # Создаем instance напрямую через object.__new__
+                instance = object.__new__(cls)
+                instance.__init_once()
+                await instance._initialize()
+                
+                # Атомарно устанавливаем instance и флаг
+                cls._initialized = True
+                cls._instance = instance
+                
         return cls._instance
 
     def __init__(self):
+        # Этот метод никогда не должен вызываться
         raise RuntimeError(
-            f"Нельзя создавать экземпляр {self.__class__.__name__} напрямую. "
-            f"Используйте {self.__class__.__name__}.get_instance()"
+            f"Используйте {self.__class__.__name__}.get_instance() вместо __init__()"
         )
 
     def __init_once(self):
+        """Инициализация атрибутов экземпляра (вызывается один раз)."""
         self._client: Optional[httpx.AsyncClient] = None
-        self._initialized: bool = False
+        self._client_initialized: bool = False
         self._circuit_breakers: Dict[str, CircuitBreaker] = {}
         self._metrics: Dict[str, RequestMetrics] = {}
         self._default_timeout = TimeoutConfig()
@@ -253,7 +278,8 @@ class AsyncHttpClient:
         }
 
     async def _initialize(self):
-        if self._initialized:
+        """Инициализация HTTP клиента (вызывается один раз)."""
+        if self._client_initialized:
             return
 
         transport = httpx.AsyncHTTPTransport(retries=0)
@@ -270,7 +296,7 @@ class AsyncHttpClient:
             },
             transport=transport,
         )
-        self._initialized = True
+        self._client_initialized = True
 
     async def _on_request(self, request: httpx.Request):
         request.extensions["start_time"] = asyncio.get_event_loop().time()
@@ -557,13 +583,17 @@ class AsyncHttpClient:
             self._metrics.clear()
 
     async def aclose(self):
+        """Закрытие HTTP клиента."""
         if self._client:
             await self._client.aclose()
             self._client = None
-        self._initialized = False
+        self._client_initialized = False
 
     @classmethod
     async def close_global(cls):
+        """Закрытие глобального экземпляра клиента."""
         if cls._instance is not None:
             await cls._instance.aclose()
-            cls._instance = None
+            async with cls._lock:
+                cls._instance = None
+                cls._initialized = False
