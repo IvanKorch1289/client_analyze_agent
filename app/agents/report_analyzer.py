@@ -1,11 +1,15 @@
 """
 Report Analyzer Agent: анализирует результаты поиска и создаёт итоговый отчёт.
+
+Ключевой контракт: итоговый `report` соответствует модели
+`app.schemas.report.ClientAnalysisReport`.
 """
 
 from datetime import datetime
 from typing import Any, Dict, List
 
 from app.utility.logging_client import logger
+from app.schemas.report import ClientAnalysisReport
 
 
 def calculate_risk_score(search_results: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -252,6 +256,11 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         "citations": list(set(all_citations))[:20],
         "recommendations": generate_recommendations(risk_assessment),
     }
+
+    # Нормализуем/валидируем отчёт по канонической схеме.
+    # Если схема не сходится — это ошибка разработки (лучше упасть, чем писать неконсистентный report).
+    report_obj = ClientAnalysisReport.model_validate(report)
+    report = report_obj.model_dump(mode="json")
 
     logger.info(
         f"Report Analyzer: отчёт создан, уровень риска: {risk_assessment['level']}",

@@ -28,9 +28,9 @@ services:
     environment:
       - TARANTOOL_INIT_SCRIPT=/opt/tarantool/init.lua
     volumes:
-      - ./app/storage/init.lua:/opt/app/storage/init.lua:ro
+      - ./app/storage/init.lua:/opt/tarantool/init.lua:ro
       - tarantool_data:/var/lib/tarantool
-    command: ["tarantool", "opt/app/storage/init.lua"]
+    command: ["tarantool", "/opt/tarantool/init.lua"]
     restart: unless-stopped
     networks:
       - app-network
