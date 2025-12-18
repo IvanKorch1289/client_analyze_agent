@@ -16,6 +16,7 @@ from app.api.routes.agent import agent_router
 from app.api.routes.data import data_router
 from app.api.routes.scheduler import scheduler_router
 from app.api.routes.utility import utility_router
+from app.api.v1 import v1_app
 from app.config.settings import settings
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
@@ -220,7 +221,8 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-FastAPIInstrumentor.instrument_app(app, excluded_urls="/utility/health,/utility/metrics")
+_otel_excluded_urls = "/utility/health,/utility/metrics,/api/v1/utility/health,/api/v1/utility/metrics"
+FastAPIInstrumentor.instrument_app(app, excluded_urls=_otel_excluded_urls)
 
 # Сжатие больших ответов (отчёты/метрики/история). Минимальный размер — чтобы
 # не тратить CPU на мелкие ответы.
@@ -252,10 +254,20 @@ app.add_middleware(AppCircuitBreakerMiddleware, breaker=app_circuit_breaker)
 
 app.add_middleware(RequestIdMiddleware)
 
-app.include_router(agent_router)
-app.include_router(data_router)
-app.include_router(scheduler_router)
-app.include_router(utility_router)
+# -----------------------
+# API versioning
+# -----------------------
+# v1: primary, versioned API (recommended for integrations).
+v1_app.state.app_circuit_breaker = app_circuit_breaker
+FastAPIInstrumentor.instrument_app(v1_app, excluded_urls="/utility/health,/utility/metrics")
+app.mount("/api/v1", v1_app)
+
+# Legacy (unversioned) endpoints: kept for backward compatibility,
+# but hidden from OpenAPI to avoid duplicated schemas.
+app.include_router(agent_router, include_in_schema=False)
+app.include_router(data_router, include_in_schema=False)
+app.include_router(scheduler_router, include_in_schema=False)
+app.include_router(utility_router, include_in_schema=False)
 
 
 # =======================

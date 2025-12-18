@@ -8,6 +8,7 @@ cache operations, and external service status monitoring.
 import os
 import json
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
@@ -28,6 +29,21 @@ utility_router = APIRouter(
     tags=["Утилиты"],
     responses={404: {"description": "Не найдено"}},
 )
+
+def _relative_path_for(request: Request, *, route_name: str, **params: Any) -> str:
+    """
+    Return a URL path relative to current API root (without root_path).
+
+    - For legacy (unversioned) routes: root_path == "" → returned path is unchanged
+    - For versioned sub-app (/api/v1): root_path == "/api/v1" → strip it so clients
+      that already use a versioned base URL don't end up with a double prefix.
+    """
+    absolute = str(request.url_for(route_name, **params))
+    path = urlparse(absolute).path
+    root_path = request.scope.get("root_path") or ""
+    if root_path and path.startswith(root_path):
+        return path[len(root_path) :] or "/"
+    return path
 
 
 @utility_router.get("/health")
@@ -374,7 +390,7 @@ class PDFReportRequest(BaseModel):
 
 
 @utility_router.post("/reports/pdf")
-async def generate_pdf_report(request: PDFReportRequest) -> Dict[str, Any]:
+async def generate_pdf_report(http_request: Request, payload: PDFReportRequest) -> Dict[str, Any]:
     """
     Generate PDF report from analysis data.
     
@@ -386,17 +402,20 @@ async def generate_pdf_report(request: PDFReportRequest) -> Dict[str, Any]:
     """
     try:
         filepath = save_pdf_report(
-            report_data=request.report_data,
-            client_name=request.client_name,
-            inn=request.inn,
-            session_id=request.session_id,
+            report_data=payload.report_data,
+            client_name=payload.client_name,
+            inn=payload.inn,
+            session_id=payload.session_id,
         )
         
+        filename = os.path.basename(filepath)
         return {
             "status": "success",
             "filepath": filepath,
-            "filename": os.path.basename(filepath),
-            "download_url": f"/utility/reports/download/{os.path.basename(filepath)}",
+            "filename": filename,
+            "download_url": _relative_path_for(
+                http_request, route_name="download_report", filename=filename
+            ),
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -423,7 +442,7 @@ async def download_report(filename: str):
 
 
 @utility_router.get("/reports/list")
-async def list_reports() -> Dict[str, Any]:
+async def list_reports(http_request: Request) -> Dict[str, Any]:
     """List all available reports."""
     reports_dir = "reports"
     
@@ -438,7 +457,9 @@ async def list_reports() -> Dict[str, Any]:
                 "filename": filename,
                 "size_bytes": os.path.getsize(filepath),
                 "created": os.path.getctime(filepath),
-                "download_url": f"/utility/reports/download/{filename}",
+                "download_url": _relative_path_for(
+                    http_request, route_name="download_report", filename=filename
+                ),
             })
     
     reports.sort(key=lambda x: x["created"], reverse=True)
