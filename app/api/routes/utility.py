@@ -8,11 +8,15 @@ cache operations, and external service status monitoring.
 import os
 import json
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
+from slowapi import Limiter
 
+from app.api.compat import fail, is_versioned_request
+from app.config.constants import RATE_LIMIT_ADMIN_PER_MINUTE
 from app.services.email_client import EmailClient
 from app.services.http_client import AsyncHttpClient
 from app.services.openrouter_client import get_openrouter_client
@@ -20,7 +24,12 @@ from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
 from app.storage.tarantool import TarantoolClient
 from app.utility.auth import Role, get_current_role, require_admin
+from app.utility.app_metrics import app_metrics
+from app.utility.helpers import get_client_ip
 from app.utility.pdf_generator import save_pdf_report
+from app.schemas.api import AppMetricsResponse, HealthResponse
+from app.config.reload import get_reload_state, reload_settings
+from app.config.settings import settings
 from app.utility.telemetry import get_log_store, get_span_exporter
 
 utility_router = APIRouter(
@@ -29,9 +38,93 @@ utility_router = APIRouter(
     responses={404: {"description": "Не найдено"}},
 )
 
+# Rate limiter for admin endpoints
+limiter = Limiter(key_func=get_client_ip)
+
+def _redact(obj: Any) -> Any:
+    """
+    Best-effort redaction for config snapshots.
+    """
+    sensitive = ("password", "token", "secret", "api_key", "key", "dsn")
+    if isinstance(obj, dict):
+        out: Dict[str, Any] = {}
+        for k, v in obj.items():
+            ks = str(k).lower()
+            if any(s in ks for s in sensitive):
+                out[k] = "***"
+            else:
+                out[k] = _redact(v)
+        return out
+    if isinstance(obj, list):
+        return [_redact(x) for x in obj]
+    return obj
+
+
+@utility_router.get("/config")
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def get_config_snapshot(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """
+    Get current effective settings snapshot (redacted) + last reload info.
+    Requires admin role.
+    """
+    snapshot = {
+        "app": settings.app.model_dump(),
+        "scheduler": settings.scheduler.model_dump(),
+        "secure": settings.secure.model_dump(),
+        "http_base": settings.http_base.model_dump(),
+        "tarantool": settings.tarantool.model_dump(),
+        "mongo": settings.mongo.model_dump(),
+        "redis": settings.redis.model_dump(),
+        "queue": settings.queue.model_dump(),
+        "celery": settings.celery.model_dump(),
+        "mail": settings.mail.model_dump(),
+        "grpc": settings.grpc.model_dump(),
+        "tasks": settings.tasks.model_dump(),
+        "storage": settings.storage.model_dump(),
+        "logging": settings.logging.model_dump(),
+        "external_api": {
+            "dadata": settings.dadata.model_dump(),
+            "casebook": settings.casebook.model_dump(),
+            "infosphere": settings.infosphere.model_dump(),
+            "perplexity": settings.perplexity.model_dump(),
+            "tavily": settings.tavily.model_dump(),
+            "openrouter": settings.openrouter.model_dump(),
+            "huggingface": settings.huggingface.model_dump(),
+            "gigachat": settings.gigachat.model_dump(),
+        },
+    }
+    return {
+        "status": "success",
+        "reload": get_reload_state(),
+        "config": _redact(snapshot),
+    }
+
+
+@utility_router.post("/config/reload")
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def force_config_reload(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """Force config reload immediately. Requires admin role."""
+    reload_settings(reason="manual_api")
+    return {"status": "success", "reload": get_reload_state()}
+
+def _relative_path_for(request: Request, *, route_name: str, **params: Any) -> str:
+    """
+    Return a URL path relative to current API root (without root_path).
+
+    - For legacy (unversioned) routes: root_path == "" → returned path is unchanged
+    - For versioned sub-app (/api/v1): root_path == "/api/v1" → strip it so clients
+      that already use a versioned base URL don't end up with a double prefix.
+    """
+    absolute = str(request.url_for(route_name, **params))
+    path = urlparse(absolute).path
+    root_path = request.scope.get("root_path") or ""
+    if root_path and path.startswith(root_path):
+        return path[len(root_path) :] or "/"
+    return path
+
 
 @utility_router.get("/health")
-async def health_check(deep: bool = False) -> Dict[str, Any]:
+async def health_check(deep: bool = False) -> HealthResponse:
     perplexity = PerplexityClient.get_instance()
     tavily = TavilyClient.get_instance()
     openrouter = get_openrouter_client()
@@ -116,7 +209,7 @@ async def health_check(deep: bool = False) -> Dict[str, Any]:
 
 
 @utility_router.get("/asyncapi.json")
-async def get_asyncapi_spec() -> Dict[str, Any]:
+async def get_asyncapi_spec(request: Request) -> Dict[str, Any]:
     """
     AsyncAPI спецификация очередей (RabbitMQ/FastStream).
 
@@ -129,6 +222,8 @@ async def get_asyncapi_spec() -> Dict[str, Any]:
         spec = AsyncAPI(broker, title="Client Analysis Messaging", version="1.0.0").to_specification()
         return json.loads(spec.to_json())
     except Exception as e:
+        if is_versioned_request(request):
+            raise
         return {"status": "error", "message": str(e)}
 
 
@@ -150,32 +245,36 @@ async def app_circuit_breaker_status(request: Request) -> Dict[str, Any]:
     """
     breaker = getattr(request.app.state, "app_circuit_breaker", None)
     if breaker is None:
-        return {"status": "error", "message": "app circuit breaker is not configured"}
+        return fail(request, status_code=503, message="app circuit breaker is not configured")
     return {"status": "success", "breaker": breaker.status()}
 
 
 @utility_router.post("/app-circuit-breaker/reset")
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def app_circuit_breaker_reset(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """Сбросить app-level circuit breaker. Requires admin role."""
     breaker = getattr(request.app.state, "app_circuit_breaker", None)
     if breaker is None:
-        return {"status": "error", "message": "app circuit breaker is not configured"}
+        return fail(request, status_code=503, message="app circuit breaker is not configured")
     breaker.reset()
     return {"status": "success", "message": "app circuit breaker reset"}
 
 
 @utility_router.get("/circuit-breakers")
-async def get_circuit_breakers(service: Optional[str] = None) -> Dict[str, Any]:
+async def get_circuit_breakers(request: Request, service: Optional[str] = None) -> Dict[str, Any]:
     try:
         http_client = await AsyncHttpClient.get_instance()
         status = http_client.get_circuit_breaker_status(service)
         return {"status": "success", "circuit_breakers": status}
     except Exception as e:
+        if is_versioned_request(request):
+            raise
         return {"status": "error", "message": str(e)}
 
 
 @utility_router.post("/circuit-breakers/{service}/reset")
-async def reset_circuit_breaker(service: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def reset_circuit_breaker(request: Request, service: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """Reset circuit breaker for a service. Requires admin role."""
     try:
         http_client = await AsyncHttpClient.get_instance()
@@ -187,21 +286,26 @@ async def reset_circuit_breaker(service: str, role: str = Depends(require_admin)
             }
         return {"status": "error", "message": f"No circuit breaker found for {service}"}
     except Exception as e:
+        if is_versioned_request(request):
+            raise
         return {"status": "error", "message": str(e)}
 
 
 @utility_router.get("/metrics")
-async def get_metrics(service: Optional[str] = None) -> Dict[str, Any]:
+async def get_metrics(request: Request, service: Optional[str] = None) -> Dict[str, Any]:
     try:
         http_client = await AsyncHttpClient.get_instance()
         metrics = http_client.get_metrics(service)
         return {"status": "success", "metrics": metrics}
     except Exception as e:
+        if is_versioned_request(request):
+            raise
         return {"status": "error", "message": str(e)}
 
 
 @utility_router.post("/metrics/reset")
-async def reset_metrics(service: Optional[str] = None, role: str = Depends(require_admin)) -> Dict[str, Any]:
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def reset_metrics(request: Request, service: Optional[str] = None, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """Reset HTTP metrics. Requires admin role."""
     try:
         http_client = await AsyncHttpClient.get_instance()
@@ -209,11 +313,14 @@ async def reset_metrics(service: Optional[str] = None, role: str = Depends(requi
         msg = f"Metrics reset for {service}" if service else "All metrics reset"
         return {"status": "success", "message": msg}
     except Exception as e:
+        if is_versioned_request(request):
+            raise
         return {"status": "error", "message": str(e)}
 
 
 @utility_router.get("/validate_cache")
-async def validate_cache(confirm: bool, role: str = Depends(require_admin)):
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def validate_cache(request: Request, confirm: bool, role: str = Depends(require_admin)):
     """
     Invalidate all cache keys. Requires admin role.
     
@@ -244,7 +351,8 @@ async def tavily_status():
 
 
 @utility_router.post("/tavily/cache/clear")
-async def clear_tavily_cache(role: str = Depends(require_admin)):
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def clear_tavily_cache(request: Request, role: str = Depends(require_admin)):
     """Clear Tavily cache. Requires admin role."""
     client = TavilyClient.get_instance()
     client.clear_cache()
@@ -252,7 +360,8 @@ async def clear_tavily_cache(role: str = Depends(require_admin)):
 
 
 @utility_router.post("/perplexity/cache/clear")
-async def clear_perplexity_cache(role: str = Depends(require_admin)):
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def clear_perplexity_cache(request: Request, role: str = Depends(require_admin)):
     """Clear Perplexity cache. Requires admin role."""
     client = PerplexityClient.get_instance()
     client.clear_cache()
@@ -272,7 +381,7 @@ async def openrouter_status() -> Dict[str, Any]:
 
 
 @utility_router.get("/cache/metrics")
-async def get_cache_metrics() -> Dict[str, Any]:
+async def get_cache_metrics(request: Request) -> Dict[str, Any]:
     try:
         tarantool = await TarantoolClient.get_instance()
         metrics = tarantool.get_metrics()
@@ -285,33 +394,41 @@ async def get_cache_metrics() -> Dict[str, Any]:
             "cache_size": cache_size,
         }
     except Exception as e:
+        if is_versioned_request(request):
+            raise
         return {"status": "error", "message": str(e)}
 
 
 @utility_router.post("/cache/metrics/reset")
-async def reset_cache_metrics(role: str = Depends(require_admin)) -> Dict[str, Any]:
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def reset_cache_metrics(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """Reset cache metrics. Requires admin role."""
     try:
         tarantool = await TarantoolClient.get_instance()
         tarantool.reset_metrics()
         return {"status": "success", "message": "Cache metrics reset"}
     except Exception as e:
+        if is_versioned_request(request):
+            raise
         return {"status": "error", "message": str(e)}
 
 
 @utility_router.delete("/cache/prefix/{prefix}")
-async def delete_cache_by_prefix(prefix: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def delete_cache_by_prefix(request: Request, prefix: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """Delete cache keys by prefix. Requires admin role."""
     try:
         tarantool = await TarantoolClient.get_instance()
         await tarantool.delete_by_prefix(prefix)
         return {"status": "success", "message": f"Deleted keys with prefix: {prefix}"}
     except Exception as e:
+        if is_versioned_request(request):
+            raise
         return {"status": "error", "message": str(e)}
 
 
 @utility_router.get("/tarantool/status")
-async def tarantool_status() -> Dict[str, Any]:
+async def tarantool_status(request: Request) -> Dict[str, Any]:
     try:
         tarantool = await TarantoolClient.get_instance()
         metrics = tarantool.get_metrics()
@@ -343,6 +460,8 @@ async def tarantool_status() -> Dict[str, Any]:
             },
         }
     except Exception as e:
+        if is_versioned_request(request):
+            raise
         return {
             "status": "error",
             "available": False,
@@ -365,6 +484,21 @@ async def email_healthcheck() -> Dict[str, Any]:
     return client.check_health()
 
 
+@utility_router.get("/app-metrics")
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def get_app_metrics(request: Request, role: str = Depends(require_admin)) -> AppMetricsResponse:
+    """Get in-process application request metrics. Requires admin role."""
+    return {"status": "success", "metrics": app_metrics.snapshot()}
+
+
+@utility_router.post("/app-metrics/reset")
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def reset_app_metrics(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """Reset in-process application request metrics. Requires admin role."""
+    app_metrics.reset()
+    return {"status": "success", "message": "App metrics reset"}
+
+
 class PDFReportRequest(BaseModel):
     """Request body for PDF report generation."""
     client_name: str
@@ -374,7 +508,7 @@ class PDFReportRequest(BaseModel):
 
 
 @utility_router.post("/reports/pdf")
-async def generate_pdf_report(request: PDFReportRequest) -> Dict[str, Any]:
+async def generate_pdf_report(http_request: Request, payload: PDFReportRequest) -> Dict[str, Any]:
     """
     Generate PDF report from analysis data.
     
@@ -386,19 +520,24 @@ async def generate_pdf_report(request: PDFReportRequest) -> Dict[str, Any]:
     """
     try:
         filepath = save_pdf_report(
-            report_data=request.report_data,
-            client_name=request.client_name,
-            inn=request.inn,
-            session_id=request.session_id,
+            report_data=payload.report_data,
+            client_name=payload.client_name,
+            inn=payload.inn,
+            session_id=payload.session_id,
         )
         
+        filename = os.path.basename(filepath)
         return {
             "status": "success",
             "filepath": filepath,
-            "filename": os.path.basename(filepath),
-            "download_url": f"/utility/reports/download/{os.path.basename(filepath)}",
+            "filename": filename,
+            "download_url": _relative_path_for(
+                http_request, route_name="download_report", filename=filename
+            ),
         }
     except Exception as e:
+        if is_versioned_request(http_request):
+            raise
         return {"status": "error", "message": str(e)}
 
 
@@ -423,7 +562,7 @@ async def download_report(filename: str):
 
 
 @utility_router.get("/reports/list")
-async def list_reports() -> Dict[str, Any]:
+async def list_reports(http_request: Request) -> Dict[str, Any]:
     """List all available reports."""
     reports_dir = "reports"
     
@@ -438,7 +577,9 @@ async def list_reports() -> Dict[str, Any]:
                 "filename": filename,
                 "size_bytes": os.path.getsize(filepath),
                 "created": os.path.getctime(filepath),
-                "download_url": f"/utility/reports/download/{filename}",
+                "download_url": _relative_path_for(
+                    http_request, route_name="download_report", filename=filename
+                ),
             })
     
     reports.sort(key=lambda x: x["created"], reverse=True)
@@ -447,7 +588,8 @@ async def list_reports() -> Dict[str, Any]:
 
 
 @utility_router.delete("/reports/{filename}")
-async def delete_report(filename: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def delete_report(request: Request, filename: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """Delete a report file. Requires admin role."""
     filepath = os.path.join("reports", filename)
     
@@ -458,6 +600,8 @@ async def delete_report(filename: str, role: str = Depends(require_admin)) -> Di
         os.remove(filepath)
         return {"status": "success", "message": f"Report {filename} deleted"}
     except Exception as e:
+        if is_versioned_request(request):
+            raise
         return {"status": "error", "message": str(e)}
 
 
@@ -475,7 +619,9 @@ async def get_auth_role(role: str = Depends(get_current_role)) -> Dict[str, Any]
 
 
 @utility_router.get("/cache/entries")
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def get_cache_entries(
+    request: Request,
     limit: int = 10,
     role: str = Depends(require_admin)
 ) -> Dict[str, Any]:
@@ -495,7 +641,9 @@ async def get_cache_entries(
 
 
 @utility_router.get("/traces")
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def get_traces(
+    request: Request,
     limit: int = 50,
     since_minutes: Optional[int] = None,
     role: str = Depends(require_admin)
@@ -509,7 +657,7 @@ async def get_traces(
     """
     exporter = get_span_exporter()
     if not exporter:
-        return {"status": "error", "message": "Telemetry not initialized"}
+        return fail(request, status_code=503, message="Telemetry not initialized")
     
     spans = exporter.get_spans(limit=limit, since_minutes=since_minutes)
     stats = exporter.get_trace_stats()
@@ -523,28 +671,32 @@ async def get_traces(
 
 
 @utility_router.get("/traces/stats")
-async def get_trace_stats(role: str = Depends(require_admin)) -> Dict[str, Any]:
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def get_trace_stats(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """Get trace statistics. Requires admin role."""
     exporter = get_span_exporter()
     if not exporter:
-        return {"status": "error", "message": "Telemetry not initialized"}
+        return fail(request, status_code=503, message="Telemetry not initialized")
     
     return {"status": "success", "stats": exporter.get_trace_stats()}
 
 
 @utility_router.post("/traces/clear")
-async def clear_traces(role: str = Depends(require_admin)) -> Dict[str, Any]:
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def clear_traces(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """Clear all stored traces. Requires admin role."""
     exporter = get_span_exporter()
     if not exporter:
-        return {"status": "error", "message": "Telemetry not initialized"}
+        return fail(request, status_code=503, message="Telemetry not initialized")
     
     exporter.clear()
     return {"status": "success", "message": "Traces cleared"}
 
 
 @utility_router.get("/logs")
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def get_logs(
+    request: Request,
     limit: int = 100,
     since_minutes: Optional[int] = None,
     level: Optional[str] = None,
@@ -560,7 +712,7 @@ async def get_logs(
     """
     log_store = get_log_store()
     if not log_store:
-        return {"status": "error", "message": "Log store not initialized"}
+        return fail(request, status_code=503, message="Log store not initialized")
     
     logs = log_store.get_logs(limit=limit, since_minutes=since_minutes, level=level)
     stats = log_store.get_stats()
@@ -574,21 +726,23 @@ async def get_logs(
 
 
 @utility_router.get("/logs/stats")
-async def get_log_stats(role: str = Depends(require_admin)) -> Dict[str, Any]:
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def get_log_stats(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """Get log statistics. Requires admin role."""
     log_store = get_log_store()
     if not log_store:
-        return {"status": "error", "message": "Log store not initialized"}
+        return fail(request, status_code=503, message="Log store not initialized")
     
     return {"status": "success", "stats": log_store.get_stats()}
 
 
 @utility_router.post("/logs/clear")
-async def clear_logs(role: str = Depends(require_admin)) -> Dict[str, Any]:
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def clear_logs(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """Clear all stored logs. Requires admin role."""
     log_store = get_log_store()
     if not log_store:
-        return {"status": "error", "message": "Log store not initialized"}
+        return fail(request, status_code=503, message="Log store not initialized")
     
     log_store.clear()
     return {"status": "success", "message": "Logs cleared"}

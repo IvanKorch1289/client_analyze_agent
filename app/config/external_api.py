@@ -12,7 +12,7 @@
 
 from typing import Optional
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from app.config.config_loader import BaseSettingsWithLoader
 
@@ -40,8 +40,7 @@ class HttpBaseSettings(BaseSettingsWithLoader):
     # HTTP/2
     http2_enabled: bool = Field(default=True, description="Включить HTTP/2")
     
-    class Config:
-        env_prefix = "HTTP_"
+    model_config = ConfigDict(env_prefix="HTTP_")
 
 
 class DadataAPISettings(BaseSettingsWithLoader):
@@ -65,8 +64,7 @@ class DadataAPISettings(BaseSettingsWithLoader):
     # Rate limiting
     rate_limit_per_second: int = Field(default=10, description="Лимит запросов в секунду")
     
-    class Config:
-        env_prefix = "DADATA_"
+    model_config = ConfigDict(env_prefix="DADATA_")
 
 
 class CasebookAPISettings(BaseSettingsWithLoader):
@@ -90,8 +88,7 @@ class CasebookAPISettings(BaseSettingsWithLoader):
     # Пагинация
     page_size: int = Field(default=100, description="Размер страницы")
     
-    class Config:
-        env_prefix = "CASEBOOK_"
+    model_config = ConfigDict(env_prefix="CASEBOOK_")
 
 
 class InfoSphereAPISettings(BaseSettingsWithLoader):
@@ -119,8 +116,7 @@ class InfoSphereAPISettings(BaseSettingsWithLoader):
         description="Список источников для проверки"
     )
     
-    class Config:
-        env_prefix = "INFOSPHERE_"
+    model_config = ConfigDict(env_prefix="INFOSPHERE_")
 
 
 class PerplexityAPISettings(BaseSettingsWithLoader):
@@ -148,8 +144,7 @@ class PerplexityAPISettings(BaseSettingsWithLoader):
     cache_ttl: int = Field(default=300, description="TTL кеша (сек)")
     cache_enabled: bool = Field(default=True, description="Включить кеш")
     
-    class Config:
-        env_prefix = "PERPLEXITY_"
+    model_config = ConfigDict(env_prefix="PERPLEXITY_")
 
 
 class TavilyAPISettings(BaseSettingsWithLoader):
@@ -173,8 +168,7 @@ class TavilyAPISettings(BaseSettingsWithLoader):
     cache_ttl: int = Field(default=300, description="TTL кеша (сек)")
     cache_enabled: bool = Field(default=True, description="Включить кеш")
     
-    class Config:
-        env_prefix = "TAVILY_"
+    model_config = ConfigDict(env_prefix="TAVILY_")
 
 
 class OpenRouterAPISettings(BaseSettingsWithLoader):
@@ -201,8 +195,7 @@ class OpenRouterAPISettings(BaseSettingsWithLoader):
     # Таймауты
     timeout: float = Field(default=60.0, description="Таймаут запроса (сек)")
     
-    class Config:
-        env_prefix = "OPENROUTER_"
+    model_config = ConfigDict(env_prefix="OPENROUTER_")
 
 
 class HuggingFaceAPISettings(BaseSettingsWithLoader):
@@ -225,8 +218,7 @@ class HuggingFaceAPISettings(BaseSettingsWithLoader):
     # Таймауты
     timeout: float = Field(default=120.0, description="Таймаут запроса (сек)")
     
-    class Config:
-        env_prefix = "HUGGINGFACE_"
+    model_config = ConfigDict(env_prefix="HUGGINGFACE_")
 
 
 class GigaChatAPISettings(BaseSettingsWithLoader):
@@ -255,8 +247,7 @@ class GigaChatAPISettings(BaseSettingsWithLoader):
         description="Проверять SSL сертификаты (для GigaChat часто нужно отключать)"
     )
     
-    class Config:
-        env_prefix = "GIGACHAT_"
+    model_config = ConfigDict(env_prefix="GIGACHAT_")
 
 
 # Алиас для обратной совместимости

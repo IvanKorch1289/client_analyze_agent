@@ -11,7 +11,7 @@
 
 from typing import Optional
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from app.config.config_loader import BaseSettingsWithLoader
 
@@ -47,8 +47,7 @@ class RedisSettings(BaseSettingsWithLoader):
             return f"redis://:{self.password}@{self.host}:{self.port}/{self.db}"
         return f"redis://{self.host}:{self.port}/{self.db}"
     
-    class Config:
-        env_prefix = "REDIS_"
+    model_config = ConfigDict(env_prefix="REDIS_")
 
 
 class QueueSettings(BaseSettingsWithLoader):
@@ -93,8 +92,7 @@ class QueueSettings(BaseSettingsWithLoader):
         """AMQP URL для подключения."""
         return f"amqp://{self.username}:{self.password}@{self.host}:{self.port}{self.vhost}"
     
-    class Config:
-        env_prefix = "RABBITMQ_"
+    model_config = ConfigDict(env_prefix="RABBITMQ_")
 
 
 class CelerySettings(BaseSettingsWithLoader):
@@ -123,8 +121,7 @@ class CelerySettings(BaseSettingsWithLoader):
     # Результаты
     result_expires: int = Field(default=3600, description="Время хранения результатов (сек)")
     
-    class Config:
-        env_prefix = "CELERY_"
+    model_config = ConfigDict(env_prefix="CELERY_")
 
 
 class MailSettings(BaseSettingsWithLoader):
@@ -154,8 +151,7 @@ class MailSettings(BaseSettingsWithLoader):
     enable_notifications: bool = Field(default=False, description="Включить email уведомления")
     admin_emails: list[str] = Field(default=[], description="Email'ы администраторов")
     
-    class Config:
-        env_prefix = "SMTP_"
+    model_config = ConfigDict(env_prefix="SMTP_")
 
 
 class TasksSettings(BaseSettingsWithLoader):
@@ -176,8 +172,7 @@ class TasksSettings(BaseSettingsWithLoader):
     cleanup_interval: int = Field(default=3600, description="Интервал очистки")
     healthcheck_interval: int = Field(default=300, description="Интервал healthcheck")
     
-    class Config:
-        env_prefix = "TASKS_"
+    model_config = ConfigDict(env_prefix="TASKS_")
 
 
 class FileStorageSettings(BaseSettingsWithLoader):
@@ -204,8 +199,7 @@ class FileStorageSettings(BaseSettingsWithLoader):
     max_file_size_mb: int = Field(default=10, description="Максимальный размер файла (MB)")
     max_upload_size_mb: int = Field(default=100, description="Максимальный размер загрузки (MB)")
     
-    class Config:
-        env_prefix = "STORAGE_"
+    model_config = ConfigDict(env_prefix="STORAGE_")
 
 
 class LogStorageSettings(BaseSettingsWithLoader):
@@ -235,8 +229,7 @@ class LogStorageSettings(BaseSettingsWithLoader):
     elasticsearch_enabled: bool = Field(default=False, description="Отправка в Elasticsearch")
     elasticsearch_url: Optional[str] = Field(default=None, description="Elasticsearch URL")
     
-    class Config:
-        env_prefix = "LOG_"
+    model_config = ConfigDict(env_prefix="LOG_")
 
 
 class GRPCSettings(BaseSettingsWithLoader):
@@ -259,8 +252,7 @@ class GRPCSettings(BaseSettingsWithLoader):
     tls_cert_path: Optional[str] = Field(default=None, description="Путь к сертификату")
     tls_key_path: Optional[str] = Field(default=None, description="Путь к ключу")
     
-    class Config:
-        env_prefix = "GRPC_"
+    model_config = ConfigDict(env_prefix="GRPC_")
 
 
 # Singleton экземпляры

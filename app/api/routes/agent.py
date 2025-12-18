@@ -65,6 +65,15 @@ async def analyze_client(request: Request, data: ClientAnalysisRequest, stream: 
     """
     from app.services.perplexity_client import PerplexityClient
 
+    logger.structured(
+        "debug",
+        "agent_analyze_request",
+        component="agent_api",
+        client_name=data.client_name,
+        inn=data.inn or "",
+        stream=bool(stream),
+    )
+
     client = PerplexityClient.get_instance()
     if not client.is_configured():
         raise HTTPException(
@@ -89,12 +98,20 @@ async def analyze_client(request: Request, data: ClientAnalysisRequest, stream: 
 
     try:
         # Централизованный executor (единый путь для HTTP/RMQ/MCP/scheduler).
-        return await execute_client_analysis(
+        result = await execute_client_analysis(
             client_name=data.client_name,
             inn=data.inn or "",
             additional_notes=data.additional_notes or "",
             save_report=True,
         )
+        logger.structured(
+            "debug",
+            "agent_analyze_response",
+            component="agent_api",
+            status=result.get("status"),
+            session_id=result.get("session_id"),
+        )
+        return result
     except Exception as e:
         logger.error(f"Client analysis error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка анализа: {str(e)}") from e

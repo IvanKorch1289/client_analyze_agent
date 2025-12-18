@@ -8,7 +8,7 @@
 
 from typing import Optional
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from app.config.config_loader import BaseSettingsWithLoader
 
@@ -42,8 +42,7 @@ class TarantoolConnectionSettings(BaseSettingsWithLoader):
     threads_space: str = Field(default="threads", description="Space для тредов")
     persistent_space: str = Field(default="persistent", description="Space для постоянных данных")
     
-    class Config:
-        env_prefix = "TARANTOOL_"
+    model_config = ConfigDict(env_prefix="TARANTOOL_")
 
 
 class MongoConnectionSettings(BaseSettingsWithLoader):
@@ -83,8 +82,7 @@ class MongoConnectionSettings(BaseSettingsWithLoader):
         
         return f"mongodb://{auth}{self.host}:{self.port}/{self.database}{options}"
     
-    class Config:
-        env_prefix = "MONGO_"
+    model_config = ConfigDict(env_prefix="MONGO_")
 
 
 # Алиас для обратной совместимости
