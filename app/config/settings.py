@@ -24,7 +24,9 @@ from app.config.database import (
 from app.config.external_api import (
     CasebookAPISettings,
     DadataAPISettings,
+    GigaChatAPISettings,
     HttpBaseSettings,
+    HuggingFaceAPISettings,
     InfoSphereAPISettings,
     OpenRouterAPISettings,
     PerplexityAPISettings,
@@ -32,7 +34,9 @@ from app.config.external_api import (
     TavilyAPISettings,
     casebook_api_settings,
     dadata_api_settings,
+    gigachat_api_settings,
     http_base_settings,
+    huggingface_api_settings,
     infosphere_api_settings,
     openrouter_api_settings,
     perplexity_api_settings,
@@ -103,6 +107,8 @@ class Settings(BaseSettings):
     perplexity: PerplexityAPISettings = perplexity_api_settings
     tavily: TavilyAPISettings = tavily_api_settings
     openrouter: OpenRouterAPISettings = openrouter_api_settings
+    huggingface: HuggingFaceAPISettings = huggingface_api_settings
+    gigachat: GigaChatAPISettings = gigachat_api_settings
 
     # Внутренние сервисы
     queue: QueueSettings = queue_settings

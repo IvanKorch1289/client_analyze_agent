@@ -205,6 +205,60 @@ class OpenRouterAPISettings(BaseSettingsWithLoader):
         env_prefix = "OPENROUTER_"
 
 
+class HuggingFaceAPISettings(BaseSettingsWithLoader):
+    """Настройки HuggingFace Inference API (Fallback #1)."""
+    
+    yaml_group = "huggingface"
+    vault_path = "secret/data/app/huggingface"
+    
+    api_key: Optional[str] = Field(default=None, description="API ключ HuggingFace")
+    model: str = Field(
+        default="meta-llama/Meta-Llama-3.1-70B-Instruct",
+        description="Модель HuggingFace (рекомендуется думающая модель)"
+    )
+    
+    # Параметры генерации
+    temperature: float = Field(default=0.2, description="Temperature для генерации")
+    max_tokens: int = Field(default=4096, description="Максимум токенов")
+    top_p: float = Field(default=0.95, description="Top-p sampling")
+    
+    # Таймауты
+    timeout: float = Field(default=120.0, description="Таймаут запроса (сек)")
+    
+    class Config:
+        env_prefix = "HUGGINGFACE_"
+
+
+class GigaChatAPISettings(BaseSettingsWithLoader):
+    """Настройки GigaChat API (Сбер, Fallback #2 - Final)."""
+    
+    yaml_group = "gigachat"
+    vault_path = "secret/data/app/gigachat"
+    
+    api_key: Optional[str] = Field(default=None, description="API credentials GigaChat")
+    model: str = Field(
+        default="GigaChat-Pro",
+        description="Модель GigaChat (GigaChat, GigaChat-Plus, GigaChat-Pro)"
+    )
+    
+    # Параметры генерации
+    temperature: float = Field(default=0.2, description="Temperature для генерации")
+    max_tokens: int = Field(default=4096, description="Максимум токенов")
+    top_p: float = Field(default=0.95, description="Top-p sampling")
+    
+    # Таймауты
+    timeout: float = Field(default=120.0, description="Таймаут запроса (сек)")
+    
+    # SSL
+    verify_ssl_certs: bool = Field(
+        default=False, 
+        description="Проверять SSL сертификаты (для GigaChat часто нужно отключать)"
+    )
+    
+    class Config:
+        env_prefix = "GIGACHAT_"
+
+
 # Алиас для обратной совместимости
 SKBAPISettings = InfoSphereAPISettings
 
@@ -218,6 +272,8 @@ skb_api_settings = infosphere_api_settings  # Алиас
 perplexity_api_settings = PerplexityAPISettings.get_instance()
 tavily_api_settings = TavilyAPISettings.get_instance()
 openrouter_api_settings = OpenRouterAPISettings.get_instance()
+huggingface_api_settings = HuggingFaceAPISettings.get_instance()
+gigachat_api_settings = GigaChatAPISettings.get_instance()
 
 
 __all__ = [
@@ -229,6 +285,8 @@ __all__ = [
     "PerplexityAPISettings",
     "TavilyAPISettings",
     "OpenRouterAPISettings",
+    "HuggingFaceAPISettings",
+    "GigaChatAPISettings",
     "http_base_settings",
     "dadata_api_settings",
     "casebook_api_settings",
@@ -237,4 +295,6 @@ __all__ = [
     "perplexity_api_settings",
     "tavily_api_settings",
     "openrouter_api_settings",
+    "huggingface_api_settings",
+    "gigachat_api_settings",
 ]
