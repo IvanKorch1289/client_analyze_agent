@@ -13,6 +13,7 @@ from app.api.routes.agent import agent_router
 from app.api.routes.data import data_router
 from app.api.routes.scheduler import scheduler_router
 from app.api.routes.utility import utility_router
+from app.api.error_handlers import install_error_handlers
 
 
 def create_v1_app() -> FastAPI:
@@ -23,6 +24,8 @@ def create_v1_app() -> FastAPI:
         docs_url="/docs",
         redoc_url=None,
     )
+
+    install_error_handlers(app)
 
     app.include_router(agent_router)
     app.include_router(data_router)

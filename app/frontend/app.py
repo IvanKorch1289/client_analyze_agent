@@ -66,9 +66,9 @@ st.markdown("""
 st.title("Система анализа контрагентов")
 
 BACKEND_PORT = os.getenv("BACKEND_PORT", "8000")
-# Primary (versioned) API base URL. Legacy (unversioned) endpoints still exist
-# on the backend for backwards compatibility, but new integrations should use v1.
-API_BASE_URL = f"http://localhost:{BACKEND_PORT}/api/v1"
+# Prefer explicit API_BASE_URL (for deployments / reverse proxies).
+# Fallback: local backend + versioned API.
+API_BASE_URL = (os.getenv("API_BASE_URL") or f"http://localhost:{BACKEND_PORT}/api/v1").rstrip("/")
 
 def validate_inn_frontend(inn: str) -> tuple[bool, str]:
     """Валидация ИНН на фронтенде (импортируем из helpers)."""

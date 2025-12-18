@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI, Request
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from starlette.responses import JSONResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -18,6 +18,7 @@ from app.api.routes.data import data_router
 from app.api.routes.scheduler import scheduler_router
 from app.api.routes.utility import utility_router
 from app.api.v1 import v1_app
+from app.api.error_handlers import install_error_handlers
 from app.config.settings import settings
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
@@ -209,6 +210,37 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 # =======================
+# Legacy API deprecation headers
+# =======================
+
+class LegacyApiDeprecationMiddleware(BaseHTTPMiddleware):
+    """
+    Adds deprecation hints for unversioned endpoints.
+
+    This keeps backward compatibility while nudging clients to /api/v1.
+    """
+
+    _legacy_prefixes = ("/agent", "/data", "/scheduler", "/utility")
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+
+        # Only legacy (root app) requests; mounted v1 has root_path="/api/v1".
+        root_path = request.scope.get("root_path") or ""
+        if root_path:
+            return response
+
+        path = request.url.path
+        if not path.startswith(self._legacy_prefixes):
+            return response
+
+        # Minimal standardized signals for clients/proxies.
+        response.headers.setdefault("Deprecation", "true")
+        response.headers.setdefault("Link", "</api/v1>; rel=\"latest\"")
+        response.headers.setdefault("Sunset", "Thu, 31 Dec 2026 23:59:59 GMT")
+        return response
+
+# =======================
 # FastAPI приложение
 # =======================
 
@@ -225,7 +257,8 @@ app = FastAPI(
 
 # Добавляем rate limiter в state приложения
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Centralized error shape (includes RateLimitExceeded).
+install_error_handlers(app)
 
 _otel_excluded_urls = "/utility/health,/utility/metrics,/api/v1/utility/health,/api/v1/utility/metrics"
 FastAPIInstrumentor.instrument_app(app, excluded_urls=_otel_excluded_urls)
@@ -246,6 +279,7 @@ if settings.secure.cors_enabled:
 
 # Базовые security headers.
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(LegacyApiDeprecationMiddleware)
 
 # Circuit breaker на уровне приложения (fail-fast при всплеске 5xx).
 app_circuit_breaker = AppCircuitBreaker(
