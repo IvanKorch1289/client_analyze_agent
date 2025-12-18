@@ -109,9 +109,6 @@ RATE_LIMIT_GLOBAL_PER_HOUR: Final[int] = 2000
 RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE: Final[int] = 5
 """Лимит для эндпоинта анализа клиента (дорогая операция)"""
 
-RATE_LIMIT_PROMPT_PER_MINUTE: Final[int] = 10
-"""Лимит для эндпоинта обработки prompt"""
-
 RATE_LIMIT_SEARCH_PER_MINUTE: Final[int] = 30
 """Лимит для поисковых эндпоинтов"""
 

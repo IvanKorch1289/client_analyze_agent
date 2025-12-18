@@ -4,15 +4,14 @@ Email service client for sending notifications and checking SMTP connectivity.
 Provides email functionality with health checking for the system dashboard.
 """
 
-import os
 import smtplib
 import socket
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any, Dict, Optional
 
+from app.config import settings
 from app.utility.logging_client import logger
-from app.settings import settings
 
 
 class EmailClient:
@@ -28,18 +27,12 @@ class EmailClient:
         smtp_password: Optional[str] = None,
         use_tls: bool = True,
     ):
-        self.smtp_host = smtp_host or settings.smtp_host or os.getenv("SMTP_HOST", "")
-        self.smtp_port = (
-            smtp_port or settings.smtp_port or int(os.getenv("SMTP_PORT", "587"))
-        )
-        self.smtp_user = smtp_user or settings.smtp_user or os.getenv("SMTP_USER", "")
-        self.smtp_password = (
-            smtp_password
-            or settings.smtp_password
-            or os.getenv("SMTP_PASSWORD", "")
-        )
-        self.use_tls = use_tls
-        self.default_from = settings.smtp_from or os.getenv("SMTP_FROM", self.smtp_user)
+        self.smtp_host = smtp_host or settings.mail.smtp_host
+        self.smtp_port = smtp_port or settings.mail.smtp_port
+        self.smtp_user = smtp_user or settings.mail.smtp_user
+        self.smtp_password = smtp_password or settings.mail.smtp_password
+        self.use_tls = use_tls if use_tls is not None else settings.mail.use_tls
+        self.default_from = settings.mail.default_from or self.smtp_user
 
     @classmethod
     def get_instance(cls) -> "EmailClient":

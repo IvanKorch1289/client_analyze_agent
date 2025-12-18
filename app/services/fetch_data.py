@@ -3,8 +3,8 @@ from typing import Any, Dict
 
 import xmltodict
 
+from app.config import settings
 from app.services.http_client import AsyncHttpClient
-from app.settings import settings
 from app.utility import cache_response, clean_xml_dict
 from app.utility.logging_client import logger
 
@@ -12,9 +12,9 @@ from app.utility.logging_client import logger
 @cache_response(ttl=7200)
 async def fetch_from_dadata(inn: str) -> Dict[str, Any]:
     client = await AsyncHttpClient.get_instance()
-    url = settings.dadata_url
+    url = settings.dadata.api_url
     headers = {
-        "Authorization": f"Token {settings.dadata_api_key}",
+        "Authorization": f"Token {settings.dadata.api_key}",
         "Content-Type": "application/json",
     }
     payload = {"query": inn}
@@ -39,11 +39,11 @@ async def fetch_from_dadata(inn: str) -> Dict[str, Any]:
 @cache_response(ttl=3600)
 async def fetch_from_infosphere(inn: str) -> Dict[str, Any]:
     client = await AsyncHttpClient.get_instance()
-    url = settings.infosphere_url
+    url = settings.infosphere.api_url
     xml_body = f"""<?xml version="1.0" encoding="UTF-8"?>
     <Request>
-        <UserID>{settings.infosphere_login}</UserID>
-        <Password>{settings.infosphere_password}</Password>
+        <UserID>{settings.infosphere.login}</UserID>
+        <Password>{settings.infosphere.password}</Password>
         <requestType>check</requestType>
         <sources>fssp,bankrot,cbr,egrul,fns,fsin,fmsdb,fms,gosuslugi,mvd,pfr,terrorist</sources>
         <timeout>300</timeout>
@@ -76,11 +76,11 @@ async def fetch_from_infosphere(inn: str) -> Dict[str, Any]:
 @cache_response(ttl=9600)
 async def fetch_from_casebook(inn: str) -> Dict[str, Any]:
     client = await AsyncHttpClient.get_instance()
-    url = settings.casebook_arbitr_url
+    url = settings.casebook.api_url
     params = {
         "sideInn": inn,
         "size": 100,
-        "apikey": settings.casebook_api_key,
+        "apikey": settings.casebook.api_key,
         "page": 1,
     }
 

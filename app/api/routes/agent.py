@@ -12,10 +12,8 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.agents.client_workflow import run_client_analysis_streaming
-from app.agents.workflow import AgentState, invoke_graph_with_persistence
 from app.config.constants import (
     RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE,
-    RATE_LIMIT_PROMPT_PER_MINUTE,
     RATE_LIMIT_SEARCH_PER_MINUTE,
 )
 from app.utility.logging_client import logger
@@ -30,56 +28,6 @@ class ClientAnalysisRequest(BaseModel):
     client_name: str
     inn: Optional[str] = ""
     additional_notes: Optional[str] = ""
-
-
-@agent_router.post("/prompt")
-@limiter.limit(f"{RATE_LIMIT_PROMPT_PER_MINUTE}/minute")
-async def process_prompt(request: Request, body: dict):
-    """Принимает prompt, запускает граф, возвращает ответ."""
-    thread_id = body.get("thread_id") or f"thread_{uuid.uuid4().hex}"
-    user_input = body.get("prompt")
-    if not user_input:
-        raise HTTPException(status_code=400, detail="Prompt обязателен")
-
-    llm = getattr(request.app.state, "llm", None)
-    if llm is None:
-        raise HTTPException(
-            status_code=503,
-            detail="LLM не настроен. Требуется GIGACHAT_TOKEN для работы этого endpoint. "
-            "Используйте /agent/analyze-client для анализа клиентов через Perplexity.",
-        )
-
-    initial_state: AgentState = {
-        "session_id": thread_id,
-        "user_input": user_input,
-        "llm": llm,
-        "current_step": "planning",
-        "plan": "",
-        "tool_sequence": [],
-        "tool_results": [],
-        "analysis_result": "",
-        "requires_confirmation": False,
-        "saved_file_path": "",
-        "is_confirmed": False,
-        "feedback": "",
-    }
-
-    try:
-        final_state = await invoke_graph_with_persistence(thread_id, initial_state)
-        response_text = final_state.get(
-            "analysis_result", "Не удалось сгенерировать ответ."
-        )
-
-        return {
-            "response": response_text,
-            "thread_id": thread_id,
-            "tools_used": len(final_state.get("tool_results", [])) > 0,
-            "timestamp": datetime.now().isoformat(),
-        }
-
-    except Exception as e:
-        logger.error(f"Ошибка в process_prompt: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ошибка агента: {str(e)}") from e
 
 
 @agent_router.get("/thread_history/{thread_id}")

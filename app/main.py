@@ -14,7 +14,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.routes.agent import agent_router
 from app.api.routes.data import data_router
 from app.api.routes.utility import utility_router
-from app.mcp_server.server import run_mcp_server
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
 from app.utility.logging_client import get_request_id, logger, set_request_id
@@ -142,8 +141,8 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 # =======================
 
 app = FastAPI(
-    title="Multi-Agent System with MCP",
-    description="Сервер агентов с поддержкой MCP, Tarantool и внешних API",
+    title="Multi-Agent Client Analysis System",
+    description="Сервер агентов для анализа клиентов с поддержкой Tarantool и внешних API",
     lifespan=lifespan,
 )
 
@@ -161,25 +160,12 @@ app.include_router(utility_router)
 
 
 # =======================
-# Фоновые задачи: MCP
-# =======================
-
-
-async def start_background_services():
-    """Запускает MCP-сервер в фоне."""
-    asyncio.create_task(run_mcp_server())
-    logger.info("MCP-сервер запущен в фоне на порту 8001")
-
-
-# =======================
 # Основная функция запуска
 # =======================
 
 
 async def main():
-    """Запускает фоновые сервисы и основной FastAPI сервер."""
-    await start_background_services()
-
+    """Запускает основной FastAPI сервер."""
     config = uvicorn.Config(
         app,
         host="0.0.0.0",

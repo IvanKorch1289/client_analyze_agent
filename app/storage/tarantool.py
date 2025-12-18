@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import msgpack
 
-from app.settings import settings
+from app.config import settings
 from app.utility.logging_client import logger
 
 try:
@@ -166,10 +166,10 @@ class TarantoolClient:
         def connect_fn():
             try:
                 conn = tarantool.connect(
-                    host=settings.tarantool_host,
-                    port=settings.tarantool_port,
-                    user=settings.tarantool_user,
-                    password=settings.tarantool_password,
+                    host=settings.tarantool.host,
+                    port=settings.tarantool.port,
+                    user=settings.tarantool.user,
+                    password=settings.tarantool.password,
                 )
                 return conn
             except Exception as e:

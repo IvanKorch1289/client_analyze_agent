@@ -1,9 +1,8 @@
-import os
 from typing import Any, Dict, List, Optional
 
 import httpx
 
-from app.settings import settings
+from app.config import settings
 from app.utility.logging_client import logger
 
 
@@ -23,10 +22,10 @@ class OpenRouterClient:
         temperature: float = 0.1,
         max_tokens: int = 4096,
     ):
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY") or settings.openrouter_api_key
-        self.model = model or settings.openrouter_model or self.DEFAULT_MODEL
-        self.temperature = temperature
-        self.max_tokens = max_tokens
+        self.api_key = api_key or settings.openrouter.api_key
+        self.model = model or settings.openrouter.model or self.DEFAULT_MODEL
+        self.temperature = temperature or settings.openrouter.temperature
+        self.max_tokens = max_tokens or settings.openrouter.max_tokens
 
         if not self.api_key:
             logger.warning(
