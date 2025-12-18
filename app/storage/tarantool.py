@@ -11,6 +11,16 @@ import msgpack
 from app.config import settings
 from app.utility.logging_client import logger
 
+# Lazy import repositories to avoid circular imports
+_cache_repo = None
+_reports_repo = None
+_threads_repo = None
+
+# Lazy import repositories to avoid circular imports
+_cache_repo = None
+_reports_repo = None
+_threads_repo = None
+
 try:
     import tarantool
 
@@ -735,18 +745,67 @@ class TarantoolClient:
         self._connected = False
         self._connection = None
 
+    def get_cache_repository(self):
+        """
+        Получить CacheRepository для работы с cache space.
+        
+        Returns:
+            CacheRepository instance
+        """
+        global _cache_repo
+        if _cache_repo is None:
+            from app.storage.repositories.cache_repository import CacheRepository
+            _cache_repo = CacheRepository(self)
+        return _cache_repo
+    
+    def get_reports_repository(self):
+        """
+        Получить ReportsRepository для работы с reports space.
+        
+        Returns:
+            ReportsRepository instance
+        """
+        global _reports_repo
+        if _reports_repo is None:
+            from app.storage.repositories.reports_repository import ReportsRepository
+            _reports_repo = ReportsRepository(self)
+        return _reports_repo
+    
+    def get_threads_repository(self):
+        """
+        Получить ThreadsRepository для работы с threads space.
+        
+        Returns:
+            ThreadsRepository instance
+        """
+        global _threads_repo
+        if _threads_repo is None:
+            from app.storage.repositories.threads_repository import ThreadsRepository
+            _threads_repo = ThreadsRepository(self)
+        return _threads_repo
+
     @classmethod
     async def close_global(cls):
         """Закрывает глобальный экземпляр."""
+        global _cache_repo, _reports_repo, _threads_repo
+        
         if cls._instance is not None:
             await cls._instance.close()
             if cls._lock is not None:
                 async with cls._lock:
                     cls._instance = None
                     cls._initialized = False
+                    # Сброс repositories
+                    _cache_repo = None
+                    _reports_repo = None
+                    _threads_repo = None
             else:
                 cls._instance = None
                 cls._initialized = False
+                # Сброс repositories
+                _cache_repo = None
+                _reports_repo = None
+                _threads_repo = None
 
 
 async def save_thread_to_tarantool(thread_id: str, data: Dict[str, Any]):

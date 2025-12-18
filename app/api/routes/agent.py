@@ -36,8 +36,10 @@ async def get_thread_history(request: Request, thread_id: str):
     from app.storage.tarantool import TarantoolClient
 
     client = await TarantoolClient.get_instance()
-    key = f"thread:{thread_id}" if not thread_id.startswith("thread:") else thread_id
-    result = await client.get_persistent(key)
+    threads_repo = client.get_threads_repository()
+    
+    # Используем ThreadsRepository
+    result = await threads_repo.get(thread_id)
     if not result:
         raise HTTPException(status_code=404, detail="Тред не найден")
     return result
@@ -146,23 +148,29 @@ async def list_threads(request: Request) -> Dict[str, Any]:
 
     try:
         client = await TarantoolClient.get_instance()
-        threads_data = await client.scan_threads()
+        threads_repo = client.get_threads_repository()
+        
+        # Используем ThreadsRepository
+        threads_list = await threads_repo.list(limit=50)
+        
         threads = [
             {
-                "thread_id": item["key"].replace("thread:", ""),
+                "thread_id": item.get("thread_id", ""),
                 "user_prompt": (
-                    item["input"][:100] + "..."
-                    if len(item["input"]) > 100
-                    else item["input"]
+                    item.get("thread_data", {}).get("input", "")[:100] + "..."
+                    if len(item.get("thread_data", {}).get("input", "")) > 100
+                    else item.get("thread_data", {}).get("input", "")
                 ),
                 "created_at": (
-                    datetime.fromtimestamp(item["created_at"]).isoformat()
-                    if item["created_at"]
+                    datetime.fromtimestamp(item.get("created_at", 0)).isoformat()
+                    if item.get("created_at")
                     else "Неизвестно"
                 ),
-                "message_count": item["message_count"],
+                "message_count": len(item.get("thread_data", {}).get("messages", [])) if isinstance(item.get("thread_data"), dict) else 0,
+                "client_name": item.get("client_name", ""),
+                "inn": item.get("inn", ""),
             }
-            for item in threads_data
+            for item in threads_list
         ]
         return {
             "total": len(threads),
