@@ -1,21 +1,18 @@
+import asyncio
 import hashlib
 import os
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-import httpx
 from dotenv import load_dotenv
+from langchain_community.chat_models import ChatPerplexity
+from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.services.http_client import (
-    AsyncHttpClient,
-    CircuitBreakerOpenError,
-)
 from app.utility.logging_client import logger
 
 load_dotenv('.env')
 
 
 class PerplexityClient:
-    BASE_URL = "https://api.perplexity.ai/chat/completions"
     DEFAULT_MODEL = "sonar-pro"
 
     _instance: Optional["PerplexityClient"] = None
@@ -23,7 +20,7 @@ class PerplexityClient:
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or os.getenv("PERPLEXITY_API_KEY")
         self.model = model or os.getenv("PERPLEXITY_MODEL", self.DEFAULT_MODEL)
-        self._http_client: Optional[AsyncHttpClient] = None
+        self._llm: Optional[ChatPerplexity] = None
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._cache_ttl = 300
 
@@ -33,10 +30,18 @@ class PerplexityClient:
             cls._instance = cls()
         return cls._instance
 
-    async def _get_http_client(self) -> AsyncHttpClient:
-        if self._http_client is None:
-            self._http_client = await AsyncHttpClient.get_instance()
-        return self._http_client
+    def _get_llm(self, temperature: float = 0.2, max_tokens: Optional[int] = None) -> ChatPerplexity:
+        if self._llm is None or self._llm.temperature != temperature:
+            kwargs = {
+                "model": self.model,
+                "temperature": temperature,
+                "pplx_api_key": self.api_key,
+                "timeout": 300,
+            }
+            if max_tokens:
+                kwargs["max_tokens"] = max_tokens
+            self._llm = ChatPerplexity(**kwargs)
+        return self._llm
 
     def is_configured(self) -> bool:
         return bool(self.api_key)
@@ -67,53 +72,39 @@ class PerplexityClient:
             logger.info("Perplexity cache hit", component="perplexity")
             return cached
 
-        http_client = await self._get_http_client()
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
-        payload = {
-            "model": use_model,
-            "messages": messages,
-            "temperature": temperature,
-            "top_p": 0.9,
-            "return_images": False,
-            "return_related_questions": False,
-            "search_recency_filter": search_recency_filter,
-            "stream": False,
-            "presence_penalty": 0,
-            "frequency_penalty": 1,
-        }
-
-        if max_tokens:
-            payload["max_tokens"] = max_tokens
-
         try:
-            response = await http_client.request_with_resilience(
-                method="POST",
-                url=self.BASE_URL,
-                service="perplexity",
-                headers=headers,
-                json=payload,
-            )
-            result = response.json()
+            llm = self._get_llm(temperature=temperature, max_tokens=max_tokens)
+            
+            lc_messages = []
+            for msg in messages:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role == "system":
+                    lc_messages.append(SystemMessage(content=content))
+                else:
+                    lc_messages.append(HumanMessage(content=content))
+
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, llm.invoke, lc_messages)
 
             logger.info(
-                f"Perplexity response received, model: {use_model}",
+                f"Perplexity response received via LangChain, model: {use_model}",
                 component="perplexity",
             )
 
+            content = response.content if hasattr(response, 'content') else str(response)
+            
+            usage = {}
+            if hasattr(response, 'response_metadata'):
+                usage = response.response_metadata.get('usage', {})
+
             response_data = {
                 "success": True,
-                "content": result.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", ""),
-                "citations": result.get("citations", []),
-                "model": result.get("model"),
-                "usage": result.get("usage", {}),
-                "raw_response": result,
+                "content": content,
+                "citations": [],
+                "model": use_model,
+                "usage": usage,
+                "raw_response": {"content": content},
                 "cached": False,
             }
 
@@ -122,46 +113,24 @@ class PerplexityClient:
 
             return response_data
 
-        except CircuitBreakerOpenError:
-            logger.warning(
-                "Perplexity circuit breaker is open, service temporarily unavailable",
-                component="perplexity",
-            )
-            return {
-                "success": False,
-                "error": "Perplexity service temporarily unavailable (circuit breaker open)",
-                "circuit_breaker": True,
-            }
-
-        except httpx.TimeoutException as e:
-            logger.error(
-                f"Perplexity request timeout: {type(e).__name__}",
-                component="perplexity",
-            )
-            return {
-                "success": False,
-                "error": "Perplexity request timeout - сервис не ответил вовремя",
-                "timeout": True,
-            }
-
-        except httpx.HTTPStatusError as e:
-            status_code = e.response.status_code
-            logger.error(
-                f"Perplexity HTTP error: {status_code} - {e.response.text[:200]}",
-                component="perplexity",
-            )
-            if status_code in (401, 403):
-                return {"success": False, "error": "Invalid Perplexity API key"}
-            elif status_code == 429:
-                return {"success": False, "error": "Perplexity rate limit exceeded"}
-            return {"success": False, "error": f"HTTP {status_code}: {e.response.text[:100]}"}
-
         except Exception as e:
             error_msg = str(e) or type(e).__name__
             logger.error(
-                f"Perplexity request failed: {type(e).__name__}: {error_msg}",
+                f"Perplexity LangChain request failed: {type(e).__name__}: {error_msg}",
                 component="perplexity",
             )
+            
+            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                return {
+                    "success": False,
+                    "error": "Perplexity request timeout - сервис не ответил вовремя",
+                    "timeout": True,
+                }
+            elif "401" in error_msg or "403" in error_msg or "unauthorized" in error_msg.lower():
+                return {"success": False, "error": "Invalid Perplexity API key"}
+            elif "429" in error_msg or "rate limit" in error_msg.lower():
+                return {"success": False, "error": "Perplexity rate limit exceeded"}
+            
             return {"success": False, "error": error_msg or "Неизвестная ошибка"}
 
     async def ask(
@@ -205,15 +174,11 @@ class PerplexityClient:
         }
 
     async def get_status(self) -> Dict[str, Any]:
-        http_client = await self._get_http_client()
-        circuit_status = http_client.get_circuit_breaker_status("perplexity")
-        metrics = http_client.get_metrics("perplexity")
-
         return {
             "configured": self.is_configured(),
             "model": self.model,
-            "circuit_breaker": circuit_status,
-            "metrics": metrics,
+            "status": "ready" if self.is_configured() else "not_configured",
+            "integration": "langchain-community",
             "cache_stats": self.get_cache_stats(),
         }
 
@@ -221,4 +186,5 @@ class PerplexityClient:
     async def close_global(cls):
         if cls._instance:
             cls._instance._cache.clear()
+            cls._instance._llm = None
             cls._instance = None
