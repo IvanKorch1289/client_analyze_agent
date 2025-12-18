@@ -229,20 +229,6 @@ class AsyncHttpClient:
         self._default_timeout = TimeoutConfig()
         self._default_retry = RetryConfig()
         self._service_configs: Dict[str, Dict[str, Any]] = {
-            "tavily": {
-                "timeout": TimeoutConfig(connect=60.0, read=300.0, write=60.0, pool=30.0),
-                "retry": RetryConfig(max_attempts=3, min_wait=2.0, max_wait=60.0),
-                "circuit_breaker": CircuitBreakerConfig(
-                    failure_threshold=5, success_threshold=2, timeout=300.0
-                ),
-            },
-            "perplexity": {
-                "timeout": TimeoutConfig(connect=60.0, read=300.0, write=60.0, pool=30.0),
-                "retry": RetryConfig(max_attempts=3, min_wait=2.0, max_wait=60.0),
-                "circuit_breaker": CircuitBreakerConfig(
-                    failure_threshold=5, success_threshold=2, timeout=300.0
-                ),
-            },
             "dadata": {
                 "timeout": TimeoutConfig(connect=5.0, read=30.0, write=10.0, pool=5.0),
                 "retry": RetryConfig(max_attempts=2, min_wait=0.5, max_wait=5.0),
@@ -310,11 +296,7 @@ class AsyncHttpClient:
 
     def _detect_service(self, url: str) -> str:
         url_lower = url.lower()
-        if "tavily" in url_lower:
-            return "tavily"
-        elif "perplexity" in url_lower:
-            return "perplexity"
-        elif "dadata" in url_lower:
+        if "dadata" in url_lower:
             return "dadata"
         elif "i-sphere" in url_lower or "infosphere" in url_lower:
             return "infosphere"
