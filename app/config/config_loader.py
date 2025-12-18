@@ -186,7 +186,20 @@ class BaseSettingsWithLoader(BaseSettings):
         # 2. Загружаем из YAML
         yaml_data = {}
         if self.yaml_file or self.yaml_group:
-            yaml_filename = self.yaml_file or f"{self.__class__.__name__.lower()}.yaml"
+            # Prefer a single, environment-specific app config file if present
+            # (e.g. config/app.dev.yaml). This matches the repository layout.
+            default_app_yaml = "app.yaml"
+            env_app_yaml = ConfigLoader.YAML_CONFIG_DIR / default_app_yaml.replace(
+                ".yaml", f".{ConfigLoader.ENVIRONMENT}.yaml"
+            )
+            base_app_yaml = ConfigLoader.YAML_CONFIG_DIR / default_app_yaml
+
+            if self.yaml_file:
+                yaml_filename = self.yaml_file
+            elif env_app_yaml.exists() or base_app_yaml.exists():
+                yaml_filename = default_app_yaml
+            else:
+                yaml_filename = f"{self.__class__.__name__.lower()}.yaml"
             yaml_result = ConfigLoader.load_from_yaml(yaml_filename, self.yaml_group)
             if yaml_result:
                 yaml_data = yaml_result

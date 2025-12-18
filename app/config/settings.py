@@ -1,11 +1,16 @@
 """
 Корневая конфигурация приложения.
 
-Объединяет все компоненты конфигурации в единую структуру Settings.
-Использует каскадную загрузку: Vault > Env > YAML.
-"""
+Важно:
+- Pydantic BaseModel по умолчанию копирует значения полей-других моделей,
+  поэтому "Settings(BaseSettings)" с полями типа BaseSettingsWithLoader
+  не подходит для hot-reload (получаются копии).
 
-from pydantic_settings import BaseSettings
+Решение:
+- Settings — это лёгкий facade с @property, который всегда возвращает
+  singleton-экземпляры через get_instance(). Тогда обновления, сделанные
+  через watchdog/reload, автоматически видны всем потребителям.
+"""
 
 from app.config.base import (
     AppBaseSettings,
@@ -64,65 +69,114 @@ from app.config.services import (
 )
 
 
-class Settings(BaseSettings):
-    """
-    Корневая конфигурация приложения.
+class Settings:
+    """Facade around singleton settings groups (hot-reload friendly)."""
 
-    Объединяет все компоненты конфигурации:
-    - Общие настройки приложения (app, scheduler)
-    - Безопасность (secure)
-    - Базы данных и хранилища (tarantool, mongo, redis)
-    - Внешние API (dadata, casebook, infosphere, perplexity, tavily, openrouter)
-    - Внутренние сервисы (queue, celery, mail, grpc)
-    - Хранилища (storage, logging)
-    - Фоновые задачи (tasks)
-    
-    Пример использования:
-        from app.config.settings import settings
-        
-        print(settings.app.app_name)
-        print(settings.tarantool.host)
-        print(settings.perplexity.api_key)
-    """
+    # Base
+    @property
+    def app(self) -> AppBaseSettings:
+        return AppBaseSettings.get_instance()
 
-    # Общие настройки
-    app: AppBaseSettings = app_base_settings
-    scheduler: SchedulerSettings = scheduler_settings
-    secure: SecureSettings = secure_settings
-    
-    # HTTP базовые настройки
-    http_base: HttpBaseSettings = http_base_settings
+    @property
+    def scheduler(self) -> SchedulerSettings:
+        return SchedulerSettings.get_instance()
 
-    # Базы данных и хранилища
-    tarantool: TarantoolConnectionSettings = tarantool_settings
-    database: DatabaseConnectionSettings = db_connection_settings  # Алиас
-    mongo: MongoConnectionSettings = mongo_connection_settings
-    redis: RedisSettings = redis_settings
-    
-    # Внешние API
-    dadata: DadataAPISettings = dadata_api_settings
-    casebook: CasebookAPISettings = casebook_api_settings
-    infosphere: InfoSphereAPISettings = infosphere_api_settings
-    skb_api: SKBAPISettings = skb_api_settings  # Алиас
-    perplexity: PerplexityAPISettings = perplexity_api_settings
-    tavily: TavilyAPISettings = tavily_api_settings
-    openrouter: OpenRouterAPISettings = openrouter_api_settings
-    huggingface: HuggingFaceAPISettings = huggingface_api_settings
-    gigachat: GigaChatAPISettings = gigachat_api_settings
+    @property
+    def secure(self) -> SecureSettings:
+        return SecureSettings.get_instance()
 
-    # Внутренние сервисы
-    queue: QueueSettings = queue_settings
-    celery: CelerySettings = celery_settings
-    mail: MailSettings = mail_settings
-    grpc: GRPCSettings = grpc_settings
-    tasks: TasksSettings = tasks_settings
-    
-    # Хранилища
-    storage: FileStorageSettings = fs_settings
-    logging: LogStorageSettings = log_settings
+    # HTTP base
+    @property
+    def http_base(self) -> HttpBaseSettings:
+        return HttpBaseSettings.get_instance()
+
+    # Databases
+    @property
+    def tarantool(self) -> TarantoolConnectionSettings:
+        return TarantoolConnectionSettings.get_instance()
+
+    @property
+    def database(self) -> DatabaseConnectionSettings:
+        # alias
+        return DatabaseConnectionSettings.get_instance()
+
+    @property
+    def mongo(self) -> MongoConnectionSettings:
+        return MongoConnectionSettings.get_instance()
+
+    @property
+    def redis(self) -> RedisSettings:
+        return RedisSettings.get_instance()
+
+    # External APIs
+    @property
+    def dadata(self) -> DadataAPISettings:
+        return DadataAPISettings.get_instance()
+
+    @property
+    def casebook(self) -> CasebookAPISettings:
+        return CasebookAPISettings.get_instance()
+
+    @property
+    def infosphere(self) -> InfoSphereAPISettings:
+        return InfoSphereAPISettings.get_instance()
+
+    @property
+    def skb_api(self) -> SKBAPISettings:
+        return SKBAPISettings.get_instance()
+
+    @property
+    def perplexity(self) -> PerplexityAPISettings:
+        return PerplexityAPISettings.get_instance()
+
+    @property
+    def tavily(self) -> TavilyAPISettings:
+        return TavilyAPISettings.get_instance()
+
+    @property
+    def openrouter(self) -> OpenRouterAPISettings:
+        return OpenRouterAPISettings.get_instance()
+
+    @property
+    def huggingface(self) -> HuggingFaceAPISettings:
+        return HuggingFaceAPISettings.get_instance()
+
+    @property
+    def gigachat(self) -> GigaChatAPISettings:
+        return GigaChatAPISettings.get_instance()
+
+    # Internal services
+    @property
+    def queue(self) -> QueueSettings:
+        return QueueSettings.get_instance()
+
+    @property
+    def celery(self) -> CelerySettings:
+        return CelerySettings.get_instance()
+
+    @property
+    def mail(self) -> MailSettings:
+        return MailSettings.get_instance()
+
+    @property
+    def grpc(self) -> GRPCSettings:
+        return GRPCSettings.get_instance()
+
+    @property
+    def tasks(self) -> TasksSettings:
+        return TasksSettings.get_instance()
+
+    # Storage/logging
+    @property
+    def storage(self) -> FileStorageSettings:
+        return FileStorageSettings.get_instance()
+
+    @property
+    def logging(self) -> LogStorageSettings:
+        return LogStorageSettings.get_instance()
 
 
-# Единый экземпляр настроек приложения
+# Единый экземпляр настроек приложения (facade)
 settings = Settings()
 
 

@@ -10,7 +10,6 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from starlette.responses import JSONResponse, RedirectResponse
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -22,6 +21,7 @@ from app.api.routes.utility import utility_router
 from app.api.v1 import v1_app
 from app.api.error_handlers import install_error_handlers
 from app.config.settings import settings
+from app.config.watchdog import create_config_watchdog
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
 from app.utility.app_circuit_breaker import (
@@ -85,6 +85,11 @@ async def lifespan(app: FastAPI):
     init_telemetry()
     logger.info("OpenTelemetry инициализирован")
 
+    # Запускаем watchdog для hot-reload конфигов (YAML/.env).
+    cfg_watchdog = create_config_watchdog()
+    cfg_watchdog.start()
+    app.state.config_watchdog = cfg_watchdog
+
     # Создаём папку для отчётов
     os.makedirs("reports", exist_ok=True)
 
@@ -112,6 +117,14 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("Завершение работы приложения...")
     
+    # Останавливаем watchdog
+    try:
+        wd = getattr(app.state, "config_watchdog", None)
+        if wd:
+            wd.stop()
+    except Exception:
+        pass
+
     # Останавливаем Scheduler
     scheduler.shutdown()
     logger.info("Scheduler остановлен")
@@ -190,21 +203,20 @@ class RequestTraceMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app: FastAPI):
         super().__init__(app)
-        self._enabled = bool(getattr(settings.app, "debug", False)) or _bool_env(
-            "HTTP_TRACE_ENABLED", False
-        )
-        self._log_body = _bool_env("HTTP_TRACE_BODY", False)
+        # Don't cache config here; it can change at runtime via watchdog.
         self._max_body = int(os.getenv("HTTP_TRACE_MAX_BODY_BYTES", "4096"))
 
     async def dispatch(self, request: Request, call_next):
-        if not self._enabled:
+        enabled = bool(getattr(settings.app, "debug", False)) or _bool_env("HTTP_TRACE_ENABLED", False)
+        if not enabled:
             return await call_next(request)
 
+        log_body = _bool_env("HTTP_TRACE_BODY", False)
         request_id = request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
         set_request_id(request_id)
 
         body_preview = None
-        if self._log_body and request.method in ("POST", "PUT", "PATCH"):
+        if log_body and request.method in ("POST", "PUT", "PATCH"):
             try:
                 body = await request.body()
                 if body:
@@ -268,16 +280,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app: FastAPI):
         super().__init__(app)
-        secure = settings.secure
-        self._enabled = bool(secure.enable_security_headers)
-        self._hsts_enabled = bool(secure.hsts_enabled)
-        self._hsts_value = f"max-age={int(secure.hsts_max_age)}; includeSubDomains"
-        self._csp_enabled = bool(secure.csp_enabled)
-        self._csp_value = secure.csp_directives or "default-src 'self'"
+        # Don't cache config here; it can change at runtime via watchdog.
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        if not self._enabled:
+        secure = settings.secure
+        if not bool(secure.enable_security_headers):
             return response
 
         # Старайтесь не “перетира́ть” заголовки, если их уже выставил прокси.
@@ -286,12 +294,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 
-        if self._hsts_enabled:
+        if bool(secure.hsts_enabled):
             # HSTS имеет смысл только под HTTPS, но выставление под HTTP не критично.
-            response.headers.setdefault("Strict-Transport-Security", self._hsts_value)
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                f"max-age={int(secure.hsts_max_age)}; includeSubDomains",
+            )
 
-        if self._csp_enabled:
-            response.headers.setdefault("Content-Security-Policy", self._csp_value)
+        if bool(secure.csp_enabled):
+            response.headers.setdefault(
+                "Content-Security-Policy",
+                secure.csp_directives or "default-src 'self'",
+            )
 
         return response
 
@@ -311,19 +325,23 @@ class IpFilterMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app: FastAPI):
         super().__init__(app)
-        self._enabled = bool(settings.secure.ip_whitelist or settings.secure.ip_blacklist)
-        self._allow = _parse_ip_list(settings.secure.ip_whitelist or [])
-        self._deny = _parse_ip_list(settings.secure.ip_blacklist or [])
+        # Config is dynamic; parse on demand with caching.
 
     async def dispatch(self, request: Request, call_next):
-        if not self._enabled:
+        wl = settings.secure.ip_whitelist or []
+        bl = settings.secure.ip_blacklist or []
+        enabled = bool(wl or bl)
+        if not enabled:
             return await call_next(request)
+
+        allow_rules = _parse_ip_list_cached(tuple(wl))
+        deny_rules = _parse_ip_list_cached(tuple(bl))
 
         ip = get_client_ip(request)
         rid = request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
         set_request_id(rid)
 
-        if _ip_in_rules(ip, self._deny):
+        if _ip_in_rules(ip, deny_rules):
             return JSONResponse(
                 status_code=403,
                 content={
@@ -337,7 +355,7 @@ class IpFilterMiddleware(BaseHTTPMiddleware):
                 headers={"X-Request-ID": rid},
             )
 
-        if self._allow and not _ip_in_rules(ip, self._allow):
+        if allow_rules and not _ip_in_rules(ip, allow_rules):
             return JSONResponse(
                 status_code=403,
                 content={
@@ -354,7 +372,11 @@ class IpFilterMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def _parse_ip_list(values: list[str]):
+from functools import lru_cache
+
+
+@lru_cache(maxsize=128)
+def _parse_ip_list_cached(values: tuple[str, ...]):
     rules = []
     for v in values:
         try:
@@ -388,6 +410,60 @@ def _ip_in_rules(ip: str, rules) -> bool:
             continue
     return False
 
+
+# =======================
+# Dynamic trusted host check (config hot-reload friendly)
+# =======================
+
+class DynamicTrustedHostMiddleware(BaseHTTPMiddleware):
+    """
+    Trusted-host validation driven by settings.secure.trusted_hosts.
+
+    This replaces Starlette's TrustedHostMiddleware to allow hot reload.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        allowed = settings.secure.trusted_hosts or []
+        if not allowed:
+            return await call_next(request)
+
+        host = request.headers.get("host", "")
+        # strip port
+        host = host.split(":")[0].strip().lower()
+        if not host:
+            return JSONResponse(status_code=400, content={"status": "error", "message": "Missing Host header"})
+
+        if not _host_allowed(host, allowed):
+            rid = request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
+            set_request_id(rid)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "error": {
+                        "code": "invalid_host",
+                        "message": "Invalid host header",
+                        "request_id": rid,
+                    },
+                },
+                headers={"X-Request-ID": rid},
+            )
+
+        return await call_next(request)
+
+
+def _host_allowed(host: str, allowed_hosts: list[str]) -> bool:
+    from fnmatch import fnmatch
+
+    for pattern in allowed_hosts:
+        p = (pattern or "").strip().lower()
+        if not p:
+            continue
+        if p == "*":
+            return True
+        if fnmatch(host, p):
+            return True
+    return False
 
 # =======================
 # Legacy API deprecation headers
@@ -461,6 +537,7 @@ if settings.secure.cors_enabled:
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(LegacyApiDeprecationMiddleware)
 app.add_middleware(IpFilterMiddleware)
+app.add_middleware(DynamicTrustedHostMiddleware)
 
 # Circuit breaker на уровне приложения (fail-fast при всплеске 5xx).
 app_circuit_breaker = AppCircuitBreaker(
@@ -472,11 +549,6 @@ app_circuit_breaker = AppCircuitBreaker(
 )
 app.state.app_circuit_breaker = app_circuit_breaker
 app.add_middleware(AppCircuitBreakerMiddleware, breaker=app_circuit_breaker)
-
-# Trusted hosts (optional, recommended in prod)
-trusted_hosts = getattr(settings.secure, "trusted_hosts", None) or []
-if trusted_hosts:
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
 
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(RequestTraceMiddleware)
