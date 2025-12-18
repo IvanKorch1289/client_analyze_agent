@@ -44,15 +44,10 @@ def test_data_collector_runs_inn_sources_in_parallel_and_then_web_search(monkeyp
         def is_configured(self):
             return True
 
-        async def ask_langchain(self, **kwargs):
+        async def ask(self, **kwargs):
             assert inn_all_done.is_set(), "Perplexity вызван до завершения INN-фазы"
             perpl_calls.append(kwargs.get("question", ""))
             return {"success": True, "content": "OK", "citations": ["c1"], "integration": "langchain-openai"}
-
-        async def ask(self, **kwargs):
-            assert inn_all_done.is_set(), "Perplexity (fallback) вызван до завершения INN-фазы"
-            perpl_calls.append(kwargs.get("question", ""))
-            return {"success": True, "content": "OK", "citations": ["c1"], "integration": "httpx-direct"}
 
     class FakeTavily:
         def is_configured(self):
@@ -100,9 +95,6 @@ def test_data_collector_falls_back_when_no_intents(monkeypatch):
     class FakePerplexity:
         def is_configured(self):
             return True
-
-        async def ask_langchain(self, **kwargs):
-            return {"success": True, "content": "OK", "citations": []}
 
         async def ask(self, **kwargs):
             return {"success": True, "content": "OK", "citations": []}

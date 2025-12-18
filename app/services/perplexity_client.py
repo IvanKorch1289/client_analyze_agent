@@ -1,17 +1,24 @@
 import asyncio
 import hashlib
 import os
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+import time
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
-import httpx
 from dotenv import load_dotenv
 
 from app.utility.logging_client import logger
 
-load_dotenv('.env')
+load_dotenv(".env")
 
 
 class PerplexityClient:
+    """
+    Perplexity client via LangChain (OpenAI-compatible).
+
+    Важное требование: реальный вызов Perplexity выполняется через LangChain,
+    без "прямого httpx" в рабочем коде.
+    """
+
     DEFAULT_MODEL = "sonar-pro"
     BASE_URL = "https://api.perplexity.ai"
 
@@ -20,9 +27,8 @@ class PerplexityClient:
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or os.getenv("PERPLEXITY_API_KEY")
         self.model = model or os.getenv("PERPLEXITY_MODEL", self.DEFAULT_MODEL)
-        self._client: Optional[httpx.AsyncClient] = None
         self._cache: Dict[str, Dict[str, Any]] = {}
-        self._cache_ttl = 300
+        self._cache_ttl_s = 300
 
     @classmethod
     def get_instance(cls) -> "PerplexityClient":
@@ -30,25 +36,57 @@ class PerplexityClient:
             cls._instance = cls()
         return cls._instance
 
-    def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                base_url=self.BASE_URL,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                timeout=httpx.Timeout(300.0, connect=30.0),
-            )
-        return self._client
-
     def is_configured(self) -> bool:
         return bool(self.api_key)
 
-    def _get_cache_key(self, messages: List[Dict[str, str]], model: str) -> str:
-        messages_str = str(messages)
-        key_str = f"{messages_str}:{model}"
-        return f"perplexity:{hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()}"
+    def _get_cache_key(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        temperature: float,
+        max_tokens: Optional[int],
+        search_recency_filter: str,
+    ) -> str:
+        key_str = f"{messages}:{model}:{temperature}:{max_tokens}:{search_recency_filter}"
+        return (
+            f"perplexity:{hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()}"
+        )
+
+    def _cache_get(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        cached = self._cache.get(cache_key)
+        if not cached:
+            return None
+        created_at = cached.get("_created_at", 0.0)
+        if created_at and (time.time() - float(created_at)) > self._cache_ttl_s:
+            self._cache.pop(cache_key, None)
+            return None
+        return cached
+
+    def _cache_set(self, cache_key: str, value: Dict[str, Any]) -> None:
+        self._cache[cache_key] = {**value, "_created_at": time.time()}
+
+    @staticmethod
+    def _to_lc_messages(messages: List[Dict[str, str]]) -> Tuple[list, list]:
+        errors = []
+        lc_messages = []
+
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+        for msg in messages:
+            if not isinstance(msg, dict):
+                errors.append(f"invalid_message:{type(msg).__name__}")
+                continue
+            role = (msg.get("role") or "").strip()
+            content = msg.get("content", "")
+            if role == "system":
+                lc_messages.append(SystemMessage(content=content))
+            elif role == "user":
+                lc_messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                lc_messages.append(AIMessage(content=content))
+            else:
+                errors.append(f"unsupported_role:{role or 'missing'}")
+        return lc_messages, errors
 
     async def chat(
         self,
@@ -61,121 +99,32 @@ class PerplexityClient:
     ) -> Dict[str, Any]:
         if not self.api_key:
             logger.error("Perplexity API key not configured", component="perplexity")
-            return {"error": "Perplexity API key not configured", "success": False}
+            return {"success": False, "error": "Perplexity API key not configured"}
 
         use_model = model or self.model
 
-        cache_key = self._get_cache_key(messages, use_model)
-        if use_cache and cache_key in self._cache:
-            cached = self._cache[cache_key]
-            logger.info("Perplexity cache hit", component="perplexity")
-            return cached
+        cache_key = self._get_cache_key(
+            messages=messages,
+            model=use_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            search_recency_filter=search_recency_filter,
+        )
+        if use_cache:
+            cached = self._cache_get(cache_key)
+            if cached:
+                logger.info("Perplexity cache hit", component="perplexity")
+                return cached
 
         try:
-            client = self._get_client()
-            
-            payload: Dict[str, Any] = {
-                "model": use_model,
-                "messages": messages,
-                "temperature": temperature,
-                # Perplexity extension (OpenAI-compatible)
-                "search_recency_filter": search_recency_filter,
-            }
-            if max_tokens:
-                payload["max_tokens"] = max_tokens
-
-            response = await client.post("/chat/completions", json=payload)
-            response.raise_for_status()
-            
-            data = response.json()
-
-            logger.info(
-                f"Perplexity response received via httpx, model: {use_model}",
-                component="perplexity",
-            )
-
-            content = ""
-            if data.get("choices") and len(data["choices"]) > 0:
-                content = data["choices"][0].get("message", {}).get("content", "")
-            
-            usage = {}
-            if data.get("usage"):
-                usage = {
-                    "prompt_tokens": data["usage"].get("prompt_tokens", 0),
-                    "completion_tokens": data["usage"].get("completion_tokens", 0),
-                    "total_tokens": data["usage"].get("total_tokens", 0),
-                }
-
-            citations = data.get("citations", []) or []
-
-            response_data = {
-                "success": True,
-                "content": content,
-                "citations": citations,
-                "model": use_model,
-                "usage": usage,
-                "raw_response": {"content": content},
-                "cached": False,
-                "integration": "httpx-direct",
-            }
-
-            if use_cache:
-                self._cache[cache_key] = {**response_data, "cached": True}
-
-            return response_data
-
-        except httpx.TimeoutException:
-            logger.error("Perplexity request timeout", component="perplexity")
-            return {
-                "success": False,
-                "error": "Perplexity request timeout - сервис не ответил вовремя",
-                "timeout": True,
-            }
-        except httpx.HTTPStatusError as e:
-            error_msg = str(e)
-            logger.error(
-                f"Perplexity HTTP error: {e.response.status_code}: {error_msg}",
-                component="perplexity",
-            )
-            if e.response.status_code in (401, 403):
-                return {"success": False, "error": "Invalid Perplexity API key"}
-            elif e.response.status_code == 429:
-                return {"success": False, "error": "Perplexity rate limit exceeded"}
-            return {"success": False, "error": f"HTTP {e.response.status_code}: {error_msg}"}
-        except Exception as e:
-            error_msg = str(e) or type(e).__name__
-            logger.error(
-                f"Perplexity request failed: {type(e).__name__}: {error_msg}",
-                component="perplexity",
-            )
-            return {"success": False, "error": error_msg or "Неизвестная ошибка"}
-
-    async def ask_langchain(
-        self,
-        question: str,
-        system_prompt: str = "Be precise and concise. Answer in Russian if the question is in Russian.",
-        model: Optional[str] = None,
-        temperature: float = 0.2,
-        max_tokens: Optional[int] = None,
-        search_recency_filter: str = "month",
-    ) -> Dict[str, Any]:
-        """
-        Perplexity запрос через LangChain (ChatOpenAI-compatible).
-
-        Важно: Perplexity API является OpenAI-compatible, но отдача `citations`
-        может не прокидываться через LangChain-обёртку. В таком случае `citations`
-        будут пустыми.
-        """
-        if not self.api_key:
-            logger.error("Perplexity API key not configured", component="perplexity")
-            return {"error": "Perplexity API key not configured", "success": False}
-
-        use_model = model or self.model
-
-        try:
-            # Lazy import: dependency is optional at runtime for non-search flows.
-            from langchain_core.messages import HumanMessage, SystemMessage
             from langchain_openai import ChatOpenAI
+
+            lc_messages, conversion_errors = self._to_lc_messages(messages)
+            if conversion_errors:
+                logger.warning(
+                    f"Perplexity message conversion issues: {conversion_errors}",
+                    component="perplexity",
+                )
 
             llm = ChatOpenAI(
                 api_key=self.api_key,
@@ -183,18 +132,13 @@ class PerplexityClient:
                 base_url=self.BASE_URL,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                # Pass-through Perplexity params (best-effort)
                 model_kwargs={"search_recency_filter": search_recency_filter},
             )
 
-            msg = await llm.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=question)]
-            )
-
+            msg = await llm.ainvoke(lc_messages)
             content = getattr(msg, "content", "") or ""
-            citations = []
 
-            # Best-effort extraction: some providers put extra fields here.
+            citations: List[str] = []
             additional = getattr(msg, "additional_kwargs", None) or {}
             if isinstance(additional, dict):
                 citations = additional.get("citations", []) or []
@@ -203,7 +147,7 @@ class PerplexityClient:
             if not citations and isinstance(response_metadata, dict):
                 citations = response_metadata.get("citations", []) or []
 
-            return {
+            response_data = {
                 "success": True,
                 "content": content,
                 "citations": citations,
@@ -213,13 +157,18 @@ class PerplexityClient:
                 "integration": "langchain-openai",
             }
 
+            if use_cache:
+                self._cache_set(cache_key, {**response_data, "cached": True})
+
+            return response_data
+
         except Exception as e:
             error_msg = str(e) or type(e).__name__
             logger.error(
                 f"Perplexity LangChain request failed: {type(e).__name__}: {error_msg}",
                 component="perplexity",
             )
-            return {"success": False, "error": error_msg or "Неизвестная ошибка"}
+            return {"success": False, "error": error_msg}
 
     async def ask(
         self,
@@ -234,6 +183,10 @@ class PerplexityClient:
         ]
         return await self.chat(messages, use_cache=use_cache, **kwargs)
 
+    async def ask_langchain(self, *args, **kwargs) -> Dict[str, Any]:
+        """Back-compat alias: теперь Perplexity работает только через LangChain."""
+        return await self.ask(*args, **kwargs)
+
     async def ask_with_fallback(
         self,
         question: str,
@@ -241,32 +194,71 @@ class PerplexityClient:
         **kwargs,
     ) -> Dict[str, Any]:
         result = await self.ask(question, **kwargs)
-
         if not result.get("success") and fallback_handler:
-            logger.info(
-                f"Perplexity ask failed, trying fallback for: {question[:50]}",
-                component="perplexity",
-            )
             return await fallback_handler(question, **kwargs)
-
         return result
 
-    def clear_cache(self):
+    async def healthcheck(self, timeout_s: float = 8.0) -> Dict[str, Any]:
+        """
+        Реальная проверка доступности сервиса: тестовый запрос и проверка результата.
+        """
+        if not self.is_configured():
+            return {
+                "configured": False,
+                "available": False,
+                "status": "not_configured",
+                "error": "Perplexity API key not configured",
+            }
+
+        t0 = time.perf_counter()
+        try:
+            result = await asyncio.wait_for(
+                self.ask(
+                    question="Ответь строго одним словом: OK",
+                    system_prompt="Ты тест доступности. Отвечай строго 'OK'.",
+                    temperature=0,
+                    max_tokens=8,
+                    use_cache=False,
+                ),
+                timeout=timeout_s,
+            )
+            latency_ms = (time.perf_counter() - t0) * 1000
+            ok = bool(result.get("success")) and "OK" in (result.get("content") or "")
+            return {
+                "configured": True,
+                "available": ok,
+                "status": "ready" if ok else "error",
+                "latency_ms": round(latency_ms, 2),
+                "model": result.get("model", self.model),
+                "error": None if ok else (result.get("error") or "Unexpected response"),
+                "integration": result.get("integration", "langchain-openai"),
+            }
+        except Exception as e:
+            latency_ms = (time.perf_counter() - t0) * 1000
+            return {
+                "configured": True,
+                "available": False,
+                "status": "error",
+                "latency_ms": round(latency_ms, 2),
+                "model": self.model,
+                "error": str(e) or type(e).__name__,
+                "integration": "langchain-openai",
+            }
+
+    def clear_cache(self) -> None:
         self._cache.clear()
         logger.info("Perplexity cache cleared", component="perplexity")
 
     def get_cache_stats(self) -> Dict[str, int]:
-        return {
-            "cache_size": len(self._cache),
-            "cache_ttl": self._cache_ttl,
-        }
+        return {"cache_size": len(self._cache), "cache_ttl": self._cache_ttl_s}
 
     async def get_status(self) -> Dict[str, Any]:
+        # Status != healthcheck; does not call external service.
         return {
             "configured": self.is_configured(),
             "model": self.model,
             "status": "ready" if self.is_configured() else "not_configured",
-            "integration": "httpx-direct",
+            "integration": "langchain-openai",
             "cache_stats": self.get_cache_stats(),
         }
 
@@ -274,7 +266,4 @@ class PerplexityClient:
     async def close_global(cls):
         if cls._instance:
             cls._instance._cache.clear()
-            if cls._instance._client:
-                await cls._instance._client.aclose()
-            cls._instance._client = None
             cls._instance = None

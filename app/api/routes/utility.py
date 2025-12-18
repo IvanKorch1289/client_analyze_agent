@@ -163,15 +163,15 @@ async def validate_cache(confirm: bool, role: str = Depends(require_admin)):
 @utility_router.get("/perplexity/status")
 async def perplexity_status():
     client = PerplexityClient.get_instance()
-    status = await client.get_status()
-    return status
+    # Реальная проверка доступности сервиса (тестовый запрос).
+    return await client.healthcheck()
 
 
 @utility_router.get("/tavily/status")
 async def tavily_status():
     client = TavilyClient.get_instance()
-    status = await client.get_status()
-    return status
+    # Реальная проверка доступности сервиса (тестовый запрос).
+    return await client.healthcheck()
 
 
 @utility_router.post("/tavily/cache/clear")

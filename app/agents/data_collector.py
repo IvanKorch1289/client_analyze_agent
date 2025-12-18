@@ -52,28 +52,15 @@ async def _fetch_perplexity(intent_id: str, query: str, client_name: str) -> Dic
             "Пиши по-русски."
         )
 
-        # Требование проекта: поисковый запрос через LangChain.
-        # Если по какой-то причине LangChain интеграция не сработала — fallback на прямой httpx.
-        async def _call_langchain() -> Dict[str, Any]:
-            return await client.ask_langchain(
+        # Требование: клиент Perplexity работает через LangChain.
+        result = await asyncio.wait_for(
+            client.ask(
                 question=question,
                 system_prompt=system_prompt,
                 search_recency_filter="month",
-            )
-
-        async def _call_direct() -> Dict[str, Any]:
-            return await client.ask(
-                question=question,
-                system_prompt=system_prompt,
-                search_recency_filter="month",
-            )
-
-        try:
-            result = await asyncio.wait_for(_call_langchain(), timeout=SEARCH_TIMEOUT)
-            if not result.get("success"):
-                result = await asyncio.wait_for(_call_direct(), timeout=SEARCH_TIMEOUT)
-        except Exception:
-            result = await asyncio.wait_for(_call_direct(), timeout=SEARCH_TIMEOUT)
+            ),
+            timeout=SEARCH_TIMEOUT,
+        )
 
         return {
             "source": "perplexity",
