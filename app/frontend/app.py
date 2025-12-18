@@ -476,12 +476,17 @@ elif page == "Утилиты":
         try:
             resp = requests.get(f"{API_BASE_URL}{endpoint}", timeout=timeout)
             if resp.status_code == 200:
-                return {"status": "ok", "data": resp.json(), "latency": resp.elapsed.total_seconds()}
+                return {
+                    "status": "ok",
+                    "service_name": service_name,
+                    "data": resp.json(),
+                    "latency": resp.elapsed.total_seconds(),
+                }
             return {"status": "error", "error": f"HTTP {resp.status_code}"}
         except requests.exceptions.Timeout:
-            return {"status": "error", "error": "Таймаут"}
+            return {"status": "error", "service_name": service_name, "error": "Таймаут"}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            return {"status": "error", "service_name": service_name, "error": str(e)}
 
     st.subheader("Статус сервисов")
 

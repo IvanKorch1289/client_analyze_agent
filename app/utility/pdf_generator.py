@@ -14,6 +14,74 @@ from fpdf import FPDF
 from app.utility.logging_client import logger
 
 
+def normalize_report_for_pdf(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Нормализует разные форматы отчёта к единому виду для PDF.
+
+    Поддерживает:
+    - "старый" формат: risk_score/risk_level + findings(list[str]) + recommendations(list[str])
+    - "текущий" формат: risk_assessment + findings(list[dict]) + recommendations(list[str]) + summary/citations
+    """
+    if not isinstance(report_data, dict):
+        return {
+            "risk_score": 0,
+            "risk_level": "unknown",
+            "summary": "",
+            "findings": [],
+            "recommendations": [],
+            "citations": [],
+        }
+
+    # Risk
+    if "risk_assessment" in report_data and isinstance(report_data.get("risk_assessment"), dict):
+        ra = report_data.get("risk_assessment") or {}
+        risk_score = int(ra.get("score", 0) or 0)
+        risk_level = str(ra.get("level", "unknown") or "unknown")
+    else:
+        risk_score = int(report_data.get("risk_score", 0) or 0)
+        risk_level = str(report_data.get("risk_level", "unknown") or "unknown")
+
+    # Summary
+    summary = report_data.get("summary", "") or ""
+
+    # Findings: accept list[str] or list[dict]
+    findings_raw = report_data.get("findings", []) or []
+    findings: list[str] = []
+    if isinstance(findings_raw, list):
+        for item in findings_raw[:50]:
+            if isinstance(item, str):
+                findings.append(item)
+                continue
+            if isinstance(item, dict):
+                category = item.get("category", "Наблюдение")
+                key_points = item.get("key_points", "") or ""
+                line = f"{category}: {key_points}".strip()
+                findings.append(line[:300] + ("..." if len(line) > 300 else ""))
+                continue
+            findings.append(str(item)[:300])
+
+    # Recommendations
+    recommendations_raw = report_data.get("recommendations", []) or []
+    recommendations: list[str] = []
+    if isinstance(recommendations_raw, list):
+        recommendations = [str(r)[:300] for r in recommendations_raw[:50]]
+
+    # Citations
+    citations_raw = report_data.get("citations", []) or []
+    citations: list[str] = []
+    if isinstance(citations_raw, list):
+        citations = [str(c) for c in citations_raw if c][:20]
+
+    return {
+        "risk_score": max(0, min(100, risk_score)),
+        "risk_level": risk_level,
+        "summary": str(summary),
+        "findings": findings,
+        "recommendations": recommendations,
+        "citations": citations,
+    }
+
+
 def transliterate_cyrillic(text: str) -> str:
     """
     Transliterate Cyrillic characters to Latin for PDF compatibility.
@@ -205,26 +273,27 @@ def generate_analysis_pdf(
     pdf.add_key_value("Generated / Sozdano", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     pdf.ln(5)
     
-    risk_score = report_data.get("risk_score", 0)
-    risk_level = report_data.get("risk_level", "unknown")
+    normalized = normalize_report_for_pdf(report_data)
+    risk_score = normalized.get("risk_score", 0)
+    risk_level = normalized.get("risk_level", "unknown")
     pdf.add_section("Risk Assessment / Otsenka Riskov")
     pdf.add_risk_score(risk_score, risk_level)
     
-    if report_data.get("summary"):
+    if normalized.get("summary"):
         pdf.add_section("Summary / Rezyume")
-        pdf.add_text(report_data["summary"])
+        pdf.add_text(normalized["summary"])
     
-    findings = report_data.get("findings", [])
+    findings = normalized.get("findings", [])
     if findings:
         pdf.add_section("Findings / Vyvody")
         pdf.add_findings(findings)
     
-    recommendations = report_data.get("recommendations", [])
+    recommendations = normalized.get("recommendations", [])
     if recommendations:
         pdf.add_section("Recommendations / Rekomendatsii")
         pdf.add_findings(recommendations)
     
-    citations = report_data.get("citations", [])
+    citations = normalized.get("citations", [])
     if citations:
         pdf.add_section("Sources / Istochniki")
         for cite in citations[:10]:
