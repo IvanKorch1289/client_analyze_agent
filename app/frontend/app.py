@@ -155,7 +155,7 @@ elif st.session_state.admin_token:
 st.sidebar.divider()
 
 PAGES_BASE = ["Запрос агенту", "История", "Внешние данные"]
-PAGES_ADMIN = ["Утилиты", "Метрики", "Логи"]
+PAGES_ADMIN = ["Утилиты", "Задачи", "Метрики", "Логи"]
 
 if st.session_state.is_admin:
     PAGES = PAGES_BASE + PAGES_ADMIN
@@ -730,6 +730,99 @@ elif page == "Утилиты":
                 st.info("Нет сохранённых отчётов")
     except Exception as e:
         st.warning(f"Не удалось загрузить список отчётов: {e}")
+
+elif page == "Задачи":
+    st.header("Отложенные задачи (Scheduler)")
+
+    st.caption("Просмотр и отмена запланированных задач анализа. Отмена доступна только администратору.")
+
+    # Stats
+    with st.container(border=True):
+        st.subheader("Статистика Scheduler")
+        try:
+            resp = requests.get(f"{API_BASE_URL}/scheduler/stats", timeout=10)
+            if resp.status_code == 200:
+                stats = resp.json()
+                cols = st.columns(3)
+                with cols[0]:
+                    st.metric("Активен", "Да" if stats.get("scheduler_running") else "Нет")
+                with cols[1]:
+                    st.metric("Запланировано", stats.get("total_scheduled_tasks", 0))
+                with cols[2]:
+                    st.metric("История задач", stats.get("total_tasks_history", 0))
+                if stats.get("tasks_by_status"):
+                    with st.expander("По статусам"):
+                        st.json(stats.get("tasks_by_status"))
+            else:
+                st.warning(f"Не удалось получить stats (HTTP {resp.status_code})")
+        except Exception as e:
+            st.warning(f"Ошибка scheduler/stats: {e}")
+
+    st.divider()
+
+    # List tasks
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        refresh = st.button("Обновить список", type="primary")
+    with col2:
+        st.write("")
+
+    if refresh or "scheduler_tasks" not in st.session_state:
+        try:
+            with st.spinner("Загрузка задач..."):
+                resp = requests.get(f"{API_BASE_URL}/scheduler/tasks", timeout=10)
+                if resp.status_code == 200:
+                    st.session_state.scheduler_tasks = resp.json()
+                else:
+                    st.session_state.scheduler_tasks = []
+                    st.warning(f"Не удалось загрузить задачи (HTTP {resp.status_code})")
+        except Exception as e:
+            st.session_state.scheduler_tasks = []
+            st.warning(f"Ошибка загрузки задач: {e}")
+
+    tasks = st.session_state.get("scheduler_tasks", []) or []
+
+    if not tasks:
+        st.info("Нет активных запланированных задач.")
+    else:
+        st.subheader(f"Активные задачи: {len(tasks)}")
+        headers = {"X-Auth-Token": st.session_state.get("admin_token", "")}
+
+        for task in tasks:
+            task_id = task.get("task_id", "")
+            func_name = task.get("func_name", "")
+            status = task.get("status", "")
+            run_date = task.get("run_date", "")
+            metadata = task.get("metadata", {}) if isinstance(task.get("metadata"), dict) else {}
+
+            title = f"{task_id} — {func_name} — {status}"
+            with st.expander(title, expanded=False):
+                st.write(f"**Run date:** {run_date}")
+                if metadata:
+                    st.write("**Metadata:**")
+                    st.json(metadata)
+
+                if not st.session_state.is_admin:
+                    st.info("Для отмены задач нужны права администратора.")
+                else:
+                    if st.button("Отменить задачу", key=f"cancel_{task_id}"):
+                        try:
+                            resp = requests.delete(
+                                f"{API_BASE_URL}/scheduler/task/{task_id}",
+                                headers=headers,
+                                timeout=10,
+                            )
+                            if resp.status_code == 200:
+                                st.success("Задача отменена")
+                                # refresh tasks
+                                st.session_state.scheduler_tasks = [
+                                    t for t in tasks if t.get("task_id") != task_id
+                                ]
+                                st.rerun()
+                            else:
+                                st.error(f"Ошибка отмены (HTTP {resp.status_code}): {resp.text}")
+                        except Exception as e:
+                            st.error(f"Ошибка отмены: {e}")
 
 elif page == "Метрики":
     st.header("Панель метрик администратора")

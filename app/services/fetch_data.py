@@ -6,6 +6,7 @@ import xmltodict
 from app.config import settings
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
+from app.utility.decorators import cache_with_tarantool
 from app.utility.helpers import clean_xml_dict
 from app.utility.logging_client import logger
 
@@ -29,7 +30,7 @@ async def fetch_from_dadata(inn: str) -> Dict[str, Any]:
     if cached:
         logger.debug(f"DaData cache HIT for {inn}", component="dadata")
         return cached
-    client = await AsyncHttpClient.get_instance()
+
     url = settings.dadata.api_url
     headers = {
         "Authorization": f"Token {settings.dadata.api_key}",
@@ -56,7 +57,9 @@ async def fetch_from_dadata(inn: str) -> Dict[str, Any]:
         result = {"status": "success", "data": suggestions[0]["data"]}
         
         # Save to cache
-        await cache_repo.set_with_ttl(cache_key, result, ttl=7200, source="dadata")
+        await cache_repo.set_with_ttl(
+            cache_key, result, ttl=settings.dadata.cache_ttl or 7200, source="dadata"
+        )
         logger.debug(f"DaData cache SET for {inn}", component="dadata")
         
         return result
@@ -79,12 +82,13 @@ async def fetch_from_infosphere(inn: str) -> Dict[str, Any]:
     """
     http_client = await AsyncHttpClient.get_instance()
     url = settings.infosphere.api_url
+    sources = settings.infosphere.sources or "fssp,bankrot,cbr,egrul,fns,fsin,fmsdb,fms,gosuslugi,mvd,pfr,terrorist"
     xml_body = f"""<?xml version="1.0" encoding="UTF-8"?>
     <Request>
         <UserID>{settings.infosphere.login}</UserID>
         <Password>{settings.infosphere.password}</Password>
         <requestType>check</requestType>
-        <sources>fssp,bankrot,cbr,egrul,fns,fsin,fmsdb,fms,gosuslugi,mvd,pfr,terrorist</sources>
+        <sources>{sources}</sources>
         <timeout>300</timeout>
         <recursive>0</recursive>
         <async>0</async>
@@ -126,10 +130,10 @@ async def fetch_from_casebook(inn: str) -> Dict[str, Any]:
         Dict with court cases or error
     """
     http_client = await AsyncHttpClient.get_instance()
-    url = settings.casebook.api_url
+    url = settings.casebook.arbitr_url
     params = {
         "sideInn": inn,
-        "size": 100,
+        "size": settings.casebook.page_size or 100,
         "apikey": settings.casebook.api_key,
         "page": 1,
     }

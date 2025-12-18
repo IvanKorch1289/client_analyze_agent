@@ -20,6 +20,10 @@ SEARCH_TIMEOUT_SECONDS: Final[int] = 60
 MAX_WEB_CONTENT_CHARS: Final[int] = 2500
 """Максимальная длина контента из веб-поиска (символы)"""
 
+# Backward compatibility alias (старое имя использовалось в части модулей)
+MAX_CONTENT_LENGTH: Final[int] = MAX_WEB_CONTENT_CHARS
+"""Alias: MAX_WEB_CONTENT_CHARS (совместимость)"""
+
 # =======================
 # HTTP Client Constants
 # =======================
@@ -111,6 +115,12 @@ RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE: Final[int] = 5
 
 RATE_LIMIT_SEARCH_PER_MINUTE: Final[int] = 30
 """Лимит для поисковых эндпоинтов"""
+
+RATE_LIMIT_PROMPT_PER_MINUTE: Final[int] = 30
+"""Лимит для prompt-эндпоинта (совместимость со старым UI)"""
+
+RATE_LIMIT_GENERAL_PER_MINUTE: Final[int] = 60
+"""Общий лимит запросов для вспомогательных эндпоинтов (например scheduler)"""
 
 RATE_LIMIT_ADMIN_PER_MINUTE: Final[int] = 60
 """Лимит для административных операций"""

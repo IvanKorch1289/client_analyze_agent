@@ -1,7 +1,7 @@
 import asyncio
 import json
+import re
 import time
-import uuid
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, Optional
 
@@ -28,6 +28,11 @@ class ClientAnalysisRequest(BaseModel):
     client_name: str
     inn: Optional[str] = ""
     additional_notes: Optional[str] = ""
+
+
+class PromptRequest(BaseModel):
+    """Back-compat endpoint payload for Streamlit UI."""
+    prompt: str
 
 
 @agent_router.get("/thread_history/{thread_id}")
@@ -92,6 +97,47 @@ async def analyze_client(request: Request, data: ClientAnalysisRequest, stream: 
     except Exception as e:
         logger.error(f"Client analysis error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка анализа: {str(e)}") from e
+
+
+@agent_router.post("/prompt")
+@limiter.limit(f"{RATE_LIMIT_SEARCH_PER_MINUTE}/minute")
+async def prompt_agent(request: Request, data: PromptRequest) -> Dict[str, Any]:
+    """
+    Backward-compatible endpoint for the Streamlit "Запрос агенту" page.
+
+    Accepts a free-form prompt and runs the client analysis workflow.
+    """
+    prompt = (data.prompt or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required")
+
+    # Extract INN if present
+    inn_match = re.search(r"\b(\d{10}|\d{12})\b", prompt)
+    inn = inn_match.group(1) if inn_match else ""
+
+    # Heuristic client name: prompt without INN + common leading verbs
+    client_name = prompt
+    if inn:
+        client_name = re.sub(rf"\b{re.escape(inn)}\b", "", client_name).strip()
+    client_name = re.sub(r"^\s*(проанализируй|анализ|проверь|проверка)\s+", "", client_name, flags=re.I).strip()
+    if not client_name:
+        client_name = prompt
+
+    result = await run_client_analysis_streaming(
+        client_name=client_name,
+        inn=inn,
+        additional_notes="",
+        stream=False,
+    )
+
+    # Streamlit expects {response, thread_id, tools_used, timestamp}
+    return {
+        "response": result.get("summary", "") or "",
+        "thread_id": result.get("session_id", ""),
+        "tools_used": True,
+        "timestamp": datetime.utcnow().isoformat(),
+        "raw_result": result,
+    }
 
 
 async def _stream_client_analysis(

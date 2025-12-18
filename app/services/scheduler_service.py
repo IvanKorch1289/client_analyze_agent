@@ -197,8 +197,6 @@ class SchedulerService:
                 delay_minutes=5
             )
         """
-        from app.agents.client_workflow import run_client_analysis_batch
-        
         metadata = {
             "type": "client_analysis",
             "client_name": client_name,

@@ -31,8 +31,9 @@ class EmailClient:
         self.smtp_port = smtp_port or settings.mail.smtp_port
         self.smtp_user = smtp_user or settings.mail.smtp_user
         self.smtp_password = smtp_password or settings.mail.smtp_password
-        self.use_tls = use_tls if use_tls is not None else settings.mail.use_tls
-        self.default_from = settings.mail.default_from or self.smtp_user
+        # MailSettings uses smtp_use_tls / smtp_from naming
+        self.use_tls = use_tls if use_tls is not None else settings.mail.smtp_use_tls
+        self.default_from = settings.mail.smtp_from or self.smtp_user
 
     @classmethod
     def get_instance(cls) -> "EmailClient":

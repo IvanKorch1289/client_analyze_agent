@@ -15,7 +15,7 @@
 
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional, Type, TypeVar
+from typing import Any, ClassVar, Dict, Optional, Type, TypeVar
 
 import yaml
 from pydantic import Field
@@ -162,14 +162,11 @@ class BaseSettingsWithLoader(BaseSettings):
             port: int = 5432
     """
     
-    # Путь в Vault (переопределяется в наследниках)
-    vault_path: Optional[str] = None
-    
-    # Группа в YAML файле (переопределяется в наследниках)
-    yaml_group: Optional[str] = None
-    
-    # Имя YAML файла (по умолчанию: имя класса в lowercase + .yaml)
-    yaml_file: Optional[str] = None
+    # These are configuration selectors, not pydantic fields.
+    # Mark as ClassVar to avoid "model-field-overridden" errors in subclasses.
+    vault_path: ClassVar[Optional[str]] = None
+    yaml_group: ClassVar[Optional[str]] = None
+    yaml_file: ClassVar[Optional[str]] = None
     
     model_config = SettingsConfigDict(
         env_file=".env",

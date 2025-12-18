@@ -16,11 +16,6 @@ _cache_repo = None
 _reports_repo = None
 _threads_repo = None
 
-# Lazy import repositories to avoid circular imports
-_cache_repo = None
-_reports_repo = None
-_threads_repo = None
-
 try:
     import tarantool
 
@@ -156,6 +151,8 @@ class TarantoolClient:
         self._connected: bool = False
         self._space = "cache"
         self._use_memory = not TARANTOOL_AVAILABLE
+        # Back-compat flag used by dashboards/health endpoints
+        self._fallback_mode = self._use_memory
         self._config = CacheConfig()
         self._metrics = CacheMetrics()
         self._search_cache: Dict[str, Tuple[Any, float]] = {}
@@ -194,6 +191,7 @@ class TarantoolClient:
 
         if self._connection is None:
             self._use_memory = True
+            self._fallback_mode = True
             logger.info("Falling back to in-memory storage", component="tarantool")
         else:
             logger.info("Tarantool connected successfully", component="tarantool")
@@ -234,7 +232,13 @@ class TarantoolClient:
 
         if self._use_memory:
             if key in _memory_cache:
-                value_packed, expires_at = _memory_cache[key]
+                packed_tuple = _memory_cache[key]
+                # Backward compatibility: support old 2-tuple (value_packed, expires_at)
+                if isinstance(packed_tuple, tuple) and len(packed_tuple) >= 2:
+                    value_packed = packed_tuple[0]
+                    expires_at = packed_tuple[1]
+                else:
+                    value_packed, expires_at = None, 0
                 if time.time() > expires_at:
                     del _memory_cache[key]
                     self._metrics.misses += 1
@@ -301,18 +305,24 @@ class TarantoolClient:
         return result
 
     async def set(
-        self, key: str, value: Any, ttl: Optional[int] = None, compress: bool = True
+        self,
+        key: str,
+        value: Any,
+        ttl: Optional[int] = None,
+        compress: bool = True,
+        source: str = "api",
     ):
         await self._ensure_connection()
         start_time = time.time()
         ttl_value = ttl if ttl is not None else self._config.default_ttl
         expires_at = time.time() + ttl_value
+        created_at = time.time()
 
         if self._use_memory:
             packed = msgpack.packb(value, use_bin_type=True, strict_types=False)
             if compress:
                 packed = self._compress(packed)
-            _memory_cache[key] = (packed, expires_at)
+            _memory_cache[key] = (packed, expires_at, created_at, source)
             self._metrics.sets += 1
             self._metrics.total_set_time_ms += (time.time() - start_time) * 1000
             return
@@ -322,7 +332,10 @@ class TarantoolClient:
                 packed = msgpack.packb(value, use_bin_type=True, strict_types=False)
                 if compress:
                     packed = self._compress(packed)
-                self._connection.replace(self._space, (key, packed, expires_at))
+                # Match init.lua cache schema: (key, value, ttl/expires_at, created_at, source)
+                self._connection.replace(
+                    self._space, (key, packed, expires_at, created_at, source)
+                )
             except Exception as e:
                 logger.error(f"Error on SET {key}: {e}", component="tarantool")
 
@@ -359,7 +372,9 @@ class TarantoolClient:
             now = time.time()
             for key in keys:
                 if key in _memory_cache:
-                    value_packed, expires_at = _memory_cache[key]
+                    packed_tuple = _memory_cache[key]
+                    value_packed = packed_tuple[0] if isinstance(packed_tuple, tuple) and len(packed_tuple) >= 2 else None
+                    expires_at = packed_tuple[1] if isinstance(packed_tuple, tuple) and len(packed_tuple) >= 2 else 0
                     if now <= expires_at:
                         data = self._decompress(value_packed)
                         results[key] = msgpack.unpackb(data, raw=False)
@@ -413,6 +428,7 @@ class TarantoolClient:
         start_time = time.time()
         ttl_value = ttl if ttl is not None else self._config.default_ttl
         expires_at = time.time() + ttl_value
+        created_at = time.time()
 
         if len(items) > self._config.max_batch_size:
             chunks = [
@@ -428,7 +444,7 @@ class TarantoolClient:
                 packed = msgpack.packb(value, use_bin_type=True, strict_types=False)
                 if compress:
                     packed = self._compress(packed)
-                _memory_cache[key] = (packed, expires_at)
+                _memory_cache[key] = (packed, expires_at, created_at, "api")
             self._metrics.sets += len(items)
             elapsed = (time.time() - start_time) * 1000
             self._metrics.total_set_time_ms += elapsed
@@ -440,7 +456,9 @@ class TarantoolClient:
                     packed = msgpack.packb(value, use_bin_type=True, strict_types=False)
                     if compress:
                         packed = self._compress(packed)
-                    self._connection.replace(self._space, (key, packed, expires_at))
+                    self._connection.replace(
+                        self._space, (key, packed, expires_at, created_at, "api")
+                    )
                 except Exception as e:
                     logger.warning(
                         f"Error in batch set for {key}: {e}", component="tarantool"
@@ -541,9 +559,13 @@ class TarantoolClient:
         
         if self._use_memory:
             now = time.time()
-            for i, (key, (value_packed, expires_at)) in enumerate(_memory_cache.items()):
+            for i, (key, packed_tuple) in enumerate(_memory_cache.items()):
                 if i >= limit:
                     break
+                if not isinstance(packed_tuple, tuple) or len(packed_tuple) < 2:
+                    continue
+                value_packed = packed_tuple[0]
+                expires_at = packed_tuple[1]
                 if now <= expires_at:
                     try:
                         data = self._decompress(value_packed)
@@ -643,6 +665,69 @@ class TarantoolClient:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(_executor, do_get)
 
+    async def delete_persistent(self, key: str) -> bool:
+        """Удаляет данные из persistent space (backward compatibility for repositories/tests)."""
+        await self._ensure_connection()
+
+        if self._use_memory:
+            existed = key in _memory_persistent
+            _memory_persistent.pop(key, None)
+            return existed
+
+        def do_delete():
+            try:
+                self._connection.delete("persistent", key)
+                return True
+            except Exception as e:
+                logger.error(f"Failed to delete persistent {key}: {e}", component="tarantool")
+                return False
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, do_delete)
+
+    async def list_threads(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Список тредов, сохранённых в persistent (ключи `thread:*`).
+        Backward compatibility for ThreadsRepository/tests.
+        """
+        await self._ensure_connection()
+
+        threads: List[Dict[str, Any]] = []
+
+        if self._use_memory:
+            for key, packed in _memory_persistent.items():
+                if isinstance(key, str) and key.startswith("thread:"):
+                    try:
+                        value = msgpack.unpackb(packed, raw=False)
+                        if isinstance(value, dict):
+                            threads.append(value)
+                    except Exception:
+                        continue
+            threads.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+            return threads[:limit]
+
+        def do_list():
+            result_threads: List[Dict[str, Any]] = []
+            try:
+                rows = self._connection.select("persistent")
+                for row in rows:
+                    if len(row) >= 2 and isinstance(row[0], str) and row[0].startswith("thread:"):
+                        packed = row[1]
+                        if isinstance(packed, (bytes, bytearray)):
+                            try:
+                                value = msgpack.unpackb(packed, raw=False)
+                                if isinstance(value, dict):
+                                    result_threads.append(value)
+                            except Exception:
+                                continue
+            except Exception as e:
+                logger.error(f"Failed to list threads: {e}", component="tarantool")
+            result_threads.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+            return result_threads[:limit]
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, do_list)
+
     async def scan_threads(self) -> List[Dict[str, Any]]:
         """Сканирует все треды в постоянном хранилище."""
         await self._ensure_connection()
@@ -707,27 +792,39 @@ class TarantoolClient:
 
         await self._ensure_connection()
 
+        await self.clear_cache()
+        logger.warning("All cache keys invalidated", component="tarantool")
+
+    async def clear_cache(self):
+        """Очистить весь кеш (backward compatibility for repositories/tests)."""
+        await self._ensure_connection()
+
         if self._use_memory:
             _memory_cache.clear()
-            logger.warning(
-                "All cache keys invalidated (in-memory)", component="tarantool"
-            )
             return
 
-        def do_truncate():
+        def do_clear():
             try:
-                self._connection.call("box.space.cache:truncate")
-                logger.warning(
-                    "All cache keys invalidated (space 'cache' truncated)",
-                    component="tarantool",
-                )
+                # Best-effort scan and delete (portable across tarantool-python versions)
+                try:
+                    rows = self._connection.select(self._space)
+                except Exception:
+                    rows = []
+                for row in rows:
+                    try:
+                        if row and isinstance(row[0], str):
+                            self._connection.delete(self._space, row[0])
+                    except Exception:
+                        continue
             except Exception as e:
-                logger.error(
-                    f"Failed to invalidate all keys: {e}", component="tarantool"
-                )
+                logger.error(f"Failed to clear cache: {e}", component="tarantool")
 
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(_executor, do_truncate)
+        await loop.run_in_executor(_executor, do_clear)
+
+    async def get_cache_stats(self) -> Dict[str, Any]:
+        """Async wrapper for cache metrics (backward compatibility)."""
+        return self.get_metrics()
 
     async def close(self):
         """Закрывает соединение."""
