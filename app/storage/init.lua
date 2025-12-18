@@ -171,7 +171,8 @@ function cleanup_expired()
     local cleaned_reports = 0
     
     -- Cleanup expired cache entries
-    for _, tuple in box.space.cache:pairs() do
+    -- Оптимизация: используем ttl_idx (вместо полного скана)
+    for _, tuple in box.space.cache.index.ttl_idx:pairs(now, {iterator = 'LE'}) do
         if tuple.ttl and tuple.ttl < now then
             box.space.cache:delete(tuple.key)
             cleaned_cache = cleaned_cache + 1
@@ -179,7 +180,8 @@ function cleanup_expired()
     end
     
     -- Cleanup expired reports (30 days old)
-    for _, tuple in box.space.reports:pairs() do
+    -- Оптимизация: используем expires_idx (вместо полного скана)
+    for _, tuple in box.space.reports.index.expires_idx:pairs(now, {iterator = 'LE'}) do
         if tuple.expires_at and tuple.expires_at < now then
             box.space.reports:delete(tuple.report_id)
             cleaned_reports = cleaned_reports + 1
@@ -214,6 +216,78 @@ function get_reports_by_inn(inn)
         })
     end
     return results
+end
+
+-- ============================================================================
+-- CACHE HELPERS (для ускорения dashboard/maintenance операций)
+-- ============================================================================
+
+-- Быстрое получение количества записей в кеше (без скана)
+function cache_len()
+    return box.space.cache:len()
+end
+
+-- Быстро очистить весь кеш (truncate по space)
+function cache_clear()
+    box.space.cache:truncate()
+    return true
+end
+
+-- Удаление ключей по префиксу через primary index iterator=GE.
+-- Это существенно быстрее полного скана для большинства префиксов.
+function cache_delete_by_prefix(prefix)
+    if prefix == nil or prefix == '' then
+        return {deleted = 0, error = 'prefix_required'}
+    end
+
+    local deleted = 0
+
+    -- Итерируемся от prefix и останавливаемся, когда ключи перестают начинаться с prefix.
+    for _, tuple in box.space.cache.index.primary:pairs(prefix, {iterator = 'GE'}) do
+        local k = tuple.key
+        if k == nil then
+            break
+        end
+        if string.sub(k, 1, string.len(prefix)) ~= prefix then
+            break
+        end
+        box.space.cache:delete(k)
+        deleted = deleted + 1
+    end
+
+    return {deleted = deleted}
+end
+
+-- Получение первых N ключей кеша для UI. Возвращаем метаданные, не пытаясь декодировать value.
+function cache_get_entries(limit)
+    local lim = tonumber(limit) or 10
+    if lim < 1 then lim = 1 end
+    if lim > 500 then lim = 500 end
+
+    local now = os.time()
+    local entries = {}
+    local i = 0
+
+    for _, tuple in box.space.cache.index.primary:pairs(nil, {iterator = 'ALL'}) do
+        if i >= lim then break end
+        local ttl = tuple.ttl or 0
+        if ttl >= now then
+            local size_bytes = 0
+            if type(tuple.value) == 'string' then
+                size_bytes = string.len(tuple.value)
+            end
+            table.insert(entries, {
+                key = tuple.key,
+                expires_in = math.max(0, ttl - now),
+                size_bytes = size_bytes,
+                source = tuple.source,
+                created_at = tuple.created_at
+            })
+            i = i + 1
+        end
+    end
+
+    return entries
 end
 
 -- ============================================================================

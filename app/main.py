@@ -8,15 +8,23 @@ from fastapi import FastAPI, Request
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.api.routes.agent import agent_router
 from app.api.routes.data import data_router
 from app.api.routes.scheduler import scheduler_router
 from app.api.routes.utility import utility_router
+from app.config.settings import settings
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
+from app.utility.app_circuit_breaker import (
+    AppCircuitBreaker,
+    AppCircuitBreakerConfig,
+    AppCircuitBreakerMiddleware,
+)
+from app.utility.helpers import get_client_ip
 from app.utility.logging_client import get_request_id, logger, set_request_id
 from app.utility.telemetry import init_telemetry
 
@@ -34,12 +42,15 @@ from app.config.constants import (
 
 # Создаем limiter для защиты от DDoS
 limiter = Limiter(
-    key_func=get_remote_address,
+    # Важно: учитываем X-Forwarded-For / X-Real-IP (если приложение за прокси).
+    # Это уменьшает “слипание” лимитов и делает защиту корректнее в проде.
+    key_func=get_client_ip,
     default_limits=[
         f"{RATE_LIMIT_GLOBAL_PER_MINUTE}/minute",
         f"{RATE_LIMIT_GLOBAL_PER_HOUR}/hour",
     ],
-    storage_uri="memory://",  # Можно использовать Redis: "redis://localhost:6379"
+    # Можно использовать Redis: "redis://localhost:6379"
+    storage_uri=settings.secure.rate_limit_storage or "memory://",
 )
 
 
@@ -118,6 +129,8 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
             duration_ms = (time.perf_counter() - start_time) * 1000
 
             response.headers["X-Request-ID"] = request_id
+            # Полезно для профилирования на клиенте/прокси без логов.
+            response.headers["X-Process-Time-ms"] = str(round(duration_ms, 2))
 
             if duration_ms > 1000:
                 logger.structured(
@@ -149,6 +162,51 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
 
 # =======================
+# Security Headers Middleware
+# =======================
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """
+    Лёгкий middleware для базовых security headers.
+
+    Делается отдельно от CORS, чтобы:
+    - не тащить зависимости
+    - держать логику в одном месте
+    - не ломать поведение эндпоинтов
+    """
+
+    def __init__(self, app: FastAPI):
+        super().__init__(app)
+        secure = settings.secure
+        self._enabled = bool(secure.enable_security_headers)
+        self._hsts_enabled = bool(secure.hsts_enabled)
+        self._hsts_value = f"max-age={int(secure.hsts_max_age)}; includeSubDomains"
+        self._csp_enabled = bool(secure.csp_enabled)
+        self._csp_value = secure.csp_directives or "default-src 'self'"
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if not self._enabled:
+            return response
+
+        # Старайтесь не “перетира́ть” заголовки, если их уже выставил прокси.
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+
+        if self._hsts_enabled:
+            # HSTS имеет смысл только под HTTPS, но выставление под HTTP не критично.
+            response.headers.setdefault("Strict-Transport-Security", self._hsts_value)
+
+        if self._csp_enabled:
+            response.headers.setdefault("Content-Security-Policy", self._csp_value)
+
+        return response
+
+
+# =======================
 # FastAPI приложение
 # =======================
 
@@ -163,6 +221,34 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 FastAPIInstrumentor.instrument_app(app, excluded_urls="/utility/health,/utility/metrics")
+
+# Сжатие больших ответов (отчёты/метрики/история). Минимальный размер — чтобы
+# не тратить CPU на мелкие ответы.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+# CORS (для Streamlit/UI и внешних интеграций).
+if settings.secure.cors_enabled:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.secure.cors_origins or [],
+        allow_credentials=bool(settings.secure.cors_credentials),
+        allow_methods=settings.secure.cors_methods or ["*"],
+        allow_headers=settings.secure.cors_headers or ["*"],
+    )
+
+# Базовые security headers.
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Circuit breaker на уровне приложения (fail-fast при всплеске 5xx).
+app_circuit_breaker = AppCircuitBreaker(
+    AppCircuitBreakerConfig(
+        failure_threshold=int(os.getenv("APP_CB_FAILURE_THRESHOLD", "30")),
+        window_seconds=int(os.getenv("APP_CB_WINDOW_SECONDS", "60")),
+        open_seconds=int(os.getenv("APP_CB_OPEN_SECONDS", "30")),
+    )
+)
+app.state.app_circuit_breaker = app_circuit_breaker
+app.add_middleware(AppCircuitBreakerMiddleware, breaker=app_circuit_breaker)
 
 app.add_middleware(RequestIdMiddleware)
 

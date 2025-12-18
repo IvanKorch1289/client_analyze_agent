@@ -24,6 +24,7 @@ Scheduler Service - управление отложенными задачами
 """
 
 import asyncio
+import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
@@ -197,8 +198,6 @@ class SchedulerService:
                 delay_minutes=5
             )
         """
-        from app.agents.client_workflow import run_client_analysis_batch
-        
         metadata = {
             "type": "client_analysis",
             "client_name": client_name,
@@ -229,74 +228,57 @@ class SchedulerService:
         
         Вызывается scheduler'ом в нужное время.
         """
-        from app.agents.client_workflow import run_client_analysis_batch
-        from app.storage.tarantool import TarantoolClient
-        
+        # Если включён RabbitMQ режим — отдаём выполнение воркеру (FastStream),
+        # а scheduler остаётся только “планировщиком”.
+        #
+        # Это даёт горизонтальное масштабирование и разгружает web-процесс.
+        from app.services.app_actions import dispatch_client_analysis
+
+        # Scheduler “fire-and-forget”: если включена очередь — вернётся ACK,
+        # если нет — выполнится синхронно (in-process).
+        dispatch_result = await dispatch_client_analysis(
+            client_name=client_name,
+            inn=inn,
+            additional_notes=additional_notes,
+            save_report=True,
+            prefer_queue=None,
+        )
+        if dispatch_result.get("queued"):
+            logger.info("Задача отправлена в очередь RabbitMQ", component="scheduler")
+            return
+
+        # Если не queued — значит выполнили in-process и получили полный результат.
+        result = dispatch_result
         task_id = f"analysis_{inn}_{int(time.time())}"
         
         logger.info(
             f"Starting scheduled client analysis: {client_name} (INN: {inn})",
             component="scheduler"
         )
-        
-        try:
-            result = await run_client_analysis_batch(
-                client_name=client_name,
-                inn=inn,
-                additional_notes=additional_notes
-            )
-            
-            logger.structured(
-                "info",
-                "scheduled_analysis_completed",
-                component="scheduler",
-                client_name=client_name,
-                inn=inn,
-                status=result.get("status"),
-                session_id=result.get("session_id"),
-            )
-            
-            # Сохраняем результат в Tarantool
-            client = await TarantoolClient.get_instance()
-            
-            # Сохраняем отчет если анализ успешен
-            if result.get("status") == "completed" and result.get("report"):
-                reports_repo = client.get_reports_repository()
-                try:
-                    report_id = await reports_repo.create_from_workflow_result(result)
-                    logger.info(
-                        f"Scheduled analysis report saved: {report_id}",
-                        component="scheduler"
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to save scheduled analysis report: {e}",
-                        component="scheduler"
-                    )
-            
-            # Обновляем метаданные задачи
-            if task_id in self._tasks_metadata:
-                self._tasks_metadata[task_id].update({
-                    "status": "completed",
-                    "result_status": result.get("status"),
+
+        status = str(result.get("status") or "unknown")
+        is_ok = status == "completed"
+
+        logger.structured(
+            "info" if is_ok else "warning",
+            "scheduled_analysis_completed" if is_ok else "scheduled_analysis_finished",
+            component="scheduler",
+            client_name=client_name,
+            inn=inn,
+            status=status,
+            session_id=result.get("session_id"),
+        )
+
+        # Обновляем метаданные задачи (если мы действительно трекаем этот task_id).
+        if task_id in self._tasks_metadata:
+            self._tasks_metadata[task_id].update(
+                {
+                    "status": "completed" if is_ok else "failed",
+                    "result_status": status,
                     "session_id": result.get("session_id"),
                     "completed_at": datetime.now(),
-                })
-            
-        except Exception as e:
-            logger.error(
-                f"Scheduled analysis failed for {client_name}: {e}",
-                component="scheduler",
-                exc_info=True
+                }
             )
-            
-            # Сохраняем ошибку в метаданные
-            if task_id in self._tasks_metadata:
-                self._tasks_metadata[task_id].update({
-                    "status": "failed",
-                    "error": str(e),
-                    "failed_at": datetime.now(),
-                })
     
     def cancel_task(self, task_id: str) -> bool:
         """

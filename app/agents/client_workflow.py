@@ -135,6 +135,28 @@ def run_client_analysis_streaming(
     return _run_batch_analysis(initial_state, session_id, client_name, inn)
 
 
+async def run_client_analysis_batch(
+    client_name: str,
+    inn: str = "",
+    additional_notes: str = "",
+    session_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Batch (non-streaming) wrapper for the client analysis workflow.
+
+    Exists for backward compatibility with scheduler and other callers.
+    """
+    result = run_client_analysis_streaming(
+        client_name=client_name,
+        inn=inn,
+        additional_notes=additional_notes,
+        session_id=session_id,
+        stream=False,
+    )
+    # run_client_analysis_streaming(stream=False) returns an awaitable result dict
+    return await result
+
+
 async def _run_streaming_analysis(
     initial_state: ClientAnalysisState, session_id: str, client_name: str, inn: str
 ) -> AsyncGenerator[Dict[str, Any], None]:
