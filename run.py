@@ -5,6 +5,14 @@ import sys
 import time
 from threading import Thread
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv('.env')
+    print(f"✅ .env загружен. ADMIN_TOKEN: {'установлен' if os.getenv('ADMIN_TOKEN') else 'НЕ УСТАНОВЛЕН'}")
+except ImportError:
+    print("⚠️ python-dotenv не установлен, используем системные переменные")
+
 
 def run_backend():
     """Run FastAPI backend on port 8000."""
@@ -24,7 +32,7 @@ def run_streamlit():
     os.environ["STREAMLIT_PORT"] = "5000"
     subprocess.run([
         sys.executable, "-m", "streamlit", "run",
-        "app/frontend/app.py",
+        "app/frontend/pages/0_🏠_Главная.py",  # Entry point - главная страница
         "--server.port=5000",
         "--server.address=0.0.0.0",
         "--server.headless=true",

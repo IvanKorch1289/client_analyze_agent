@@ -165,11 +165,13 @@ if "threads" not in st.session_state:
 if "page" not in st.session_state:
     st.session_state.page = "Запрос агенту"
 if "admin_token" not in st.session_state:
-    st.session_state.admin_token = os.getenv("ADMIN_TOKEN", "")
+    st.session_state.admin_token = (os.getenv("ADMIN_TOKEN", "") or "").strip()
 if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
 if "admin_checked" not in st.session_state:
     st.session_state.admin_checked = False
+if "api_base_url_prev" not in st.session_state:
+    st.session_state.api_base_url_prev = API_BASE_URL
 if "api_base_url" not in st.session_state:
     st.session_state.api_base_url = API_BASE_URL
 
@@ -183,6 +185,9 @@ api_base_url_input = st.sidebar.text_input(
 )
 st.session_state.api_base_url = (api_base_url_input or "").rstrip("/")
 API_BASE_URL = st.session_state.api_base_url
+if st.session_state.api_base_url != st.session_state.api_base_url_prev:
+    st.session_state.api_base_url_prev = st.session_state.api_base_url
+    st.session_state.admin_checked = False  # заставим перепроверить токен для нового базового URL
 
 if st.sidebar.button("Проверить API"):
     try:
@@ -199,13 +204,14 @@ if st.sidebar.button("Проверить API"):
         st.sidebar.error(f"API недоступен: {e}")
 
 st.sidebar.subheader("Авторизация")
-admin_token = st.sidebar.text_input(
+raw_admin_token = st.sidebar.text_input(
     "Токен администратора",
     type="password",
     value=st.session_state.admin_token,
     key="global_admin_token",
     help="Введите ADMIN_TOKEN для доступа к административным функциям"
 )
+admin_token = raw_admin_token.strip()
 def _check_admin(token: str):
     if not token:
         st.session_state.is_admin = False

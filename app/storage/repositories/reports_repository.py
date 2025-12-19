@@ -247,13 +247,29 @@ class ReportsRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Список отчетов
         """
-        # TODO: Implement через прямое обращение к Tarantool
-        # Нужно использовать created_idx индекс
-        logger.warning(
-            "Reports list() not fully implemented yet",
-            component="reports_repo"
-        )
-        return []
+        try:
+            result = await self.client._call("list_reports", limit, offset)
+            logger.debug(
+                f"Reports list: returned {len(result)} items (limit={limit}, offset={offset})",
+                component="reports_repo"
+            )
+            return result if result else []
+        except RuntimeError as e:
+            # Tarantool fallback mode - Lua functions not available
+            if "in-memory fallback" in str(e):
+                logger.warning(
+                    "Tarantool in fallback mode, Lua functions unavailable",
+                    component="reports_repo"
+                )
+                return []
+            raise
+        except Exception as e:
+            logger.error(
+                f"Reports list error: {e}",
+                component="reports_repo",
+                exc_info=True
+            )
+            return []
     
     async def get_reports_by_inn(
         self,
@@ -270,13 +286,21 @@ class ReportsRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Список отчетов для данного ИНН
         """
-        # TODO: Implement через прямое обращение к Tarantool
-        # Нужно использовать inn_idx индекс
-        logger.debug(
-            f"Get reports by INN: {inn}",
-            component="reports_repo"
-        )
-        return []
+        try:
+            result = await self.client._call("get_reports_by_inn", inn)
+            logger.debug(
+                f"Get reports by INN {inn}: returned {len(result)} items",
+                component="reports_repo"
+            )
+            # Apply limit on Python side if needed
+            return result[:limit] if result else []
+        except Exception as e:
+            logger.error(
+                f"Get reports by INN error for {inn}: {e}",
+                component="reports_repo",
+                exc_info=True
+            )
+            return []
     
     async def get_reports_by_risk_level(
         self,
@@ -293,13 +317,20 @@ class ReportsRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Список отчетов с указанным уровнем риска
         """
-        # TODO: Implement через прямое обращение к Tarantool
-        # Нужно использовать risk_idx индекс
-        logger.debug(
-            f"Get reports by risk level: {risk_level}",
-            component="reports_repo"
-        )
-        return []
+        try:
+            result = await self.client._call("search_reports_by_risk", risk_level, limit)
+            logger.debug(
+                f"Get reports by risk level {risk_level}: returned {len(result)} items",
+                component="reports_repo"
+            )
+            return result if result else []
+        except Exception as e:
+            logger.error(
+                f"Get reports by risk level error for {risk_level}: {e}",
+                component="reports_repo",
+                exc_info=True
+            )
+            return []
     
     async def search_reports(
         self,
@@ -323,12 +354,51 @@ class ReportsRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Список отчетов, соответствующих фильтрам
         """
-        # TODO: Implement сложный поиск
-        logger.debug(
-            f"Search reports with filters: {filters}",
-            component="reports_repo"
-        )
-        return []
+        try:
+            if not filters:
+                filters = {}
+            
+            # Add limit to filters
+            filters["limit"] = limit
+            
+            result = await self.client._call("search_reports_advanced", filters)
+            logger.debug(
+                f"Search reports: returned {len(result)} items with filters {filters}",
+                component="reports_repo"
+            )
+            return result if result else []
+        except Exception as e:
+            logger.error(
+                f"Search reports error: {e}",
+                component="reports_repo",
+                exc_info=True
+            )
+            return []
+    
+    async def get_risk_timeline(self, days: int = 7) -> List[Dict[str, Any]]:
+        """
+        Получить временную линию рисков за N дней.
+        
+        Args:
+            days: Количество дней (1-90)
+            
+        Returns:
+            Список с данными по дням: [{date, count, avg_risk, by_risk}, ...]
+        """
+        try:
+            result = await self.client._call("get_risk_timeline", days)
+            logger.debug(
+                f"Get risk timeline for {days} days: returned {len(result)} entries",
+                component="reports_repo"
+            )
+            return result if result else []
+        except Exception as e:
+            logger.error(
+                f"Get risk timeline error: {e}",
+                component="reports_repo",
+                exc_info=True
+            )
+            return []
     
     async def cleanup_expired(self) -> int:
         """
@@ -351,10 +421,18 @@ class ReportsRepository(BaseRepository[Dict[str, Any]]):
         Получить общее количество отчетов.
         
         Returns:
-            Количество отчетов в space
+            Количество отчетов в space (не просроченных)
         """
-        # TODO: Implement через Tarantool box.space.reports:len()
-        return 0
+        try:
+            result = await self.client._call("get_reports_count")
+            return int(result) if result else 0
+        except Exception as e:
+            logger.error(
+                f"Get reports count error: {e}",
+                component="reports_repo",
+                exc_info=True
+            )
+            return 0
     
     async def get_stats(self) -> Dict[str, Any]:
         """
@@ -363,17 +441,42 @@ class ReportsRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Статистика: total, by_risk_level, avg_risk_score, etc.
         """
-        return {
-            "total": await self.count(),
-            "ttl_days": REPORT_TTL_DAYS,
-            "by_risk_level": {
-                "low": 0,
-                "medium": 0,
-                "high": 0,
-                "critical": 0,
-            },
-            "avg_risk_score": 0,
-        }
+        try:
+            result = await self.client._call("get_reports_stats")
+            if result:
+                result["ttl_days"] = REPORT_TTL_DAYS
+                return result
+            
+            # Fallback
+            return {
+                "total": 0,
+                "ttl_days": REPORT_TTL_DAYS,
+                "by_risk_level": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 0,
+                    "critical": 0,
+                },
+                "avg_risk_score": 0,
+                "today": 0,
+                "this_week": 0,
+                "high_risk_count": 0,
+            }
+        except Exception as e:
+            logger.error(
+                f"Get reports stats error: {e}",
+                component="reports_repo",
+                exc_info=True
+            )
+            return {
+                "total": 0,
+                "ttl_days": REPORT_TTL_DAYS,
+                "by_risk_level": {"low": 0, "medium": 0, "high": 0, "critical": 0},
+                "avg_risk_score": 0,
+                "today": 0,
+                "this_week": 0,
+                "high_risk_count": 0,
+            }
 
 
 __all__ = ["ReportsRepository", "REPORT_TTL_DAYS", "REPORT_TTL_SECONDS"]

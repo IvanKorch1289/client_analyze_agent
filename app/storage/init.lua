@@ -219,6 +219,335 @@ function get_reports_by_inn(inn)
 end
 
 -- ============================================================================
+-- REPORTS ADVANCED QUERIES
+-- ============================================================================
+
+-- List reports with pagination, sorted by created_at DESC (newest first)
+function list_reports(limit, offset)
+    local lim = tonumber(limit) or 50
+    local off = tonumber(offset) or 0
+    
+    if lim < 1 then lim = 1 end
+    if lim > 500 then lim = 500 end
+    if off < 0 then off = 0 end
+    
+    local now = os.time()
+    local results = {}
+    local count = 0
+    local skipped = 0
+    
+    -- Iterate in reverse order (DESC) using created_idx
+    for _, tuple in box.space.reports.index.created_idx:pairs(nil, {iterator = 'REQ'}) do
+        -- Skip expired reports
+        if tuple.expires_at and tuple.expires_at < now then
+            goto continue
+        end
+        
+        -- Skip offset
+        if skipped < off then
+            skipped = skipped + 1
+            goto continue
+        end
+        
+        -- Check limit
+        if count >= lim then
+            break
+        end
+        
+        table.insert(results, {
+            report_id = tuple.report_id,
+            inn = tuple.inn,
+            client_name = tuple.client_name,
+            created_at = tuple.created_at,
+            expires_at = tuple.expires_at,
+            risk_level = tuple.risk_level,
+            risk_score = tuple.risk_score,
+            report_data = tuple.report_data
+        })
+        count = count + 1
+        
+        ::continue::
+    end
+    
+    return results
+end
+
+-- Get reports by risk level
+function search_reports_by_risk(risk_level, limit)
+    local lim = tonumber(limit) or 50
+    if lim < 1 then lim = 1 end
+    if lim > 500 then lim = 500 end
+    
+    local now = os.time()
+    local results = {}
+    local count = 0
+    
+    for _, tuple in box.space.reports.index.risk_idx:pairs(risk_level) do
+        -- Skip expired
+        if tuple.expires_at and tuple.expires_at < now then
+            goto continue
+        end
+        
+        if count >= lim then
+            break
+        end
+        
+        table.insert(results, {
+            report_id = tuple.report_id,
+            inn = tuple.inn,
+            client_name = tuple.client_name,
+            created_at = tuple.created_at,
+            expires_at = tuple.expires_at,
+            risk_level = tuple.risk_level,
+            risk_score = tuple.risk_score,
+            report_data = tuple.report_data
+        })
+        count = count + 1
+        
+        ::continue::
+    end
+    
+    return results
+end
+
+-- Advanced search with multiple filters
+function search_reports_advanced(filters)
+    if filters == nil then
+        filters = {}
+    end
+    
+    local limit = tonumber(filters.limit) or 50
+    if limit < 1 then limit = 1 end
+    if limit > 500 then limit = 500 end
+    
+    local now = os.time()
+    local results = {}
+    local count = 0
+    
+    -- Start with all reports, filter as we go
+    for _, tuple in box.space.reports.index.created_idx:pairs(nil, {iterator = 'REQ'}) do
+        -- Skip expired
+        if tuple.expires_at and tuple.expires_at < now then
+            goto continue
+        end
+        
+        -- Apply filters
+        if filters.inn and tuple.inn ~= filters.inn then
+            goto continue
+        end
+        
+        if filters.risk_level and tuple.risk_level ~= filters.risk_level then
+            goto continue
+        end
+        
+        if filters.min_risk_score and tuple.risk_score < tonumber(filters.min_risk_score) then
+            goto continue
+        end
+        
+        if filters.max_risk_score and tuple.risk_score > tonumber(filters.max_risk_score) then
+            goto continue
+        end
+        
+        if filters.date_from and tuple.created_at < tonumber(filters.date_from) then
+            goto continue
+        end
+        
+        if filters.date_to and tuple.created_at > tonumber(filters.date_to) then
+            goto continue
+        end
+        
+        -- Partial match on client_name (case-insensitive)
+        if filters.client_name then
+            local search_name = string.lower(filters.client_name)
+            local tuple_name = string.lower(tuple.client_name or '')
+            if not string.find(tuple_name, search_name, 1, true) then
+                goto continue
+            end
+        end
+        
+        if count >= limit then
+            break
+        end
+        
+        table.insert(results, {
+            report_id = tuple.report_id,
+            inn = tuple.inn,
+            client_name = tuple.client_name,
+            created_at = tuple.created_at,
+            expires_at = tuple.expires_at,
+            risk_level = tuple.risk_level,
+            risk_score = tuple.risk_score,
+            report_data = tuple.report_data
+        })
+        count = count + 1
+        
+        ::continue::
+    end
+    
+    return results
+end
+
+-- Get total count of non-expired reports
+function get_reports_count()
+    local now = os.time()
+    local count = 0
+    
+    for _, tuple in box.space.reports:pairs() do
+        if tuple.expires_at == nil or tuple.expires_at >= now then
+            count = count + 1
+        end
+    end
+    
+    return count
+end
+
+-- Cache for stats (to avoid full scan on every request)
+local stats_cache = nil
+local stats_cache_time = 0
+local STATS_CACHE_TTL = 60  -- 60 seconds
+
+-- Get reports statistics
+function get_reports_stats()
+    local now = os.time()
+    
+    -- Return cached stats if fresh
+    if stats_cache and (now - stats_cache_time) < STATS_CACHE_TTL then
+        return stats_cache
+    end
+    
+    local total = 0
+    local by_risk = {
+        low = 0,
+        medium = 0,
+        high = 0,
+        critical = 0,
+        unknown = 0
+    }
+    local total_score = 0
+    local today_start = now - (now % 86400)  -- Start of today (UTC)
+    local today_count = 0
+    local week_start = now - (7 * 86400)
+    local week_count = 0
+    
+    for _, tuple in box.space.reports:pairs() do
+        -- Skip expired
+        if tuple.expires_at and tuple.expires_at < now then
+            goto continue
+        end
+        
+        total = total + 1
+        
+        -- Count by risk level
+        local risk = tuple.risk_level or 'unknown'
+        if by_risk[risk] then
+            by_risk[risk] = by_risk[risk] + 1
+        else
+            by_risk[risk] = 1
+        end
+        
+        -- Sum for average
+        total_score = total_score + (tuple.risk_score or 0)
+        
+        -- Count today's reports
+        if tuple.created_at >= today_start then
+            today_count = today_count + 1
+        end
+        
+        -- Count this week's reports
+        if tuple.created_at >= week_start then
+            week_count = week_count + 1
+        end
+        
+        ::continue::
+    end
+    
+    local avg_risk_score = 0
+    if total > 0 then
+        avg_risk_score = total_score / total
+    end
+    
+    local result = {
+        total = total,
+        by_risk_level = by_risk,
+        avg_risk_score = math.floor(avg_risk_score * 10 + 0.5) / 10,  -- Round to 1 decimal
+        today = today_count,
+        this_week = week_count,
+        high_risk_count = by_risk.high + by_risk.critical
+    }
+    
+    -- Cache the result
+    stats_cache = result
+    stats_cache_time = now
+    
+    return result
+end
+
+-- Get risk distribution for charts (last N days)
+function get_risk_timeline(days)
+    local days_count = tonumber(days) or 7
+    if days_count < 1 then days_count = 1 end
+    if days_count > 90 then days_count = 90 end
+    
+    local now = os.time()
+    local day_seconds = 86400
+    local timeline = {}
+    
+    -- Initialize timeline buckets
+    for i = 0, days_count - 1 do
+        local day_start = now - ((days_count - i) * day_seconds)
+        local day_end = day_start + day_seconds
+        timeline[i + 1] = {
+            date = os.date('%Y-%m-%d', day_start),
+            timestamp = day_start,
+            count = 0,
+            total_risk = 0,
+            by_risk = {low = 0, medium = 0, high = 0, critical = 0}
+        }
+    end
+    
+    -- Fill timeline with data
+    local start_time = now - (days_count * day_seconds)
+    
+    for _, tuple in box.space.reports:pairs() do
+        -- Skip expired or too old
+        if tuple.expires_at and tuple.expires_at < now then
+            goto continue
+        end
+        
+        if tuple.created_at < start_time then
+            goto continue
+        end
+        
+        -- Find the right day bucket
+        local days_ago = math.floor((now - tuple.created_at) / day_seconds)
+        local bucket_idx = days_count - days_ago
+        
+        if bucket_idx >= 1 and bucket_idx <= days_count then
+            timeline[bucket_idx].count = timeline[bucket_idx].count + 1
+            timeline[bucket_idx].total_risk = timeline[bucket_idx].total_risk + (tuple.risk_score or 0)
+            
+            local risk = tuple.risk_level or 'unknown'
+            if timeline[bucket_idx].by_risk[risk] then
+                timeline[bucket_idx].by_risk[risk] = timeline[bucket_idx].by_risk[risk] + 1
+            end
+        end
+        
+        ::continue::
+    end
+    
+    -- Calculate averages
+    for _, day in ipairs(timeline) do
+        if day.count > 0 then
+            day.avg_risk = math.floor((day.total_risk / day.count) * 10 + 0.5) / 10
+        else
+            day.avg_risk = 0
+        end
+    end
+    
+    return timeline
+end
+
+-- ============================================================================
 -- CACHE HELPERS (для ускорения dashboard/maintenance операций)
 -- ============================================================================
 
