@@ -127,6 +127,13 @@ def _show_api_error(resp: requests.Response, prefix: str = "Ошибка API"):
         st.error(f"{prefix}: HTTP {resp.status_code}")
     st.caption(details)
 
+if "sidebar_hint_shown" not in st.session_state:
+    st.session_state.sidebar_hint_shown = False
+if not st.session_state.sidebar_hint_shown:
+    st.info("👈 **Навигация доступна в боковой панели** (кнопка ☰ в левом верхнем углу)")
+    if st.button("✅ Понятно"):
+        st.session_state.sidebar_hint_shown = True
+        st.rerun()
 if "last_response" not in st.session_state:
     st.session_state.last_response = None
 if "last_thread_id" not in st.session_state:
