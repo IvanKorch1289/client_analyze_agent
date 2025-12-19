@@ -49,16 +49,45 @@ st.markdown("""
         opacity: 1 !important;
     }
     
-    /* Улучшаем стиль боковой панели */
-    section[data-testid="stSidebar"] > div {
-        background-color: #f0f2f6;
-        padding: 2rem 1rem;
+    /* Улучшаем стиль боковой панели: читаемость и контраст */
+    section[data-testid="stSidebar"] {
+        background-color: #111827 !important;
+        color: #e5e7eb !important;
     }
-    
-    /* Стиль для навигации */
-    .stRadio > label {
+    section[data-testid="stSidebar"] > div {
+        background-color: transparent !important;
+        padding: 1.5rem 1rem;
+    }
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span,
+    section[data-testid="stSidebar"] .st-cq,
+    section[data-testid="stSidebar"] .st-cn {
+        color: #e5e7eb !important;
         font-weight: 600;
-        font-size: 1.1rem;
+    }
+    section[data-testid="stSidebar"] input,
+    section[data-testid="stSidebar"] textarea,
+    section[data-testid="stSidebar"] select {
+        background-color: #0b1221 !important;
+        color: #f9fafb !important;
+        border-radius: 6px !important;
+        border: 1px solid #1f2937 !important;
+    }
+    section[data-testid="stSidebar"] .stButton button,
+    section[data-testid="stSidebar"] .stDownloadButton button,
+    section[data-testid="stSidebar"] .stLinkButton button {
+        background-color: #1f2937 !important;
+        color: #f9fafb !important;
+        border: 1px solid #374151 !important;
+    }
+    section[data-testid="stSidebar"] .stRadio > label {
+        font-weight: 700;
+        font-size: 1.05rem;
+        color: #f9fafb !important;
+    }
+    section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+        color: #e5e7eb !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -127,13 +156,6 @@ def _show_api_error(resp: requests.Response, prefix: str = "Ошибка API"):
         st.error(f"{prefix}: HTTP {resp.status_code}")
     st.caption(details)
 
-if "sidebar_hint_shown" not in st.session_state:
-    st.session_state.sidebar_hint_shown = False
-if not st.session_state.sidebar_hint_shown:
-    st.info("👈 **Навигация доступна в боковой панели** (кнопка ☰ в левом верхнем углу)")
-    if st.button("✅ Понятно"):
-        st.session_state.sidebar_hint_shown = True
-        st.rerun()
 if "last_response" not in st.session_state:
     st.session_state.last_response = None
 if "last_thread_id" not in st.session_state:
@@ -143,9 +165,11 @@ if "threads" not in st.session_state:
 if "page" not in st.session_state:
     st.session_state.page = "Запрос агенту"
 if "admin_token" not in st.session_state:
-    st.session_state.admin_token = ""
+    st.session_state.admin_token = os.getenv("ADMIN_TOKEN", "")
 if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
+if "admin_checked" not in st.session_state:
+    st.session_state.admin_checked = False
 if "api_base_url" not in st.session_state:
     st.session_state.api_base_url = API_BASE_URL
 
@@ -160,23 +184,19 @@ api_base_url_input = st.sidebar.text_input(
 st.session_state.api_base_url = (api_base_url_input or "").rstrip("/")
 API_BASE_URL = st.session_state.api_base_url
 
-col_api_1, col_api_2 = st.sidebar.columns([1, 1])
-with col_api_1:
-    if st.button("Проверить API"):
-        try:
-            r = requests.get(f"{API_BASE_URL}/utility/health", timeout=5)
-            if r.status_code == 200:
-                data = r.json()
-                st.sidebar.success(f"OK: {data.get('status')}")
-                issues = data.get("issues") or []
-                if issues:
-                    st.sidebar.caption("\n".join(issues[:5]))
-            else:
-                _show_api_error(r, prefix="Healthcheck failed")
-        except Exception as e:
-            st.sidebar.error(f"API недоступен: {e}")
-with col_api_2:
-    st.sidebar.link_button("Docs", f"{API_BASE_URL}/docs")
+if st.sidebar.button("Проверить API"):
+    try:
+        r = requests.get(f"{API_BASE_URL}/utility/health", timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            st.sidebar.success(f"OK: {data.get('status')}")
+            issues = data.get("issues") or []
+            if issues:
+                st.sidebar.caption("\n".join(issues[:5]))
+        else:
+            _show_api_error(r, prefix="Healthcheck failed")
+    except Exception as e:
+        st.sidebar.error(f"API недоступен: {e}")
 
 st.sidebar.subheader("Авторизация")
 admin_token = st.sidebar.text_input(
@@ -186,12 +206,15 @@ admin_token = st.sidebar.text_input(
     key="global_admin_token",
     help="Введите ADMIN_TOKEN для доступа к административным функциям"
 )
-if admin_token != st.session_state.admin_token:
-    st.session_state.admin_token = admin_token
+def _check_admin(token: str):
+    if not token:
+        st.session_state.is_admin = False
+        st.session_state.admin_checked = True
+        return
     try:
         resp = requests.get(
             f"{API_BASE_URL}/utility/auth/role",
-            headers={"X-Auth-Token": admin_token},
+            headers={"X-Auth-Token": token},
             timeout=5
         )
         if resp.status_code == 200:
@@ -200,8 +223,17 @@ if admin_token != st.session_state.admin_token:
         else:
             st.session_state.is_admin = False
             _show_api_error(resp, prefix="Auth check failed")
-    except:
+        st.session_state.admin_checked = True
+    except Exception as e:
         st.session_state.is_admin = False
+        st.session_state.admin_checked = True
+        st.sidebar.error(f"Auth error: {e}")
+
+if admin_token != st.session_state.admin_token:
+    st.session_state.admin_token = admin_token
+    _check_admin(admin_token)
+elif st.session_state.admin_token and not st.session_state.admin_checked:
+    _check_admin(st.session_state.admin_token)
 
 if st.session_state.is_admin:
     st.sidebar.success("Администратор")
@@ -210,13 +242,10 @@ elif st.session_state.admin_token:
 
 st.sidebar.divider()
 
-PAGES_BASE = ["Запрос агенту", "История", "Внешние данные"]
-PAGES_ADMIN = ["Утилиты", "Задачи", "Спецификации", "Метрики", "Логи"]
+PAGES_BASE = ["Запрос агенту", "Внешние запросы"]
+PAGES_ADMIN = ["Утилиты"]
 
-if st.session_state.is_admin:
-    PAGES = PAGES_BASE + PAGES_ADMIN
-else:
-    PAGES = PAGES_BASE
+PAGES = PAGES_BASE + PAGES_ADMIN if st.session_state.is_admin else PAGES_BASE
 
 if st.session_state.page not in PAGES:
     st.session_state.page = PAGES[0]
@@ -334,15 +363,13 @@ elif page == "История":
     else:
         st.info("История пуста. Отправьте первый запрос!")
 
-elif page == "Внешние данные":
-    st.header("Запросы к внешним источникам")
+elif page == "Внешние запросы":
+    st.header("Внешние запросы")
 
-    tab_inn, tab_search = st.tabs(["По ИНН", "Поисковые запросы"])
+    st.markdown("### Вызов внешних API")
+    st.caption("DaData, Casebook, InfoSphere — требуют валидный ИНН (10 или 12 цифр)")
 
-    with tab_inn:
-        st.subheader("Запросы по ИНН")
-        st.caption("DaData, Casebook, InfoSphere - требуют валидный ИНН (10 или 12 цифр)")
-
+    with st.container(border=True):
         with st.form("inn_data_form"):
             inn_input = st.text_input(
                 "ИНН компании",
@@ -384,10 +411,10 @@ elif page == "Внешние данные":
                     except Exception as e:
                         st.error(f"Ошибка: {e}")
 
-    with tab_search:
-        st.subheader("Поисковые запросы")
-        st.caption("Perplexity, Tavily - поиск информации о компании по ИНН. Возвращает только проверенные факты.")
+    st.markdown("### Вызов поисковых сервисов")
+    st.caption("Perplexity, Tavily — поиск информации о компании по ИНН, только проверенные факты.")
 
+    with st.container(border=True):
         with st.form("search_data_form"):
             search_inn = st.text_input(
                 "ИНН компании",
@@ -550,8 +577,13 @@ elif page == "Внешние данные":
                             st.error(f"Ошибка: {e}")
 
 elif page == "Утилиты":
-    st.header("Панель сервисов")
+    st.header("Админские утилиты")
 
+    if not st.session_state.is_admin:
+        st.warning("Доступ только для администратора. Укажите токен в сайдбаре.")
+        st.stop()
+
+    headers = {"X-Auth-Token": st.session_state.admin_token}
     if "service_statuses" not in st.session_state:
         st.session_state.service_statuses = {}
 
@@ -571,8 +603,7 @@ elif page == "Утилиты":
         except Exception as e:
             return {"status": "error", "service_name": service_name, "error": str(e)}
 
-    st.subheader("Статус сервисов")
-
+    st.subheader("Чеки сервисов")
     if st.button("Проверить все сервисы", type="primary"):
         with st.spinner("Проверка сервисов..."):
             st.session_state.service_statuses = {
@@ -585,15 +616,12 @@ elif page == "Утилиты":
             }
 
     with st.container(border=True):
-        st.markdown("##### Основные сервисы")
         cols = st.columns(3)
-        
         services = [
             (cols[0], "LLM (OpenRouter)", "openrouter"),
             (cols[1], "Perplexity", "perplexity"),
             (cols[2], "Tavily", "tavily"),
         ]
-
         for col, name, key in services:
             with col:
                 status = st.session_state.service_statuses.get(key, {})
@@ -614,14 +642,11 @@ elif page == "Утилиты":
                     st.error(f"{status.get('error', 'Ошибка')}")
 
     with st.container(border=True):
-        st.markdown("##### Инфраструктура")
         cols2 = st.columns(2)
-        
         infra_services = [
             (cols2[0], "Кэш (Tarantool)", "tarantool"),
             (cols2[1], "Email (SMTP)", "email"),
         ]
-
         for col, name, key in infra_services:
             with col:
                 status = st.session_state.service_statuses.get(key, {})
@@ -647,635 +672,403 @@ elif page == "Утилиты":
                     st.warning(f"{status.get('error', 'Не доступен')}")
 
     st.divider()
+    st.subheader("Кэш и ключи")
 
-    st.subheader("Управление кэшем")
-
-    if not st.session_state.is_admin:
-        st.info("Для управления кэшем необходимы права администратора. Введите токен в боковой панели.")
-    else:
-        headers = {"X-Auth-Token": st.session_state.admin_token}
-        
-        with st.container(border=True):
-            st.markdown("##### Записи в кэше (первые 10)")
-            if st.button("Загрузить записи кэша"):
-                try:
-                    resp = requests.get(
-                        f"{API_BASE_URL}/utility/cache/entries?limit=10",
-                        headers=headers,
-                        timeout=15
-                    )
-                    if resp.status_code == 200:
-                        cache_data = resp.json()
-                        entries = cache_data.get("entries", [])
-                        if entries:
-                            for entry in entries:
-                                col1, col2, col3 = st.columns([3, 1, 1])
-                                with col1:
-                                    st.text(entry.get("key", "N/A")[:50])
-                                with col2:
-                                    size = entry.get("size_bytes", 0)
-                                    st.text(f"{size} байт")
-                                with col3:
-                                    expires = entry.get("expires_in", 0)
-                                    st.text(f"{expires}с")
-                        else:
-                            st.info("Кэш пуст")
-                    elif resp.status_code == 403:
-                        st.error("Доступ запрещён")
-                    else:
-                        st.error(f"Ошибка: {resp.status_code}")
-                except Exception as e:
-                    st.error(f"Ошибка: {e}")
-        
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if st.button("Очистить кэш поиска"):
-                try:
-                    resp = requests.delete(
-                        f"{API_BASE_URL}/utility/cache/prefix/search:",
-                        headers=headers,
-                        timeout=10
-                    )
-                    if resp.status_code == 200:
-                        st.success("Кэш поиска очищен!")
-                    elif resp.status_code == 403:
-                        st.error("Доступ запрещён. Проверьте токен.")
-                    else:
-                        st.error(f"Ошибка: {resp.status_code}")
-                except Exception as e:
-                    st.error(f"Ошибка: {e}")
-
-        with col2:
-            confirm = st.checkbox("Подтвердить полную очистку")
-            if st.button("Очистить весь кэш", disabled=not confirm):
-                try:
-                    resp = requests.get(
-                        f"{API_BASE_URL}/utility/validate_cache?confirm=true",
-                        headers=headers,
-                        timeout=10
-                    )
-                    if resp.status_code == 200:
-                        st.success("Весь кэш очищен!")
-                    elif resp.status_code == 403:
-                        st.error("Доступ запрещён. Проверьте токен.")
-                    else:
-                        st.error(f"Ошибка: {resp.status_code}")
-                except Exception as e:
-                    st.error(f"Ошибка: {e}")
-
-    st.divider()
-
-    st.subheader("Состояние системы")
-
-    health_status = st.session_state.service_statuses.get("health", {})
-    if health_status.get("status") == "ok":
-        data = health_status.get("data", {})
-        overall = data.get("status", "unknown")
-
-        if overall == "healthy":
-            st.success("Состояние системы: ЗДОРОВА")
-        elif overall == "degraded":
-            st.warning("Состояние системы: ЧАСТИЧНО РАБОТАЕТ")
-            issues = data.get("issues", [])
-            if issues:
-                st.markdown("**Проблемы:**")
-                for issue in issues:
-                    st.write(f"- {issue}")
-        else:
-            st.error(f"Состояние системы: {overall.upper()}")
-
-        components = data.get("components", {})
-        if components:
-            with st.expander("Детали компонентов"):
-                st.json(components)
-    else:
-        st.info("Нажмите 'Проверить все сервисы' для просмотра состояния системы")
-
-    st.divider()
-
-    st.subheader("Отчёты PDF")
-
-    try:
-        resp = requests.get(f"{API_BASE_URL}/utility/reports/list", timeout=10)
-        if resp.status_code == 200:
-            reports_data = resp.json()
-            reports = reports_data.get("reports", [])
-            
-            if reports:
-                st.write(f"Найдено отчётов: {len(reports)}")
-                for report in reports[:10]:
-                    col1, col2, col3 = st.columns([3, 1, 1])
-                    with col1:
-                        st.text(report.get("filename", "Без имени"))
-                    with col2:
-                        size_kb = report.get("size_bytes", 0) / 1024
-                        st.text(f"{size_kb:.1f} KB")
-                    with col3:
-                        download_url = f"{API_BASE_URL}{report.get('download_url', '')}"
-                        st.download_button(
-                            label="Скачать",
-                            data=requests.get(download_url, timeout=10).content if download_url else b"",
-                            file_name=report.get("filename", "report.pdf"),
-                            mime="application/pdf",
-                            key=f"dl_{report.get('filename', 'report')}"
-                        )
-            else:
-                st.info("Нет сохранённых отчётов")
-    except Exception as e:
-        st.warning(f"Не удалось загрузить список отчётов: {e}")
-
-elif page == "Задачи":
-    st.header("Отложенные задачи (Scheduler)")
-
-    st.caption("Просмотр и отмена запланированных задач анализа. Отмена доступна только администратору.")
-
-    # Stats
     with st.container(border=True):
-        st.subheader("Статистика Scheduler")
+        st.markdown("##### Первые 10 ключей")
+        if st.button("Показать ключи кэша"):
+            try:
+                resp = requests.get(
+                    f"{API_BASE_URL}/utility/cache/entries?limit=10",
+                    headers=headers,
+                    timeout=15,
+                )
+                if resp.status_code == 200:
+                    entries = resp.json().get("entries", [])
+                    if entries:
+                        for entry in entries:
+                            col1, col2, col3 = st.columns([3, 1, 1])
+                            with col1:
+                                st.text(entry.get("key", "N/A")[:60])
+                            with col2:
+                                st.caption(f"{entry.get('size_bytes', 0)} байт")
+                            with col3:
+                                st.caption(f"{entry.get('expires_in', 0)}с")
+                    else:
+                        st.info("Кэш пуст")
+                else:
+                    _show_api_error(resp, prefix="Кэш недоступен")
+            except Exception as e:
+                st.error(f"Ошибка: {e}")
+
+    col_cache_left, col_cache_right = st.columns(2)
+    with col_cache_left:
+        if st.button("Очистить кэш поиска"):
+            try:
+                resp = requests.delete(
+                    f"{API_BASE_URL}/utility/cache/prefix/search:",
+                    headers=headers,
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    st.success("Кэш поиска очищен!")
+                else:
+                    _show_api_error(resp, prefix="Ошибка очистки поиска")
+            except Exception as e:
+                st.error(f"Ошибка: {e}")
+    with col_cache_right:
+        confirm_wipe = st.checkbox("Подтверждаю полную очистку кэша")
+        if st.button("Очистить весь кэш", disabled=not confirm_wipe):
+            try:
+                resp = requests.get(
+                    f"{API_BASE_URL}/utility/validate_cache?confirm=true",
+                    headers=headers,
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    st.success("Весь кэш очищен")
+                else:
+                    _show_api_error(resp, prefix="Ошибка очистки кэша")
+            except Exception as e:
+                st.error(f"Ошибка: {e}")
+
+    extra_cache_col1, extra_cache_col2 = st.columns(2)
+    with extra_cache_col1:
+        if st.button("Очистить Tavily кэш"):
+            try:
+                resp = requests.post(
+                    f"{API_BASE_URL}/utility/tavily/cache/clear",
+                    headers=headers,
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    st.success("Tavily кэш очищен")
+                else:
+                    _show_api_error(resp, prefix="Tavily кэш")
+            except Exception as e:
+                st.error(f"Ошибка: {e}")
+    with extra_cache_col2:
+        if st.button("Очистить Perplexity кэш"):
+            try:
+                resp = requests.post(
+                    f"{API_BASE_URL}/utility/perplexity/cache/clear",
+                    headers=headers,
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    st.success("Perplexity кэш очищен")
+                else:
+                    _show_api_error(resp, prefix="Perplexity кэш")
+            except Exception as e:
+                st.error(f"Ошибка: {e}")
+
+    st.divider()
+    st.subheader("Метрики")
+
+    col_metrics, col_cache_metrics = st.columns(2)
+    with col_metrics:
+        reset_metrics = st.button("Сбросить HTTP метрики", type="secondary")
         try:
-            resp = requests.get(f"{API_BASE_URL}/scheduler/stats", timeout=10)
+            resp = requests.get(f"{API_BASE_URL}/utility/metrics", timeout=10)
             if resp.status_code == 200:
-                stats = resp.json()
-                cols = st.columns(3)
-                with cols[0]:
+                metrics = resp.json().get("metrics", {})
+                total_requests = sum(m.get("total_requests", 0) for m in metrics.values() if isinstance(m, dict))
+                total_errors = sum(m.get("errors", 0) for m in metrics.values() if isinstance(m, dict))
+                err_rate = (total_errors / total_requests * 100) if total_requests else 0
+                mcol1, mcol2, mcol3 = st.columns(3)
+                with mcol1:
+                    st.metric("Всего запросов", total_requests)
+                with mcol2:
+                    st.metric("Ошибок", total_errors)
+                with mcol3:
+                    st.metric("Ошибок %", f"{err_rate:.1f}%")
+                if metrics:
+                    with st.expander("Детализация по сервисам"):
+                        st.json(metrics)
+            else:
+                _show_api_error(resp, prefix="Метрики HTTP")
+        except Exception as e:
+            st.error(f"Ошибка: {e}")
+        if reset_metrics:
+            try:
+                resp = requests.post(
+                    f"{API_BASE_URL}/utility/metrics/reset",
+                    headers=headers,
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    st.success("Метрики сброшены")
+                else:
+                    _show_api_error(resp, prefix="Сброс метрик")
+            except Exception as e:
+                st.error(f"Ошибка: {e}")
+
+    with col_cache_metrics:
+        try:
+            resp = requests.get(f"{API_BASE_URL}/utility/cache/metrics", timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                cache_size = data.get("cache_size", 0)
+                metrics = data.get("metrics", {})
+                hits = metrics.get("hits", 0)
+                misses = metrics.get("misses", 0)
+                hit_rate = metrics.get("hit_rate", 0)
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.metric("Записей", cache_size)
+                with c2:
+                    st.metric("Hit rate", f"{hit_rate:.1f}%")
+                with c3:
+                    st.metric("Hits/Misses", f"{hits}/{misses}")
+                if data.get("config"):
+                    with st.expander("Конфигурация кэша"):
+                        st.json(data.get("config"))
+            else:
+                _show_api_error(resp, prefix="Метрики кэша")
+        except Exception as e:
+            st.error(f"Ошибка: {e}")
+        if st.button("Сбросить метрики кэша", type="secondary"):
+            try:
+                resp = requests.post(
+                    f"{API_BASE_URL}/utility/cache/metrics/reset",
+                    headers=headers,
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    st.success("Метрики кэша сброшены")
+                else:
+                    _show_api_error(resp, prefix="Сброс метрик кэша")
+            except Exception as e:
+                st.error(f"Ошибка: {e}")
+
+    st.divider()
+    st.subheader("Трейсы (OpenTelemetry)")
+
+    with st.container(border=True):
+        try:
+            resp = requests.get(
+                f"{API_BASE_URL}/utility/traces/stats",
+                headers=headers,
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                stats = resp.json().get("stats", {})
+                t1, t2, t3 = st.columns(3)
+                with t1:
+                    st.metric("Всего спанов", stats.get("total_spans", 0))
+                with t2:
+                    st.metric("Среднее (мс)", stats.get("avg_duration_ms", 0))
+                with t3:
+                    st.metric("Ошибок", stats.get("error_count", 0))
+                if stats.get("by_kind"):
+                    with st.expander("По типу"):
+                        for kind, count in stats.get("by_kind", {}).items():
+                            st.caption(f"{kind}: {count}")
+            else:
+                _show_api_error(resp, prefix="Статистика трейсов")
+        except Exception as e:
+            st.error(f"Ошибка: {e}")
+
+    with st.container(border=True):
+        try:
+            resp = requests.get(
+                f"{API_BASE_URL}/utility/traces",
+                headers=headers,
+                params={"limit": 20},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                spans = resp.json().get("spans", [])
+                if spans:
+                    for span in spans[:10]:
+                        status_icon = "🟢" if span.get("status") == "OK" else "🔴" if span.get("status") == "ERROR" else "⚪"
+                        col1, col2, col3 = st.columns([3, 1, 1])
+                        with col1:
+                            st.caption(f"{status_icon} {span.get('name', 'unknown')}")
+                        with col2:
+                            st.caption(f"{span.get('duration_ms', 0):.1f} мс")
+                        with col3:
+                            st.caption(span.get("start_time", "")[:19])
+                else:
+                    st.info("Нет трейсов")
+            else:
+                _show_api_error(resp, prefix="Последние трейсы")
+        except Exception as e:
+            st.error(f"Ошибка: {e}")
+
+    st.divider()
+    st.subheader("Логи приложения")
+
+    with st.container(border=True):
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            since_minutes = st.selectbox(
+                "Период",
+                options=[5, 15, 30, 60, 120, 0],
+                format_func=lambda x: f"Последние {x} мин" if x else "Все логи",
+                index=1,
+            )
+        with col2:
+            level_filter = st.selectbox(
+                "Уровень",
+                options=["", "DEBUG", "INFO", "WARNING", "ERROR"],
+                format_func=lambda x: x if x else "Все уровни",
+            )
+        with col3:
+            limit = st.number_input("Лимит", min_value=10, max_value=500, value=100)
+        with col4:
+            refresh_logs = st.button("Обновить логи", type="primary")
+
+    params = {"limit": limit}
+    if since_minutes:
+        params["since_minutes"] = since_minutes
+    if level_filter:
+        params["level"] = level_filter
+
+    if refresh_logs or "logs_cache" not in st.session_state:
+        try:
+            resp = requests.get(
+                f"{API_BASE_URL}/utility/logs",
+                headers=headers,
+                params=params,
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                st.session_state.logs_cache = resp.json()
+            else:
+                _show_api_error(resp, prefix="Логи")
+        except Exception as e:
+            st.error(f"Ошибка: {e}")
+
+    logs_payload = st.session_state.get("logs_cache", {}) or {}
+    logs = logs_payload.get("logs", [])
+    stats = logs_payload.get("stats", {})
+
+    if stats:
+        with st.container(border=True):
+            s_cols = st.columns(5)
+            levels = ["total", "DEBUG", "INFO", "WARNING", "ERROR"]
+            icons = {"total": "📊", "DEBUG": "🔍", "INFO": "ℹ️", "WARNING": "⚠️", "ERROR": "❌"}
+            for idx, level in enumerate(levels):
+                with s_cols[idx]:
+                    st.metric(f"{icons.get(level,'')} {level}", stats.get(level, 0))
+
+    st.subheader(f"Логи ({len(logs)} записей)")
+    if logs:
+        for log in logs:
+            level = log.get("level", "INFO")
+            timestamp = log.get("timestamp", "")[:19]
+            message = log.get("message", "")
+            logger_name = log.get("logger", "")
+            if level == "ERROR":
+                color = "🔴"
+            elif level == "WARNING":
+                color = "🟡"
+            elif level == "DEBUG":
+                color = "⚪"
+            else:
+                color = "🟢"
+            with st.container(border=True):
+                c1, c2 = st.columns([1, 5])
+                with c1:
+                    st.caption(f"{color} {level}")
+                    st.caption(timestamp)
+                with c2:
+                    st.text(message[:200] + ("..." if len(message) > 200 else ""))
+                    if logger_name:
+                        st.caption(f"Logger: {logger_name}")
+    else:
+        st.info("Нет логов за выбранный период")
+
+    if st.button("Очистить логи", type="secondary"):
+        try:
+            resp = requests.post(
+                f"{API_BASE_URL}/utility/logs/clear",
+                headers=headers,
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                st.success("Логи очищены")
+            else:
+                _show_api_error(resp, prefix="Очистка логов")
+        except Exception as e:
+            st.error(f"Ошибка: {e}")
+
+    st.divider()
+    st.subheader("Отложенные задачи (Scheduler)")
+
+    with st.container(border=True):
+        try:
+            stats_resp = requests.get(f"{API_BASE_URL}/scheduler/stats", timeout=10)
+            if stats_resp.status_code == 200:
+                stats = stats_resp.json()
+                sc1, sc2, sc3 = st.columns(3)
+                with sc1:
                     st.metric("Активен", "Да" if stats.get("scheduler_running") else "Нет")
-                with cols[1]:
+                with sc2:
                     st.metric("Запланировано", stats.get("total_scheduled_tasks", 0))
-                with cols[2]:
+                with sc3:
                     st.metric("История задач", stats.get("total_tasks_history", 0))
                 if stats.get("tasks_by_status"):
                     with st.expander("По статусам"):
                         st.json(stats.get("tasks_by_status"))
             else:
-                st.warning(f"Не удалось получить stats (HTTP {resp.status_code})")
+                _show_api_error(stats_resp, prefix="Статистика задач")
         except Exception as e:
-            st.warning(f"Ошибка scheduler/stats: {e}")
+            st.error(f"Ошибка: {e}")
 
-    st.divider()
-
-    # List tasks
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        refresh = st.button("Обновить список", type="primary")
-    with col2:
-        st.write("")
-
-    if refresh or "scheduler_tasks" not in st.session_state:
+    if "scheduler_tasks" not in st.session_state or st.button("Обновить задачи", type="primary"):
         try:
-            with st.spinner("Загрузка задач..."):
-                resp = requests.get(f"{API_BASE_URL}/scheduler/tasks", timeout=10)
-                if resp.status_code == 200:
-                    st.session_state.scheduler_tasks = resp.json()
-                else:
-                    st.session_state.scheduler_tasks = []
-                    st.warning(f"Не удалось загрузить задачи (HTTP {resp.status_code})")
+            resp = requests.get(f"{API_BASE_URL}/scheduler/tasks", timeout=10)
+            if resp.status_code == 200:
+                st.session_state.scheduler_tasks = resp.json()
+            else:
+                st.session_state.scheduler_tasks = []
+                _show_api_error(resp, prefix="Список задач")
         except Exception as e:
             st.session_state.scheduler_tasks = []
-            st.warning(f"Ошибка загрузки задач: {e}")
+            st.error(f"Ошибка: {e}")
 
     tasks = st.session_state.get("scheduler_tasks", []) or []
-
     if not tasks:
         st.info("Нет активных запланированных задач.")
     else:
-        st.subheader(f"Активные задачи: {len(tasks)}")
-        headers = {"X-Auth-Token": st.session_state.get("admin_token", "")}
-
         for task in tasks:
             task_id = task.get("task_id", "")
             func_name = task.get("func_name", "")
             status = task.get("status", "")
             run_date = task.get("run_date", "")
             metadata = task.get("metadata", {}) if isinstance(task.get("metadata"), dict) else {}
-
             title = f"{task_id} — {func_name} — {status}"
             with st.expander(title, expanded=False):
                 st.write(f"**Run date:** {run_date}")
                 if metadata:
-                    st.write("**Metadata:**")
                     st.json(metadata)
-
-                if not st.session_state.is_admin:
-                    st.info("Для отмены задач нужны права администратора.")
-                else:
-                    if st.button("Отменить задачу", key=f"cancel_{task_id}"):
-                        try:
-                            resp = requests.delete(
-                                f"{API_BASE_URL}/scheduler/task/{task_id}",
-                                headers=headers,
-                                timeout=10,
-                            )
-                            if resp.status_code == 200:
-                                st.success("Задача отменена")
-                                # refresh tasks
-                                st.session_state.scheduler_tasks = [
-                                    t for t in tasks if t.get("task_id") != task_id
-                                ]
-                                st.rerun()
-                            else:
-                                st.error(f"Ошибка отмены (HTTP {resp.status_code}): {resp.text}")
-                        except Exception as e:
-                            st.error(f"Ошибка отмены: {e}")
-
-elif page == "Спецификации":
-    st.header("Спецификации API")
-    st.caption("Просмотр OpenAPI (HTTP) и AsyncAPI (RabbitMQ/FastStream).")
-
-    tab_openapi, tab_asyncapi = st.tabs(["OpenAPI", "AsyncAPI"])
-
-    with tab_openapi:
-        st.subheader("OpenAPI (FastAPI)")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.link_button("Swagger UI", f"{API_BASE_URL}/docs")
-        with col2:
-            st.link_button("openapi.json", f"{API_BASE_URL}/openapi.json")
-
-        if st.button("Загрузить OpenAPI JSON", type="primary"):
-            try:
-                with st.spinner("Загрузка OpenAPI..."):
-                    resp = requests.get(f"{API_BASE_URL}/openapi.json", timeout=15)
-                    if resp.status_code == 200:
-                        st.json(resp.json())
-                    else:
-                        st.error(f"Ошибка: HTTP {resp.status_code}")
-            except Exception as e:
-                st.error(f"Ошибка загрузки: {e}")
-
-    with tab_asyncapi:
-        st.subheader("AsyncAPI (RabbitMQ)")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.link_button("AsyncAPI HTML", f"{API_BASE_URL}/utility/asyncapi")
-        with col2:
-            st.link_button("asyncapi.json", f"{API_BASE_URL}/utility/asyncapi.json")
-
-        render_html = st.checkbox("Показать HTML прямо здесь", value=False)
-        if render_html:
-            try:
-                with st.spinner("Загрузка AsyncAPI HTML..."):
-                    resp = requests.get(f"{API_BASE_URL}/utility/asyncapi", timeout=15)
-                    if resp.status_code == 200:
-                        components.html(resp.text, height=800, scrolling=True)
-                    else:
-                        st.error(f"Ошибка: HTTP {resp.status_code}")
-            except Exception as e:
-                st.error(f"Ошибка загрузки: {e}")
-        else:
-            if st.button("Загрузить AsyncAPI JSON", type="primary"):
-                try:
-                    with st.spinner("Загрузка AsyncAPI..."):
-                        resp = requests.get(f"{API_BASE_URL}/utility/asyncapi.json", timeout=15)
+                if st.button("Отменить задачу", key=f"cancel_{task_id}"):
+                    try:
+                        resp = requests.delete(
+                            f"{API_BASE_URL}/scheduler/task/{task_id}",
+                            headers=headers,
+                            timeout=10,
+                        )
                         if resp.status_code == 200:
-                            st.json(resp.json())
+                            st.success("Задача отменена")
+                            st.session_state.scheduler_tasks = [
+                                t for t in tasks if t.get("task_id") != task_id
+                            ]
+                            st.rerun()
                         else:
-                            st.error(f"Ошибка: HTTP {resp.status_code}")
-                except Exception as e:
-                    st.error(f"Ошибка загрузки: {e}")
+                            _show_api_error(resp, prefix="Ошибка отмены")
+                    except Exception as e:
+                        st.error(f"Ошибка: {e}")
 
-elif page == "Метрики":
-    st.header("Панель метрик администратора")
-    
-    if st.session_state.is_admin:
-        headers = {"X-Auth-Token": st.session_state.admin_token}
-        
-        col_refresh, col_reset = st.columns(2)
-        with col_refresh:
-            refresh_metrics = st.button("Обновить метрики", type="primary")
-        with col_reset:
-            reset_metrics = st.button("Сбросить метрики", type="secondary")
-        
-        if reset_metrics:
-            try:
-                resp = requests.post(
-                    f"{API_BASE_URL}/utility/metrics/reset",
-                    headers=headers,
-                    timeout=10
-                )
-                if resp.status_code == 200:
-                    st.success("Метрики сброшены")
-                else:
-                    st.error(f"Ошибка сброса: {resp.status_code}")
-            except Exception as e:
-                st.error(f"Ошибка: {e}")
-        
-        st.divider()
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("HTTP клиент")
-            try:
-                resp = requests.get(f"{API_BASE_URL}/utility/metrics", timeout=10)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    metrics = data.get("metrics", {})
-                    
-                    if metrics:
-                        total_requests = 0
-                        total_errors = 0
-                        
-                        for service, service_metrics in metrics.items():
-                            if isinstance(service_metrics, dict):
-                                total_requests += service_metrics.get("total_requests", 0)
-                                total_errors += service_metrics.get("errors", 0)
-                        
-                        metric_col1, metric_col2, metric_col3 = st.columns(3)
-                        with metric_col1:
-                            st.metric("Всего запросов", total_requests)
-                        with metric_col2:
-                            st.metric("Ошибок", total_errors)
-                        with metric_col3:
-                            error_rate = (total_errors / total_requests * 100) if total_requests > 0 else 0
-                            st.metric("Ошибок %", f"{error_rate:.1f}%")
-                        
-                        with st.expander("Детали по сервисам"):
-                            for service, service_metrics in metrics.items():
-                                if isinstance(service_metrics, dict):
-                                    st.markdown(f"**{service}**")
-                                    st.json(service_metrics)
-                    else:
-                        st.info("Нет данных о метриках HTTP")
-                else:
-                    st.error(f"Ошибка загрузки: {resp.status_code}")
-            except Exception as e:
-                st.error(f"Ошибка: {e}")
-        
-        with col2:
-            st.subheader("Кэш (Tarantool)")
-            try:
-                resp = requests.get(f"{API_BASE_URL}/utility/cache/metrics", timeout=10)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    metrics = data.get("metrics", {})
-                    cache_size = data.get("cache_size", 0)
-                    
-                    metric_col1, metric_col2, metric_col3 = st.columns(3)
-                    with metric_col1:
-                        st.metric("Записей", cache_size)
-                    with metric_col2:
-                        hits = metrics.get("hits", 0)
-                        misses = metrics.get("misses", 0)
-                        hit_rate = metrics.get("hit_rate", 0)
-                        st.metric("Hit Rate", f"{hit_rate:.1f}%")
-                    with metric_col3:
-                        st.metric("Hits / Misses", f"{hits} / {misses}")
-                    
-                    config = data.get("config", {})
-                    if config:
-                        with st.expander("Конфигурация кэша"):
-                            st.json(config)
-                else:
-                    st.error(f"Ошибка загрузки: {resp.status_code}")
-            except Exception as e:
-                st.error(f"Ошибка: {e}")
-        
-        st.divider()
-        
-        st.subheader("Circuit Breakers")
-        try:
-            resp = requests.get(f"{API_BASE_URL}/utility/circuit-breakers", timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                breakers = data.get("circuit_breakers", {})
-                
-                if breakers:
-                    cols = st.columns(min(len(breakers), 4))
-                    for idx, (service, cb_data) in enumerate(breakers.items()):
-                        with cols[idx % 4]:
-                            state = cb_data.get("state", "unknown") if isinstance(cb_data, dict) else "unknown"
-                            if state == "closed":
-                                st.success(f"{service}: ЗАКРЫТ")
-                            elif state == "open":
-                                st.error(f"{service}: ОТКРЫТ")
-                            elif state == "half_open":
-                                st.warning(f"{service}: ПОЛУОТКРЫТ")
-                            else:
-                                st.info(f"{service}: {state}")
-                            
-                            if st.button(f"Сбросить", key=f"reset_cb_{service}"):
-                                try:
-                                    reset_resp = requests.post(
-                                        f"{API_BASE_URL}/utility/circuit-breakers/{service}/reset",
-                                        headers=headers,
-                                        timeout=10
-                                    )
-                                    if reset_resp.status_code == 200:
-                                        st.success("Сброшен!")
-                                        st.rerun()
-                                except Exception as e:
-                                    st.error(f"Ошибка: {e}")
-                else:
-                    st.info("Нет активных circuit breakers")
-            else:
-                st.error(f"Ошибка загрузки: {resp.status_code}")
-        except Exception as e:
-            st.error(f"Ошибка: {e}")
-        
-        st.divider()
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            with st.container(border=True):
-                st.subheader("Email (SMTP)")
-                try:
-                    resp = requests.get(f"{API_BASE_URL}/utility/email/status", timeout=10)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        
-                        metric_col1, metric_col2 = st.columns(2)
-                        with metric_col1:
-                            configured = data.get("configured", False)
-                            if configured:
-                                st.success("Настроен")
-                            else:
-                                st.warning("Не настроен")
-                        with metric_col2:
-                            smtp_host = data.get("smtp_host", "Н/Д")
-                            st.caption(f"SMTP: {smtp_host}")
-                    else:
-                        st.warning("Сервис недоступен")
-                except Exception as e:
-                    st.error(f"Ошибка: {e}")
-        
-        with col2:
-            with st.container(border=True):
-                st.subheader("OpenTelemetry Трейсы")
-                try:
-                    resp = requests.get(
-                        f"{API_BASE_URL}/utility/traces/stats",
-                        headers=headers,
-                        timeout=10
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        stats = data.get("stats", {})
-                        
-                        metric_col1, metric_col2, metric_col3 = st.columns(3)
-                        with metric_col1:
-                            st.metric("Всего спанов", stats.get("total_spans", 0))
-                        with metric_col2:
-                            st.metric("Ср. время (мс)", stats.get("avg_duration_ms", 0))
-                        with metric_col3:
-                            st.metric("Ошибок", stats.get("error_count", 0))
-                        
-                        by_kind = stats.get("by_kind", {})
-                        if by_kind:
-                            with st.expander("По типу"):
-                                for kind, count in by_kind.items():
-                                    st.caption(f"{kind}: {count}")
-                    else:
-                        st.warning("Трейсы недоступны")
-                except Exception as e:
-                    st.error(f"Ошибка: {e}")
-        
-        st.divider()
-        
-        st.subheader("Последние трейсы")
-        try:
-            resp = requests.get(
-                f"{API_BASE_URL}/utility/traces?limit=20",
-                headers=headers,
-                timeout=10
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                spans = data.get("spans", [])
-                
-                if spans:
-                    for span in spans[:10]:
-                        status_icon = "🟢" if span.get("status") == "OK" else "🔴" if span.get("status") == "ERROR" else "⚪"
-                        duration = span.get("duration_ms", 0)
-                        name = span.get("name", "unknown")
-                        
-                        col1, col2, col3 = st.columns([3, 1, 1])
-                        with col1:
-                            st.caption(f"{status_icon} {name}")
-                        with col2:
-                            st.caption(f"{duration:.1f}мс")
-                        with col3:
-                            st.caption(span.get("start_time", "")[:19])
-                else:
-                    st.info("Нет трейсов")
-            else:
-                st.warning("Не удалось загрузить трейсы")
-        except Exception as e:
-            st.error(f"Ошибка: {e}")
-
-elif page == "Логи":
-    st.header("Просмотр логов приложения")
-    
-    if st.session_state.is_admin:
-        headers = {"X-Auth-Token": st.session_state.admin_token}
-        
-        with st.container(border=True):
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                since_minutes = st.selectbox(
-                    "Период",
-                    options=[5, 15, 30, 60, 120, 0],
-                    format_func=lambda x: f"Последние {x} мин" if x > 0 else "Все логи",
-                    index=1
-                )
-            
-            with col2:
-                level_filter = st.selectbox(
-                    "Уровень",
-                    options=["", "DEBUG", "INFO", "WARNING", "ERROR"],
-                    format_func=lambda x: x if x else "Все уровни"
-                )
-            
-            with col3:
-                limit = st.number_input("Лимит", min_value=10, max_value=500, value=100)
-            
-            with col4:
-                st.write("")
-                st.write("")
-                refresh_logs = st.button("Обновить", type="primary")
-        
-        params = {"limit": limit}
-        if since_minutes > 0:
-            params["since_minutes"] = since_minutes
-        if level_filter:
-            params["level"] = level_filter
-        
-        try:
-            resp = requests.get(
-                f"{API_BASE_URL}/utility/logs",
-                headers=headers,
-                params=params,
-                timeout=15
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                logs = data.get("logs", [])
-                stats = data.get("stats", {})
-                
-                with st.container(border=True):
-                    st.subheader("Статистика")
-                    stat_cols = st.columns(5)
-                    
-                    levels = ["total", "DEBUG", "INFO", "WARNING", "ERROR"]
-                    colors = {"total": "📊", "DEBUG": "🔍", "INFO": "ℹ️", "WARNING": "⚠️", "ERROR": "❌"}
-                    
-                    for idx, level in enumerate(levels):
-                        with stat_cols[idx]:
-                            count = stats.get(level, 0)
-                            st.metric(f"{colors.get(level, '')} {level}", count)
-                
-                st.divider()
-                
-                st.subheader(f"Логи ({len(logs)} записей)")
-                
-                if logs:
-                    for log in logs:
-                        level = log.get("level", "INFO")
-                        timestamp = log.get("timestamp", "")[:19]
-                        message = log.get("message", "")
-                        logger_name = log.get("logger", "")
-                        
-                        if level == "ERROR":
-                            color = "🔴"
-                        elif level == "WARNING":
-                            color = "🟡"
-                        elif level == "DEBUG":
-                            color = "⚪"
-                        else:
-                            color = "🟢"
-                        
-                        with st.container(border=True):
-                            col1, col2 = st.columns([1, 5])
-                            with col1:
-                                st.caption(f"{color} {level}")
-                                st.caption(timestamp)
-                            with col2:
-                                st.text(message[:200] + ("..." if len(message) > 200 else ""))
-                                if logger_name:
-                                    st.caption(f"Logger: {logger_name}")
-                else:
-                    st.info("Нет логов за выбранный период")
-                
-                st.divider()
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("Очистить логи", type="secondary"):
-                        try:
-                            clear_resp = requests.post(
-                                f"{API_BASE_URL}/utility/logs/clear",
-                                headers=headers,
-                                timeout=10
-                            )
-                            if clear_resp.status_code == 200:
-                                st.success("Логи очищены")
-                                st.rerun()
-                        except Exception as e:
-                            st.error(f"Ошибка: {e}")
-            else:
-                st.error(f"Ошибка загрузки: {resp.status_code}")
-        except Exception as e:
-            st.error(f"Ошибка: {e}")
+    st.divider()
+    st.subheader("OpenAPI / AsyncAPI")
+    col_openapi, col_asyncapi = st.columns(2)
+    with col_openapi:
+        st.link_button("Swagger UI", f"{API_BASE_URL}/docs")
+        st.link_button("openapi.json", f"{API_BASE_URL}/openapi.json")
+    with col_asyncapi:
+        st.link_button("AsyncAPI HTML", f"{API_BASE_URL}/utility/asyncapi")
+        st.link_button("asyncapi.json", f"{API_BASE_URL}/utility/asyncapi.json")
 
