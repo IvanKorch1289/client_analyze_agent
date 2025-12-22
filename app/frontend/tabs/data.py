@@ -13,7 +13,9 @@ def _valid_inn_required(inn: str) -> bool:
 
 
 def render(api: ApiClient) -> None:
-    st.header("Внешние данные")
+    st.header("🔍 Внешние данные")
+    
+    st.info("💡 Этот раздел позволяет получить данные о компании из различных источников: реестры, судебные дела, финансовая информация.")
 
     st.subheader("A) Источники по ИНН (DaData / Casebook / Инфосфера)")
     inn = st.text_input("ИНН", placeholder="7707083893", max_chars=12)
@@ -45,9 +47,19 @@ def render(api: ApiClient) -> None:
                         results["Инфосфера"] = api.get(f"/data/client/infosphere/{inn.strip()}")
 
             for title, payload in results.items():
-                with st.expander(title, expanded=True):
+                with st.expander(f"📦 {title}", expanded=True):
                     if payload is None:
-                        st.warning("Нет данных (ошибка запроса)")
+                        st.warning("⚠️ Нет данных (ошибка запроса)")
+                    elif isinstance(payload, dict):
+                        # Красивое отображение для общего источника
+                        if title == "Все источники":
+                            for source_name, source_data in payload.items():
+                                if isinstance(source_data, dict) and source_data:
+                                    st.markdown(f"**{source_name}:**")
+                                    st.json(source_data)
+                                    st.divider()
+                        else:
+                            st.json(payload)
                     else:
                         st.json(payload)
 
@@ -109,38 +121,48 @@ def render(api: ApiClient) -> None:
                 )
 
         for source, payload in outputs.items():
-            with st.expander(source, expanded=True):
+            with st.expander(f"🔎 {source}", expanded=True):
                 if payload is None:
-                    st.warning("Нет данных (ошибка запроса)")
+                    st.warning("⚠️ Нет данных (ошибка запроса)")
                     continue
 
                 if source == "Perplexity" and isinstance(payload, dict):
                     if payload.get("status") == "success":
-                        st.markdown(payload.get("content", "") or "")
+                        content = payload.get("content", "") or ""
+                        if content:
+                            st.markdown("### 📝 Результат поиска")
+                            st.markdown(content)
                         cites = payload.get("citations") or []
                         if cites:
-                            with st.expander("Источники", expanded=False):
-                                for c in cites:
-                                    st.write(f"- {c}")
+                            with st.expander("📚 Источники", expanded=False):
+                                for i, c in enumerate(cites, 1):
+                                    st.markdown(f"{i}. {c}")
                     else:
                         st.json(payload)
                 elif source == "Tavily" and isinstance(payload, dict):
                     if payload.get("status") == "success":
                         answer = payload.get("answer") or ""
                         if answer:
-                            st.markdown(f"**Краткий ответ:** {answer}")
+                            st.markdown("### 💡 Краткий ответ")
+                            st.info(answer)
                         results = payload.get("results") or []
                         if results:
-                            st.markdown("**Ссылки / сниппеты:**")
-                            for item in results:
+                            st.markdown("### 🔗 Найденные источники")
+                            for i, item in enumerate(results, 1):
                                 title = item.get("title") or "Без заголовка"
                                 url = item.get("url") or ""
                                 snippet = item.get("content") or item.get("snippet") or ""
-                                st.markdown(f"- **{title}**")
+                                score = item.get("score", 0)
+                                
+                                st.markdown(f"**{i}. {title}**")
+                                if score:
+                                    st.caption(f"Релевантность: {score:.2f}")
                                 if url:
-                                    st.caption(url)
+                                    st.caption(f"🔗 {url}")
                                 if snippet:
-                                    st.caption(snippet[:400] + ("..." if len(snippet) > 400 else ""))
+                                    with st.expander("Содержание", expanded=False):
+                                        st.write(snippet[:800] + ("..." if len(snippet) > 800 else ""))
+                                st.divider()
                     else:
                         st.json(payload)
                 else:

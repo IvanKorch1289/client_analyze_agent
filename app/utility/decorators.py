@@ -80,16 +80,14 @@ def cache_with_tarantool(
                 cached = await cache_repo.get(cache_key)
                 if cached is not None:
                     logger.debug(
-                        f"Cache HIT: {func_name}({args_str[:50]}...)",
+                        f"Cache HIT: {func_name}({args_str[:50]}...) [key: {cache_key[:30]}]",
                         component="cache_decorator",
-                        cache_key=cache_key[:30],
                     )
                     return cached
                 
                 logger.debug(
-                    f"Cache MISS: {func_name}({args_str[:50]}...)",
+                    f"Cache MISS: {func_name}({args_str[:50]}...) [key: {cache_key[:30]}]",
                     component="cache_decorator",
-                    cache_key=cache_key[:30],
                 )
                 
             except Exception as e:
@@ -127,9 +125,8 @@ def cache_with_tarantool(
                         source=source
                     )
                     logger.debug(
-                        f"Cache SET: {func_name}, ttl={ttl}s",
+                        f"Cache SET: {func_name}, ttl={ttl}s [key: {cache_key[:30]}]",
                         component="cache_decorator",
-                        cache_key=cache_key[:30],
                     )
                 except Exception as e:
                     logger.warning(

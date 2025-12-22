@@ -8,7 +8,19 @@ import streamlit as st
 
 # Ensure repo root is on sys.path so `import app.*` works when running from app/frontend.
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Remove app/frontend from sys.path if it's there (Streamlit adds it automatically)
+# This prevents "import app" from importing app/frontend/app.py instead of the app package
+frontend_dir = str(Path(__file__).resolve().parent)
+if frontend_dir in sys.path:
+    sys.path.remove(frontend_dir)
+
+# Add repo root to the beginning of sys.path
 if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+else:
+    # Move it to the front if it's already there
+    sys.path.remove(str(REPO_ROOT))
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.frontend.api_client import get_api_client

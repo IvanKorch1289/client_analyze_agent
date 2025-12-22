@@ -134,15 +134,43 @@ def render(api: ApiClient) -> None:
     st.divider()
 
     st.subheader("Предыдущие анализы (Tarantool, TTL ~ 30 дней)")
-    col1, col2 = st.columns([1, 3])
+    
+    # Статистика
+    stats_col1, stats_col2, stats_col3 = st.columns(3)
+    if st.button("Загрузить статистику", type="secondary"):
+        with st.spinner("Загружаю статистику..."):
+            stats_data = api.get("/reports/stats/summary")
+        if stats_data is not None:
+            st.session_state["reports_stats"] = stats_data
+    
+    stats = st.session_state.get("reports_stats") or {}
+    if stats and stats.get("stats"):
+        s = stats["stats"]
+        with stats_col1:
+            st.metric("Всего отчётов", s.get("total", 0))
+        with stats_col2:
+            st.metric("Средний риск-скор", f"{s.get('avg_risk_score', 0):.1f}")
+        with stats_col3:
+            high_risk = s.get("by_risk_level", {}).get("high", 0) + s.get("by_risk_level", {}).get("critical", 0)
+            st.metric("Высокий/Критический риск", high_risk)
+    
+    st.divider()
+    
+    # Фильтры и список
+    col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
-        limit = st.number_input("Показывать последних", min_value=5, max_value=200, value=20, step=5)
+        limit = st.number_input("Показывать", min_value=5, max_value=200, value=20, step=5)
     with col2:
-        refresh = st.button("Обновить историю", type="secondary")
+        risk_filter = st.selectbox("Фильтр по риску", options=["Все", "low", "medium", "high", "critical"])
+    with col3:
+        refresh = st.button("Обновить историю", type="primary")
 
     if refresh or "reports_cache" not in st.session_state:
+        params = {"limit": int(limit), "offset": 0}
+        if risk_filter != "Все":
+            params["risk_level"] = risk_filter
         with st.spinner("Загружаю список отчётов..."):
-            payload = api.get("/reports", params={"limit": int(limit), "offset": 0})
+            payload = api.get("/reports", params=params)
         if payload is not None:
             st.session_state["reports_cache"] = payload
 
@@ -153,24 +181,32 @@ def render(api: ApiClient) -> None:
         st.info("Отчётов пока нет (или Tarantool в fallback режиме).")
         return
 
-    options = []
-    by_id: Dict[str, Dict[str, Any]] = {}
+    # Таблица отчётов
+    st.markdown("**Список отчётов**")
+    table_data = []
     for r in reports:
-        rid = r.get("report_id", "")
-        by_id[rid] = r
-        title = f"{_format_ts(r.get('created_at'))} — {r.get('client_name','')} ({r.get('inn','')}) — {r.get('risk_level','')}/{r.get('risk_score',0)} — {rid[:8]}"
-        options.append((title, rid))
-
-    sel = st.selectbox(
-        "Открыть отчёт",
-        options=options,
-        format_func=lambda x: x[0],
+        table_data.append({
+            "Дата": _format_ts(r.get("created_at")),
+            "Компания": r.get("client_name", "")[:30],
+            "ИНН": r.get("inn", ""),
+            "Риск": r.get("risk_level", ""),
+            "Баллы": r.get("risk_score", 0),
+            "ID": r.get("report_id", "")[:8],
+        })
+    
+    # Выбор отчёта через клик на строку (эмуляция через radio)
+    selected_idx = st.radio(
+        "Выберите отчёт",
+        options=range(len(table_data)),
+        format_func=lambda i: f"{table_data[i]['Дата']} — {table_data[i]['Компания']} ({table_data[i]['ИНН']}) — {table_data[i]['Риск']}/{table_data[i]['Баллы']} — {table_data[i]['ID']}",
+        label_visibility="collapsed"
     )
-    selected_report_id = sel[1]
+    
+    selected_report_id = reports[selected_idx].get("report_id", "")
 
     col_open, col_export_json, col_export_csv = st.columns([1, 1, 1])
     with col_open:
-        open_btn = st.button("Открыть", type="primary")
+        open_btn = st.button("Открыть детали", type="primary")
     with col_export_json:
         st.link_button("Экспорт JSON", api.url(f"/reports/{selected_report_id}/export?format=json"))
     with col_export_csv:
@@ -185,27 +221,50 @@ def render(api: ApiClient) -> None:
     opened = st.session_state.get("opened_report")
     if isinstance(opened, dict) and opened.get("report_id") == selected_report_id:
         st.divider()
-        st.subheader("Отчёт")
+        st.subheader("📄 Детали отчёта")
 
         ra = (opened.get("report_data") or {}).get("risk_assessment") or {}
-        m1, m2, m3 = st.columns(3)
+        m1, m2, m3, m4 = st.columns(4)
         with m1:
-            st.metric("risk_level", opened.get("risk_level", ra.get("level", "unknown")))
+            risk_level = opened.get("risk_level", ra.get("level", "unknown"))
+            risk_colors = {"low": "🟢", "medium": "🟡", "high": "🟠", "critical": "🔴"}
+            st.metric("Уровень риска", f"{risk_colors.get(risk_level, '')} {risk_level.upper()}")
         with m2:
-            st.metric("risk_score", opened.get("risk_score", ra.get("score", 0)))
+            st.metric("Риск-скор", f"{opened.get('risk_score', ra.get('score', 0))}/100")
         with m3:
-            st.metric("created_at", _format_ts(opened.get("created_at")))
+            st.metric("Компания", opened.get("client_name", ""))
+        with m4:
+            st.metric("Дата", _format_ts(opened.get("created_at")))
 
-        with st.expander("Кратко"):
-            report_data = opened.get("report_data") or {}
-            summary = report_data.get("summary") or ""
-            if summary:
-                st.markdown(summary)
-            factors = (report_data.get("risk_assessment") or {}).get("factors") or []
-            if factors:
-                st.markdown("**Факторы риска:**")
-                for f in factors[:15]:
-                    st.write(f"- {f}")
+        # Основная информация
+        col_main, col_side = st.columns([2, 1])
+        
+        with col_main:
+            with st.expander("📋 Краткое резюме", expanded=True):
+                report_data = opened.get("report_data") or {}
+                summary = report_data.get("summary") or ""
+                if summary:
+                    st.markdown(summary)
+                else:
+                    st.info("Резюме недоступно")
+        
+        with col_side:
+            with st.expander("📊 Метаданные", expanded=True):
+                metadata = (opened.get("report_data") or {}).get("metadata") or {}
+                if metadata:
+                    st.json(metadata)
+                else:
+                    st.write(f"**ИНН:** {opened.get('inn', 'N/A')}")
+                    st.write(f"**ID:** {opened.get('report_id', '')[:16]}")
+
+        # Факторы риска
+        factors = (report_data.get("risk_assessment") or {}).get("factors") or []
+        if factors:
+            with st.expander("⚠️ Факторы риска", expanded=True):
+                for i, f in enumerate(factors[:15], 1):
+                    st.markdown(f"{i}. {f}")
+                if len(factors) > 15:
+                    st.caption(f"... и ещё {len(factors) - 15} факторов")
 
         pdf_col1, pdf_col2 = st.columns([1, 3])
         with pdf_col1:
