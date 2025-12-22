@@ -1,93 +1,59 @@
 """
-LLM initialization module.
-Provides both sync LangChain-compatible LLM and async OpenRouter client.
+Единая точка инициализации LLM для приложения.
+
+Раньше в `llm_init.py` была отдельная (sync) реализация вызова OpenRouter через httpx,
+а в `llm_manager.py` — полноценный менеджер с fallback на HuggingFace/GigaChat.
+
+Это дублировало конфигурацию и ухудшало производительность (создавался новый httpx.Client
+на каждый запрос, без keep-alive и без общего контроля).
+
+Теперь `llm_init.py` — тонкий адаптер под LangChain, который делегирует всю логику
+выбора провайдера и fallback в `LLMManager`.
 """
 
-from typing import Any, Dict, List, Optional
+from __future__ import annotations
 
-from langchain_core.language_models.llms import LLM
+from typing import Any, List, Optional
+
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+from langchain_core.language_models.llms import LLM
 
-from app.services.openrouter_client import OpenRouterClient, get_openrouter_client
+from app.agents.llm_manager import _run_coroutine_sync, get_llm_manager
 
 
-class OpenRouterLLM(LLM):
+class ManagerBackedLLM(LLM):
     """
-    LangChain-compatible LLM wrapper for OpenRouter API.
-    Uses synchronous httpx calls for compatibility with LangChain.
+    LangChain-compatible LLM, который использует `LLMManager`.
+
+    Примечание по `stop`: в текущей реализации `LLMManager` не поддерживает stop-токены
+    как отдельный параметр, поэтому здесь они игнорируются (fallback/маршрутизация
+    не ломаются, а для большинства сценариев stop не критичен).
     """
-
-    model: str = "anthropic/claude-3.5-sonnet"
-    temperature: float = 0.1
-    max_tokens: int = 4096
-    api_key: Optional[str] = None
-
-    def __init__(self, **data: Any):
-        super().__init__(**data)
-        from app.settings import settings
-        if not self.api_key:
-            self.api_key = settings.openrouter_api_key
-        if self.model == "anthropic/claude-3.5-sonnet" and settings.openrouter_model:
-            self.model = settings.openrouter_model
 
     @property
     def _llm_type(self) -> str:
-        return "openrouter"
+        return "llm_manager"
 
     def _call(
         self,
         prompt: str,
         stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        _run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> str:
-        """Synchronous call to OpenRouter API."""
-        import httpx
-        import os
+        return _run_coroutine_sync(get_llm_manager().ainvoke(prompt, **kwargs))
 
-        api_key = self.api_key or os.getenv("OPENROUTER_API_KEY")
-
-        if not api_key:
-            raise ValueError("OpenRouter API key not configured. Set OPENROUTER_API_KEY environment variable.")
-
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://replit.com",
-            "X-Title": "Client Analysis Agent",
-        }
-
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-        }
-
-        if stop:
-            payload["stop"] = stop
-
-        try:
-            with httpx.Client(timeout=120.0) as client:
-                response = client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    return content
-                else:
-                    raise ValueError(f"OpenRouter API returned {response.status_code}: {response.text}")
-
-        except httpx.TimeoutException as e:
-            raise ValueError(f"OpenRouter request timeout: {e}")
-        except Exception as e:
-            raise ValueError(f"OpenRouter request failed: {e}")
+    async def _acall(
+        self,
+        prompt: str,
+        stop: Optional[List[str]] = None,
+        _run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> str:
+        return await get_llm_manager().ainvoke(prompt, **kwargs)
 
 
-llm = OpenRouterLLM()
+# Экспортируем единый экземпляр, как и раньше (для обратной совместимости).
+llm = ManagerBackedLLM()
 
-openrouter_client = get_openrouter_client()
+__all__ = ["llm", "ManagerBackedLLM"]

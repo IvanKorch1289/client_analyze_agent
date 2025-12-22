@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -14,9 +15,16 @@ from tenacity import (
     wait_exponential,
 )
 
-from app.advanced_funcs.logging_client import logger
+from app.utility.logging_client import logger
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+def _bool_env(name: str, default: bool = False) -> bool:
+    """Простой парсер bool из переменных окружения."""
+    val = (os.getenv(name) or "").strip().lower()
+    if not val:
+        return default
+    return val in ("1", "true", "yes", "y", "on")
 
 
 class CircuitState(Enum):
@@ -199,50 +207,65 @@ class CircuitBreakerOpenError(Exception):
 
 class AsyncHttpClient:
     _instance: Optional["AsyncHttpClient"] = None
-    _lock: asyncio.Lock = asyncio.Lock()
+    _lock: Optional[asyncio.Lock] = None
+    _initialized: bool = False
 
-    def __new__(cls) -> "AsyncHttpClient":
-        return super().__new__(cls)
+    def __new__(cls):
+        # Блокируем прямое создание экземпляров
+        raise RuntimeError(
+            f"Нельзя создавать экземпляр {cls.__name__} напрямую. "
+            f"Используйте {cls.__name__}.get_instance()"
+        )
 
     @classmethod
     async def get_instance(cls) -> "AsyncHttpClient":
-        if cls._instance is None:
-            async with cls._lock:
-                if cls._instance is None:
-                    instance = super().__new__(cls)
-                    instance.__init_once()
-                    await instance._initialize()
-                    cls._instance = instance
+        """
+        Thread-safe singleton pattern с async/await.
+        
+        Returns:
+            AsyncHttpClient: Единственный экземпляр клиента
+        """
+        # Быстрая проверка без блокировки
+        if cls._instance is not None and cls._initialized:
+            return cls._instance
+        
+        # Создаем lock если еще нет
+        if cls._lock is None:
+            cls._lock = asyncio.Lock()
+        
+        # Двойная проверка с блокировкой
+        async with cls._lock:
+            if cls._instance is None:
+                # Создаем instance напрямую через object.__new__
+                instance = object.__new__(cls)
+                instance.__init_once()
+                await instance._initialize()
+                
+                # Атомарно устанавливаем instance и флаг
+                cls._initialized = True
+                cls._instance = instance
+                
         return cls._instance
 
     def __init__(self):
+        # Этот метод никогда не должен вызываться
         raise RuntimeError(
-            f"Нельзя создавать экземпляр {self.__class__.__name__} напрямую. "
-            f"Используйте {self.__class__.__name__}.get_instance()"
+            f"Используйте {self.__class__.__name__}.get_instance() вместо __init__()"
         )
 
     def __init_once(self):
+        """Инициализация атрибутов экземпляра (вызывается один раз)."""
         self._client: Optional[httpx.AsyncClient] = None
-        self._initialized: bool = False
+        self._client_initialized: bool = False
         self._circuit_breakers: Dict[str, CircuitBreaker] = {}
         self._metrics: Dict[str, RequestMetrics] = {}
         self._default_timeout = TimeoutConfig()
         self._default_retry = RetryConfig()
+        # Важно для производительности: подробные httpx-логи (таблицы rich + body)
+        # очень дорогие под нагрузкой. По умолчанию выключаем и включаем только
+        # в debug режиме или явной переменной окружения.
+        self._http_trace_enabled: bool = _bool_env("HTTP_TRACE_ENABLED", default=False)
         self._service_configs: Dict[str, Dict[str, Any]] = {
-            "tavily": {
-                "timeout": TimeoutConfig(connect=5.0, read=60.0, write=10.0, pool=5.0),
-                "retry": RetryConfig(max_attempts=3, min_wait=1.0, max_wait=15.0),
-                "circuit_breaker": CircuitBreakerConfig(
-                    failure_threshold=5, success_threshold=2, timeout=60.0
-                ),
-            },
-            "perplexity": {
-                "timeout": TimeoutConfig(connect=5.0, read=90.0, write=10.0, pool=5.0),
-                "retry": RetryConfig(max_attempts=3, min_wait=1.0, max_wait=20.0),
-                "circuit_breaker": CircuitBreakerConfig(
-                    failure_threshold=5, success_threshold=2, timeout=60.0
-                ),
-            },
             "dadata": {
                 "timeout": TimeoutConfig(connect=5.0, read=30.0, write=10.0, pool=5.0),
                 "retry": RetryConfig(max_attempts=2, min_wait=0.5, max_wait=5.0),
@@ -264,10 +287,19 @@ class AsyncHttpClient:
                     failure_threshold=3, success_threshold=1, timeout=30.0
                 ),
             },
+            # LLM gateway (OpenRouter)
+            "openrouter": {
+                "timeout": TimeoutConfig(connect=5.0, read=60.0, write=10.0, pool=5.0),
+                "retry": RetryConfig(max_attempts=2, min_wait=0.5, max_wait=5.0),
+                "circuit_breaker": CircuitBreakerConfig(
+                    failure_threshold=3, success_threshold=1, timeout=30.0
+                ),
+            },
         }
 
     async def _initialize(self):
-        if self._initialized:
+        """Инициализация HTTP клиента (вызывается один раз)."""
+        if self._client_initialized:
             return
 
         transport = httpx.AsyncHTTPTransport(retries=0)
@@ -284,16 +316,18 @@ class AsyncHttpClient:
             },
             transport=transport,
         )
-        self._initialized = True
+        self._client_initialized = True
 
     async def _on_request(self, request: httpx.Request):
         request.extensions["start_time"] = asyncio.get_event_loop().time()
-        logger.log_request(request)
+        if self._http_trace_enabled:
+            logger.log_request(request)
 
     async def _on_response(self, response: httpx.Response):
         start_time = response.request.extensions.get("start_time", None)
         duration = asyncio.get_event_loop().time() - start_time if start_time else 0.0
-        logger.log_response(response, duration=duration)
+        if self._http_trace_enabled:
+            logger.log_response(response, duration=duration)
 
     def _get_circuit_breaker(self, service: str) -> CircuitBreaker:
         if service not in self._circuit_breakers:
@@ -310,16 +344,14 @@ class AsyncHttpClient:
 
     def _detect_service(self, url: str) -> str:
         url_lower = url.lower()
-        if "tavily" in url_lower:
-            return "tavily"
-        elif "perplexity" in url_lower:
-            return "perplexity"
-        elif "dadata" in url_lower:
+        if "dadata" in url_lower:
             return "dadata"
         elif "i-sphere" in url_lower or "infosphere" in url_lower:
             return "infosphere"
         elif "casebook" in url_lower:
             return "casebook"
+        elif "openrouter" in url_lower:
+            return "openrouter"
         return "default"
 
     async def request_with_resilience(
@@ -575,13 +607,17 @@ class AsyncHttpClient:
             self._metrics.clear()
 
     async def aclose(self):
+        """Закрытие HTTP клиента."""
         if self._client:
             await self._client.aclose()
             self._client = None
-        self._initialized = False
+        self._client_initialized = False
 
     @classmethod
     async def close_global(cls):
+        """Закрытие глобального экземпляра клиента."""
         if cls._instance is not None:
             await cls._instance.aclose()
-            cls._instance = None
+            async with cls._lock:
+                cls._instance = None
+                cls._initialized = False

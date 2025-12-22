@@ -1,26 +1,34 @@
+import asyncio
 import hashlib
-import os
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+import time
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
-from app.advanced_funcs.logging_client import logger
-from app.services.http_client import (
-    AsyncHttpClient,
-    CircuitBreakerOpenError,
-)
+from app.config import settings
+from app.utility.logging_client import logger
 
 
 class PerplexityClient:
-    BASE_URL = "https://api.perplexity.ai/chat/completions"
-    DEFAULT_MODEL = "sonar"
+    """
+    Perplexity client via LangChain (OpenAI-compatible).
+
+    Важное требование: реальный вызов Perplexity выполняется через LangChain,
+    без "прямого httpx" в рабочем коде.
+    """
+
+    DEFAULT_MODEL = "sonar-pro"
+    BASE_URL = "https://api.perplexity.ai"
 
     _instance: Optional["PerplexityClient"] = None
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
-        self.api_key = api_key or os.getenv("PERPLEXITY_API_KEY")
-        self.model = model or os.getenv("PERPLEXITY_MODEL", self.DEFAULT_MODEL)
-        self._http_client: Optional[AsyncHttpClient] = None
+        self.api_key = api_key or settings.perplexity.api_key
+        self.model = model or settings.perplexity.model or self.DEFAULT_MODEL
+        # L1 кэш в памяти процесса (быстрый, но не разделяется между инстансами)
         self._cache: Dict[str, Dict[str, Any]] = {}
-        self._cache_ttl = 300
+        self._cache_ttl_s = settings.perplexity.cache_ttl or 300
+        # Коалесинг: если несколько корутин запросили один и тот же cache_key одновременно,
+        # выполняем внешний вызов один раз, остальные ожидают результат.
+        self._inflight: Dict[str, asyncio.Future] = {}
 
     @classmethod
     def get_instance(cls) -> "PerplexityClient":
@@ -28,18 +36,57 @@ class PerplexityClient:
             cls._instance = cls()
         return cls._instance
 
-    async def _get_http_client(self) -> AsyncHttpClient:
-        if self._http_client is None:
-            self._http_client = await AsyncHttpClient.get_instance()
-        return self._http_client
-
     def is_configured(self) -> bool:
         return bool(self.api_key)
 
-    def _get_cache_key(self, messages: List[Dict[str, str]], model: str) -> str:
-        messages_str = str(messages)
-        key_str = f"{messages_str}:{model}"
-        return f"perplexity:{hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()}"
+    def _get_cache_key(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        temperature: float,
+        max_tokens: Optional[int],
+        search_recency_filter: str,
+    ) -> str:
+        key_str = f"{messages}:{model}:{temperature}:{max_tokens}:{search_recency_filter}"
+        return (
+            f"perplexity:{hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()}"
+        )
+
+    def _cache_get(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        cached = self._cache.get(cache_key)
+        if not cached:
+            return None
+        created_at = cached.get("_created_at", 0.0)
+        if created_at and (time.time() - float(created_at)) > self._cache_ttl_s:
+            self._cache.pop(cache_key, None)
+            return None
+        return cached
+
+    def _cache_set(self, cache_key: str, value: Dict[str, Any]) -> None:
+        self._cache[cache_key] = {**value, "_created_at": time.time()}
+
+    @staticmethod
+    def _to_lc_messages(messages: List[Dict[str, str]]) -> Tuple[list, list]:
+        errors = []
+        lc_messages = []
+
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+        for msg in messages:
+            if not isinstance(msg, dict):
+                errors.append(f"invalid_message:{type(msg).__name__}")
+                continue
+            role = (msg.get("role") or "").strip()
+            content = msg.get("content", "")
+            if role == "system":
+                lc_messages.append(SystemMessage(content=content))
+            elif role == "user":
+                lc_messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                lc_messages.append(AIMessage(content=content))
+            else:
+                errors.append(f"unsupported_role:{role or 'missing'}")
+        return lc_messages, errors
 
     async def chat(
         self,
@@ -52,94 +99,129 @@ class PerplexityClient:
     ) -> Dict[str, Any]:
         if not self.api_key:
             logger.error("Perplexity API key not configured", component="perplexity")
-            return {"error": "Perplexity API key not configured", "success": False}
+            return {"success": False, "error": "Perplexity API key not configured"}
 
         use_model = model or self.model
 
-        cache_key = self._get_cache_key(messages, use_model)
-        if use_cache and cache_key in self._cache:
-            cached = self._cache[cache_key]
-            logger.info("Perplexity cache hit", component="perplexity")
-            return cached
+        cache_key = self._get_cache_key(
+            messages=messages,
+            model=use_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            search_recency_filter=search_recency_filter,
+        )
+        if use_cache:
+            # 1) L1 кэш (in-memory)
+            cached = self._cache_get(cache_key)
+            if cached:
+                logger.info("Perplexity cache hit", component="perplexity")
+                return cached
 
-        http_client = await self._get_http_client()
+            # 2) L2 кэш (Tarantool) — разделяемый между воркерами/процессами (если доступен)
+            if settings.perplexity.cache_enabled:
+                try:
+                    from app.storage.tarantool import TarantoolClient
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+                    t = await TarantoolClient.get_instance()
+                    repo = t.get_cache_repository()
+                    l2 = await repo.get(cache_key)
+                    if l2:
+                        # L2 может хранить уже "cached": True — оставляем как есть
+                        self._cache_set(cache_key, l2)
+                        logger.info("Perplexity L2 cache hit (Tarantool)", component="perplexity")
+                        return l2
+                except Exception:
+                    # кэш недоступен — продолжаем без L2
+                    pass
 
-        payload = {
-            "model": use_model,
-            "messages": messages,
-            "temperature": temperature,
-            "top_p": 0.9,
-            "return_images": False,
-            "return_related_questions": False,
-            "search_recency_filter": search_recency_filter,
-            "stream": False,
-            "presence_penalty": 0,
-            "frequency_penalty": 1,
-        }
-
-        if max_tokens:
-            payload["max_tokens"] = max_tokens
+            # 3) Коалесинг на уровне процесса
+            inflight = self._inflight.get(cache_key)
+            if inflight is not None:
+                return await inflight
 
         try:
-            response = await http_client.request_with_resilience(
-                method="POST",
-                url=self.BASE_URL,
-                service="perplexity",
-                headers=headers,
-                json=payload,
-            )
-            result = response.json()
+            if use_cache:
+                loop = asyncio.get_event_loop()
+                fut: asyncio.Future = loop.create_future()
+                self._inflight[cache_key] = fut
 
-            logger.info(
-                f"Perplexity response received, model: {use_model}",
-                component="perplexity",
+            from langchain_openai import ChatOpenAI
+
+            lc_messages, conversion_errors = self._to_lc_messages(messages)
+            if conversion_errors:
+                logger.warning(
+                    f"Perplexity message conversion issues: {conversion_errors}",
+                    component="perplexity",
+                )
+
+            # Perplexity API через OpenAI-compatible endpoint
+            # Параметр search_recency_filter не поддерживается в текущей версии API
+            # Используем базовый вызов без фильтра актуальности
+            llm = ChatOpenAI(
+                api_key=self.api_key,
+                model=use_model,
+                base_url=self.BASE_URL,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                # model_kwargs={"search_recency_filter": search_recency_filter},  # Временно отключено
             )
+
+            msg = await llm.ainvoke(lc_messages)
+            content = getattr(msg, "content", "") or ""
+
+            citations: List[str] = []
+            additional = getattr(msg, "additional_kwargs", None) or {}
+            if isinstance(additional, dict):
+                citations = additional.get("citations", []) or []
+
+            response_metadata = getattr(msg, "response_metadata", None) or {}
+            if not citations and isinstance(response_metadata, dict):
+                citations = response_metadata.get("citations", []) or []
 
             response_data = {
                 "success": True,
-                "content": result.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", ""),
-                "citations": result.get("citations", []),
-                "model": result.get("model"),
-                "usage": result.get("usage", {}),
-                "raw_response": result,
+                "content": content,
+                "citations": citations,
+                "model": use_model,
+                "raw_response": {"content": content},
                 "cached": False,
+                "integration": "langchain-openai",
             }
 
             if use_cache:
-                self._cache[cache_key] = {**response_data, "cached": True}
+                self._cache_set(cache_key, {**response_data, "cached": True})
+                # L2 запись в Tarantool (best-effort)
+                if settings.perplexity.cache_enabled:
+                    try:
+                        from app.storage.tarantool import TarantoolClient
+
+                        t = await TarantoolClient.get_instance()
+                        repo = t.get_cache_repository()
+                        await repo.set_with_ttl(
+                            cache_key,
+                            {**response_data, "cached": True},
+                            ttl=self._cache_ttl_s,
+                            source="perplexity",
+                        )
+                    except Exception:
+                        pass
+
+                # Завершаем inflight
+                inflight = self._inflight.pop(cache_key, None)
+                if inflight is not None and not inflight.done():
+                    inflight.set_result({**response_data, "cached": True})
 
             return response_data
 
-        except CircuitBreakerOpenError:
-            logger.warning(
-                "Perplexity circuit breaker is open, service temporarily unavailable",
+        except Exception as e:
+            error_msg = str(e) or type(e).__name__
+            logger.error(
+                f"Perplexity LangChain request failed: {type(e).__name__}: {error_msg}",
                 component="perplexity",
             )
-            return {
-                "success": False,
-                "error": "Perplexity service temporarily unavailable (circuit breaker open)",
-                "circuit_breaker": True,
-            }
-
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(
-                f"Perplexity request failed: {error_msg}", component="perplexity"
-            )
-
-            if "status_code" in error_msg:
-                if "401" in error_msg or "403" in error_msg:
-                    return {"success": False, "error": "Invalid Perplexity API key"}
-                elif "429" in error_msg:
-                    return {"success": False, "error": "Perplexity rate limit exceeded"}
-
+            inflight = self._inflight.pop(cache_key, None) if use_cache else None
+            if inflight is not None and not inflight.done():
+                inflight.set_result({"success": False, "error": error_msg})
             return {"success": False, "error": error_msg}
 
     async def ask(
@@ -155,6 +237,10 @@ class PerplexityClient:
         ]
         return await self.chat(messages, use_cache=use_cache, **kwargs)
 
+    async def ask_langchain(self, *args, **kwargs) -> Dict[str, Any]:
+        """Back-compat alias: теперь Perplexity работает только через LangChain."""
+        return await self.ask(*args, **kwargs)
+
     async def ask_with_fallback(
         self,
         question: str,
@@ -162,36 +248,78 @@ class PerplexityClient:
         **kwargs,
     ) -> Dict[str, Any]:
         result = await self.ask(question, **kwargs)
-
         if not result.get("success") and fallback_handler:
-            logger.info(
-                f"Perplexity ask failed, trying fallback for: {question[:50]}",
-                component="perplexity",
-            )
             return await fallback_handler(question, **kwargs)
-
         return result
 
-    def clear_cache(self):
+    async def healthcheck(self, timeout_s: float = 8.0) -> Dict[str, Any]:
+        """
+        Реальная проверка доступности сервиса: тестовый запрос и проверка результата.
+        """
+        if not self.is_configured():
+            return {
+                "configured": False,
+                "available": False,
+                "status": "not_configured",
+                "error": "Perplexity API key not configured",
+            }
+
+        t0 = time.perf_counter()
+        try:
+            result = await asyncio.wait_for(
+                self.ask(
+                    question="Ответь строго одним словом: OK",
+                    system_prompt="Ты тест доступности. Отвечай строго 'OK'.",
+                    temperature=0,
+                    max_tokens=8,
+                    use_cache=False,
+                ),
+                timeout=timeout_s,
+            )
+            latency_ms = (time.perf_counter() - t0) * 1000
+            ok = bool(result.get("success")) and "OK" in (result.get("content") or "")
+            return {
+                "configured": True,
+                "available": ok,
+                "status": "ready" if ok else "error",
+                "latency_ms": round(latency_ms, 2),
+                "model": result.get("model", self.model),
+                "error": None if ok else (result.get("error") or "Unexpected response"),
+                "integration": result.get("integration", "langchain-openai"),
+            }
+        except Exception as e:
+            latency_ms = (time.perf_counter() - t0) * 1000
+            return {
+                "configured": True,
+                "available": False,
+                "status": "error",
+                "latency_ms": round(latency_ms, 2),
+                "model": self.model,
+                "error": str(e) or type(e).__name__,
+                "integration": "langchain-openai",
+            }
+
+    def clear_cache(self) -> None:
+        """
+        Очистка L1 кэша процесса.
+
+        Примечание: L2 кэш в Tarantool очищается через админ-эндпоинт `/utility/cache/prefix/perplexity:`.
+        """
         self._cache.clear()
-        logger.info("Perplexity cache cleared", component="perplexity")
+        logger.info("Perplexity cache cleared (L1)", component="perplexity")
 
     def get_cache_stats(self) -> Dict[str, int]:
-        return {
-            "cache_size": len(self._cache),
-            "cache_ttl": self._cache_ttl,
-        }
+        return {"cache_size": len(self._cache), "cache_ttl": self._cache_ttl_s}
 
     async def get_status(self) -> Dict[str, Any]:
-        http_client = await self._get_http_client()
-        circuit_status = http_client.get_circuit_breaker_status("perplexity")
-        metrics = http_client.get_metrics("perplexity")
-
+        # Status != healthcheck; does not call external service.
         return {
             "configured": self.is_configured(),
+            # Additive: normalize to the same minimal shape as other clients.
+            "available": self.is_configured(),
             "model": self.model,
-            "circuit_breaker": circuit_status,
-            "metrics": metrics,
+            "status": "ready" if self.is_configured() else "not_configured",
+            "integration": "langchain-openai",
             "cache_stats": self.get_cache_stats(),
         }
 

@@ -1,24 +1,26 @@
+import asyncio
 import hashlib
 import os
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional
 
-from app.advanced_funcs.logging_client import logger
-from app.services.http_client import (
-    AsyncHttpClient,
-    CircuitBreakerOpenError,
-)
+from langchain_community.tools.tavily_search import TavilySearchResults
+
+from app.config import settings
+from app.utility.logging_client import logger
 
 
 class TavilyClient:
-    BASE_URL = "https://api.tavily.com"
-
     _instance: Optional["TavilyClient"] = None
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("TAVILY_TOKEN")
-        self._http_client: Optional[AsyncHttpClient] = None
+        self.api_key = api_key or settings.tavily.api_key or os.getenv("TAVILY_API_KEY") or os.getenv("TAVILY_TOKEN")
+        if self.api_key:
+            os.environ["TAVILY_API_KEY"] = self.api_key
+        # L1 кэш в памяти процесса (быстрый, но не разделяется между воркерами)
         self._cache: Dict[str, Dict[str, Any]] = {}
-        self._cache_ttl = 300
+        self._cache_ttl = settings.tavily.cache_ttl or 300
+        # Коалесинг (аналогично Perplexity): один внешний вызов на cache_key
+        self._inflight: Dict[str, asyncio.Future] = {}
 
     @classmethod
     def get_instance(cls) -> "TavilyClient":
@@ -26,10 +28,17 @@ class TavilyClient:
             cls._instance = cls()
         return cls._instance
 
-    async def _get_http_client(self) -> AsyncHttpClient:
-        if self._http_client is None:
-            self._http_client = await AsyncHttpClient.get_instance()
-        return self._http_client
+    def _get_tool(
+        self,
+        max_results: int = 5,
+        include_answer: bool = True,
+        include_raw_content: bool = False,
+    ) -> TavilySearchResults:
+        return TavilySearchResults(
+            max_results=max_results,
+            include_answer=include_answer,
+            include_raw_content=include_raw_content,
+        )
 
     def is_configured(self) -> bool:
         return bool(self.api_key)
@@ -61,7 +70,7 @@ class TavilyClient:
     async def search(
         self,
         query: str,
-        search_depth: str = "basic",
+        search_depth: Literal["basic", "advanced", "fast", "ultra-fast"] = "basic",
         max_results: int = 5,
         include_answer: bool = True,
         include_raw_content: bool = False,
@@ -82,77 +91,150 @@ class TavilyClient:
             include_domains,
             exclude_domains,
         )
-        if use_cache and cache_key in self._cache:
-            cached = self._cache[cache_key]
-            logger.info(f"Tavily cache hit for query: {query[:50]}", component="tavily")
-            return cached
+        if use_cache:
+            # 1) L1 cache
+            if cache_key in self._cache:
+                cached = self._cache[cache_key]
+                logger.info(f"Tavily cache hit (L1) for query: {query[:50]}", component="tavily")
+                return cached
 
-        http_client = await self._get_http_client()
+            # 2) L2 cache (Tarantool)
+            if settings.tavily.cache_enabled:
+                try:
+                    from app.storage.tarantool import TarantoolClient
 
-        payload = {
-            "api_key": self.api_key,
-            "query": query,
-            "search_depth": search_depth,
-            "max_results": min(max_results, 10),
-            "include_answer": include_answer,
-            "include_raw_content": include_raw_content,
-        }
+                    t = await TarantoolClient.get_instance()
+                    repo = t.get_cache_repository()
+                    l2 = await repo.get(cache_key)
+                    if l2:
+                        self._cache[cache_key] = l2
+                        logger.info(f"Tavily cache hit (L2/Tarantool) for query: {query[:50]}", component="tavily")
+                        return l2
+                except Exception:
+                    pass
 
-        if include_domains:
-            payload["include_domains"] = include_domains
-        if exclude_domains:
-            payload["exclude_domains"] = exclude_domains
+            # 3) Coalescing
+            inflight = self._inflight.get(cache_key)
+            if inflight is not None:
+                return await inflight
 
         try:
-            response = await http_client.request_with_resilience(
-                method="POST",
-                url=f"{self.BASE_URL}/search",
-                service="tavily",
-                json=payload,
+            if use_cache:
+                loop = asyncio.get_event_loop()
+                fut: asyncio.Future = loop.create_future()
+                self._inflight[cache_key] = fut
+
+            tool = self._get_tool(
+                max_results=max_results,
+                include_answer=include_answer,
+                include_raw_content=include_raw_content,
             )
-            result = response.json()
+
+            loop = asyncio.get_event_loop()
+            payload: Dict[str, Any] = {"query": query}
+            if include_domains:
+                payload["include_domains"] = include_domains
+            if exclude_domains:
+                payload["exclude_domains"] = exclude_domains
+
+            # `search_depth` is not guaranteed to be supported by all LangChain wrappers,
+            # but if supported, it's safe to pass through.
+            if search_depth:
+                payload["search_depth"] = search_depth
+
+            results = await loop.run_in_executor(None, tool.invoke, payload)
+
+            answer = ""
+            if isinstance(results, str):
+                import json
+                try:
+                    results = json.loads(results)
+                except json.JSONDecodeError:
+                    results = [{"content": results, "url": ""}]
+
+            # LangChain tool output can be either:
+            # - list[dict] (results only)
+            # - dict {"answer": str, "results": list[dict], ...}
+            if isinstance(results, dict):
+                answer = results.get("answer", "") or ""
+                results = results.get("results", []) or []
+
+            formatted_results = []
+            if isinstance(results, list):
+                for item in results:
+                    if isinstance(item, dict):
+                        content = item.get("content", "")
+                        formatted_results.append({
+                            "title": item.get("title", ""),
+                            "url": item.get("url", ""),
+                            "content": content,
+                            "snippet": content[:500] if content else "",
+                            "score": item.get("score", 0),
+                        })
+                    else:
+                        formatted_results.append({"content": str(item), "url": "", "snippet": str(item)[:500]})
 
             logger.info(
-                f"Tavily search completed: {len(result.get('results', []))} results",
+                f"Tavily LangChain search completed: {len(formatted_results)} results",
                 component="tavily",
             )
 
             response_data = {
                 "success": True,
-                "answer": result.get("answer", ""),
-                "results": result.get("results", []),
+                "answer": answer,
+                "results": formatted_results,
                 "query": query,
-                "response_time": result.get("response_time", 0),
+                "response_time": 0,
                 "cached": False,
+                "integration": "langchain-community",
             }
 
             if use_cache:
                 self._cache[cache_key] = {**response_data, "cached": True}
+                # L2 запись в Tarantool (best-effort)
+                if settings.tavily.cache_enabled:
+                    try:
+                        from app.storage.tarantool import TarantoolClient
+
+                        t = await TarantoolClient.get_instance()
+                        repo = t.get_cache_repository()
+                        await repo.set_with_ttl(
+                            cache_key,
+                            {**response_data, "cached": True},
+                            ttl=self._cache_ttl,
+                            source="tavily",
+                        )
+                    except Exception:
+                        pass
+
+                inflight = self._inflight.pop(cache_key, None)
+                if inflight is not None and not inflight.done():
+                    inflight.set_result({**response_data, "cached": True})
 
             return response_data
 
-        except CircuitBreakerOpenError:
-            logger.warning(
-                "Tavily circuit breaker is open, service temporarily unavailable",
+        except Exception as e:
+            error_msg = str(e) or type(e).__name__
+            logger.error(
+                f"Tavily LangChain request failed: {type(e).__name__}: {error_msg}",
                 component="tavily",
             )
-            return {
-                "success": False,
-                "error": "Tavily service temporarily unavailable (circuit breaker open)",
-                "circuit_breaker": True,
-            }
-
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Tavily request failed: {error_msg}", component="tavily")
-
-            if "status_code" in error_msg:
-                if "401" in error_msg or "403" in error_msg:
-                    return {"success": False, "error": "Invalid Tavily API key"}
-                elif "429" in error_msg:
-                    return {"success": False, "error": "Tavily rate limit exceeded"}
-
-            return {"success": False, "error": error_msg}
+            inflight = self._inflight.pop(cache_key, None) if use_cache else None
+            if inflight is not None and not inflight.done():
+                inflight.set_result({"success": False, "error": error_msg})
+            
+            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                return {
+                    "success": False,
+                    "error": "Tavily request timeout - сервис не ответил вовремя",
+                    "timeout": True,
+                }
+            elif "401" in error_msg or "403" in error_msg or "unauthorized" in error_msg.lower():
+                return {"success": False, "error": "Invalid Tavily API key"}
+            elif "429" in error_msg or "rate limit" in error_msg.lower():
+                return {"success": False, "error": "Tavily rate limit exceeded"}
+            
+            return {"success": False, "error": error_msg or "Неизвестная ошибка"}
 
     async def search_with_fallback(
         self,
@@ -172,8 +254,13 @@ class TavilyClient:
         return result
 
     def clear_cache(self):
+        """
+        Очистка L1 кэша процесса.
+
+        Примечание: L2 кэш в Tarantool очищается через админ-эндпоинт `/utility/cache/prefix/tavily:`.
+        """
         self._cache.clear()
-        logger.info("Tavily cache cleared", component="tavily")
+        logger.info("Tavily cache cleared (L1)", component="tavily")
 
     def get_cache_stats(self) -> Dict[str, int]:
         return {
@@ -182,16 +269,65 @@ class TavilyClient:
         }
 
     async def get_status(self) -> Dict[str, Any]:
-        http_client = await self._get_http_client()
-        circuit_status = http_client.get_circuit_breaker_status("tavily")
-        metrics = http_client.get_metrics("tavily")
-
         return {
             "configured": self.is_configured(),
-            "circuit_breaker": circuit_status,
-            "metrics": metrics,
+            # Additive: normalize to the same minimal shape as other clients.
+            "available": self.is_configured(),
+            "status": "ready" if self.is_configured() else "not_configured",
+            "integration": "langchain-community",
             "cache_stats": self.get_cache_stats(),
         }
+
+    async def healthcheck(self, timeout_s: float = 8.0) -> Dict[str, Any]:
+        """
+        Реальная проверка доступности сервиса (не только конфигурации):
+        выполняет простой поисковый запрос и проверяет, что есть результаты/ответ.
+        """
+        import time
+
+        if not self.is_configured():
+            return {
+                "configured": False,
+                "available": False,
+                "status": "not_configured",
+                "error": "Tavily API key not configured",
+                "integration": "langchain-community",
+            }
+
+        t0 = time.perf_counter()
+        try:
+            result = await asyncio.wait_for(
+                self.search(
+                    query="site:example.com example",
+                    search_depth="basic",
+                    max_results=3,
+                    include_answer=True,
+                    use_cache=False,
+                ),
+                timeout=timeout_s,
+            )
+            latency_ms = (time.perf_counter() - t0) * 1000
+            ok = bool(result.get("success")) and (
+                bool(result.get("answer")) or bool(result.get("results"))
+            )
+            return {
+                "configured": True,
+                "available": ok,
+                "status": "ready" if ok else "error",
+                "latency_ms": round(latency_ms, 2),
+                "error": None if ok else (result.get("error") or "Unexpected response"),
+                "integration": "langchain-community",
+            }
+        except Exception as e:
+            latency_ms = (time.perf_counter() - t0) * 1000
+            return {
+                "configured": True,
+                "available": False,
+                "status": "error",
+                "latency_ms": round(latency_ms, 2),
+                "error": str(e) or type(e).__name__,
+                "integration": "langchain-community",
+            }
 
     @classmethod
     async def close_global(cls):

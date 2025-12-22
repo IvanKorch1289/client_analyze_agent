@@ -1,0 +1,228 @@
+/* 
+ * Улучшенные стили для Системы анализа контрагентов
+ * 
+ * Применяется ко всем страницам через load_css() в components.py
+ */
+
+/* ============================================================================
+ * HIDE STREAMLIT BRANDING
+ * ============================================================================ */
+
+[data-testid="stToolbar"] {
+    display: none !important;
+}
+
+.stDeployButton {
+    display: none !important;
+}
+
+#MainMenu {
+    display: none !important;
+}
+
+footer {
+    display: none !important;
+}
+
+header[data-testid="stHeader"] {
+    background: transparent !important;
+}
+
+/* ============================================================================
+ * SIDEBAR STYLING
+ * ============================================================================ */
+
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%) !important;
+}
+
+section[data-testid="stSidebar"] > div {
+    padding-top: 2rem;
+}
+
+/* Sidebar text colors */
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span {
+    color: #e2e8f0 !important;
+}
+
+/* Sidebar inputs */
+section[data-testid="stSidebar"] input,
+section[data-testid="stSidebar"] textarea {
+    background-color: #0f172a !important;
+    color: #f1f5f9 !important;
+    border: 1px solid #334155 !important;
+    border-radius: 0.5rem !important;
+}
+
+section[data-testid="stSidebar"] input:focus,
+section[data-testid="stSidebar"] textarea:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
+}
+
+/* Sidebar buttons */
+section[data-testid="stSidebar"] .stButton button {
+    background-color: #1e40af !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 0.5rem !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+
+section[data-testid="stSidebar"] .stButton button:hover {
+    background-color: #1d4ed8 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(30, 64, 175, 0.4) !important;
+}
+
+/* ============================================================================
+ * MAIN CONTENT STYLING
+ * ============================================================================ */
+
+/* Page titles */
+h1 {
+    color: #1e293b !important;
+    font-weight: 700 !important;
+    margin-bottom: 1.5rem !important;
+}
+
+/* Buttons */
+.stButton button {
+    border-radius: 0.5rem !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+    border: none !important;
+}
+
+.stButton button[kind="primary"] {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+}
+
+.stButton button[kind="primary"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3) !important;
+}
+
+.stButton button[kind="secondary"] {
+    background-color: #f1f5f9 !important;
+    color: #475569 !important;
+    border: 1px solid #cbd5e1 !important;
+}
+
+.stButton button[kind="secondary"]:hover {
+    background-color: #e2e8f0 !important;
+}
+
+/* Containers */
+.stContainer {
+    border-radius: 0.75rem !important;
+}
+
+/* Expanders */
+.streamlit-expanderHeader {
+    background-color: #f8fafc !important;
+    border-radius: 0.5rem !important;
+    font-weight: 600 !important;
+}
+
+/* Metrics */
+[data-testid="stMetricValue"] {
+    font-size: 2rem !important;
+    font-weight: 700 !important;
+}
+
+/* ============================================================================
+ * STATUS INDICATORS
+ * ============================================================================ */
+
+/* Success messages */
+.stSuccess {
+    background-color: #d1fae5 !important;
+    color: #065f46 !important;
+    border-left: 4px solid #10b981 !important;
+    border-radius: 0.5rem !important;
+}
+
+/* Error messages */
+.stError {
+    background-color: #fee2e2 !important;
+    color: #991b1b !important;
+    border-left: 4px solid #ef4444 !important;
+    border-radius: 0.5rem !important;
+}
+
+/* Warning messages */
+.stWarning {
+    background-color: #fef3c7 !important;
+    color: #92400e !important;
+    border-left: 4px solid #f59e0b !important;
+    border-radius: 0.5rem !important;
+}
+
+/* Info messages */
+.stInfo {
+    background-color: #dbeafe !important;
+    color: #1e40af !important;
+    border-left: 4px solid #3b82f6 !important;
+    border-radius: 0.5rem !important;
+}
+
+/* ============================================================================
+ * RESPONSIVE DESIGN
+ * ============================================================================ */
+
+@media (max-width: 768px) {
+    .stButton button {
+        font-size: 0.875rem !important;
+        padding: 0.5rem 1rem !important;
+    }
+    
+    h1 {
+        font-size: 1.5rem !important;
+    }
+}
+
+/* ============================================================================
+ * ANIMATIONS
+ * ============================================================================ */
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.stContainer {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* ============================================================================
+ * CUSTOM SCROLLBAR
+ * ============================================================================ */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}

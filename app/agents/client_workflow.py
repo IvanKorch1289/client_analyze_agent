@@ -10,12 +10,12 @@ from typing import Any, AsyncGenerator, Dict, List, Literal, Optional, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from app.advanced_funcs.logging_client import logger
 from app.agents.data_collector import data_collector_agent
 from app.agents.file_writer import file_writer_agent
 from app.agents.orchestrator import orchestrator_agent
 from app.agents.report_analyzer import report_analyzer_agent
 from app.storage.tarantool import save_thread_to_tarantool
+from app.utility.logging_client import logger
 
 
 class ClientAnalysisState(TypedDict, total=False):
@@ -133,6 +133,28 @@ def run_client_analysis_streaming(
         return _run_streaming_analysis(initial_state, session_id, client_name, inn)
 
     return _run_batch_analysis(initial_state, session_id, client_name, inn)
+
+
+async def run_client_analysis_batch(
+    client_name: str,
+    inn: str = "",
+    additional_notes: str = "",
+    session_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Batch (non-streaming) wrapper for the client analysis workflow.
+
+    Exists for backward compatibility with scheduler and other callers.
+    """
+    result = run_client_analysis_streaming(
+        client_name=client_name,
+        inn=inn,
+        additional_notes=additional_notes,
+        session_id=session_id,
+        stream=False,
+    )
+    # run_client_analysis_streaming(stream=False) returns an awaitable result dict
+    return await result
 
 
 async def _run_streaming_analysis(
@@ -254,6 +276,12 @@ async def _run_streaming_analysis(
         yield {"type": "result", "data": final_result}
 
         try:
+            # Сохраняем через ThreadsRepository для лучшей структуры данных
+            from app.storage.tarantool import TarantoolClient
+            
+            client = await TarantoolClient.get_instance()
+            threads_repo = client.get_threads_repository()
+            
             thread_data = {
                 "input": f"Анализ клиента: {client_name}",
                 "created_at": time.time(),
@@ -262,8 +290,18 @@ async def _run_streaming_analysis(
                     {"type": "report", "data": report},
                 ],
                 "saved_files": saved_files,
+                "client_name": client_name,
+                "inn": inn,
             }
-            asyncio.create_task(save_thread_to_tarantool(session_id, thread_data))
+            
+            asyncio.create_task(
+                threads_repo.save_thread(
+                    thread_id=session_id,
+                    thread_data=thread_data,
+                    client_name=client_name,
+                    inn=inn
+                )
+            )
         except Exception as e:
             logger.error(f"Failed to save thread: {e}", component="workflow")
 
@@ -291,6 +329,12 @@ async def _run_batch_analysis(
         final_state = {**initial_state, "error": str(e), "current_step": "failed"}
 
     try:
+        # Сохраняем через ThreadsRepository
+        from app.storage.tarantool import TarantoolClient
+        
+        client_inst = await TarantoolClient.get_instance()
+        threads_repo = client_inst.get_threads_repository()
+        
         thread_data = {
             "input": f"Анализ клиента: {client_name}",
             "created_at": time.time(),
@@ -299,8 +343,18 @@ async def _run_batch_analysis(
                 {"type": "report", "data": final_state.get("report", {})},
             ],
             "final_state": final_state,
+            "client_name": client_name,
+            "inn": inn,
         }
-        asyncio.create_task(save_thread_to_tarantool(session_id, thread_data))
+        
+        asyncio.create_task(
+            threads_repo.save_thread(
+                thread_id=session_id,
+                thread_data=thread_data,
+                client_name=client_name,
+                inn=inn
+            )
+        )
     except Exception as e:
         logger.error(f"Failed to save thread: {e}", component="workflow")
 

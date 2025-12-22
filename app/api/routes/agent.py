@@ -1,19 +1,28 @@
 import asyncio
 import json
+import re
 import time
-import uuid
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from slowapi.util import get_remote_address
 
-from app.advanced_funcs.logging_client import logger
+from app.api.rate_limit import create_limiter
 from app.agents.client_workflow import run_client_analysis_streaming
-from app.agents.workflow import AgentState, invoke_graph_with_persistence
+from app.config.constants import (
+    RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE,
+    RATE_LIMIT_SEARCH_PER_MINUTE,
+)
+from app.services.analysis_executor import execute_client_analysis
+from app.utility.logging_client import logger
 
 agent_router = APIRouter(prefix="/agent", tags=["Агент"])
+
+# Rate limiter для агентских эндпоинтов
+limiter = create_limiter(get_remote_address)
 
 
 class ClientAnalysisRequest(BaseModel):
@@ -22,77 +31,48 @@ class ClientAnalysisRequest(BaseModel):
     additional_notes: Optional[str] = ""
 
 
-@agent_router.post("/prompt")
-async def process_prompt(request: Request, body: dict):
-    """Принимает prompt, запускает граф, возвращает ответ."""
-    thread_id = body.get("thread_id") or f"thread_{uuid.uuid4().hex}"
-    user_input = body.get("prompt")
-    if not user_input:
-        raise HTTPException(status_code=400, detail="Prompt обязателен")
-
-    llm = getattr(request.app.state, "llm", None)
-    if llm is None:
-        raise HTTPException(
-            status_code=503,
-            detail="LLM не настроен. Требуется GIGACHAT_TOKEN для работы этого endpoint. "
-            "Используйте /agent/analyze-client для анализа клиентов через Perplexity.",
-        )
-
-    initial_state: AgentState = {
-        "session_id": thread_id,
-        "user_input": user_input,
-        "llm": llm,
-        "current_step": "planning",
-        "plan": "",
-        "tool_sequence": [],
-        "tool_results": [],
-        "analysis_result": "",
-        "requires_confirmation": False,
-        "saved_file_path": "",
-        "is_confirmed": False,
-        "feedback": "",
-    }
-
-    try:
-        final_state = await invoke_graph_with_persistence(thread_id, initial_state)
-        response_text = final_state.get(
-            "analysis_result", "Не удалось сгенерировать ответ."
-        )
-
-        return {
-            "response": response_text,
-            "thread_id": thread_id,
-            "tools_used": len(final_state.get("tool_results", [])) > 0,
-            "timestamp": datetime.now().isoformat(),
-        }
-
-    except Exception as e:
-        logger.error(f"Ошибка в process_prompt: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ошибка агента: {str(e)}") from e
+class PromptRequest(BaseModel):
+    """Back-compat endpoint payload for Streamlit UI."""
+    prompt: str
 
 
 @agent_router.get("/thread_history/{thread_id}")
-async def get_thread_history(thread_id: str):
+@limiter.limit(f"{RATE_LIMIT_SEARCH_PER_MINUTE}/minute")
+async def get_thread_history(request: Request, thread_id: str):
     from app.storage.tarantool import TarantoolClient
 
     client = await TarantoolClient.get_instance()
-    key = f"thread:{thread_id}" if not thread_id.startswith("thread:") else thread_id
-    result = await client.get_persistent(key)
+    threads_repo = client.get_threads_repository()
+    
+    # Используем ThreadsRepository
+    result = await threads_repo.get(thread_id)
     if not result:
         raise HTTPException(status_code=404, detail="Тред не найден")
     return result
 
 
 @agent_router.post("/analyze-client")
-async def analyze_client(request: ClientAnalysisRequest, stream: bool = False):
+@limiter.limit(f"{RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE}/minute")
+async def analyze_client(request: Request, data: ClientAnalysisRequest, stream: bool = False):
     """
     Анализирует клиента через Perplexity AI.
     Выполняет параллельный поиск и создаёт отчёт с оценкой рисков.
 
     Args:
+        request: FastAPI Request object (для rate limiting)
+        data: Данные запроса с информацией о клиенте
         stream: Если True, возвращает SSE stream с прогрессом
     """
     from app.services.perplexity_client import PerplexityClient
+
+    logger.structured(
+        "debug",
+        "agent_analyze_request",
+        component="agent_api",
+        client_name=data.client_name,
+        inn=data.inn or "",
+        stream=bool(stream),
+    )
 
     client = PerplexityClient.get_instance()
     if not client.is_configured():
@@ -104,9 +84,9 @@ async def analyze_client(request: ClientAnalysisRequest, stream: bool = False):
     if stream:
         return StreamingResponse(
             _stream_client_analysis(
-                client_name=request.client_name,
-                inn=request.inn or "",
-                additional_notes=request.additional_notes or "",
+                client_name=data.client_name,
+                inn=data.inn or "",
+                additional_notes=data.additional_notes or "",
             ),
             media_type="text/event-stream",
             headers={
@@ -117,16 +97,65 @@ async def analyze_client(request: ClientAnalysisRequest, stream: bool = False):
         )
 
     try:
-        coro = run_client_analysis_streaming(
-            client_name=request.client_name,
-            inn=request.inn or "",
-            additional_notes=request.additional_notes or "",
+        # Централизованный executor (единый путь для HTTP/RMQ/MCP/scheduler).
+        result = await execute_client_analysis(
+            client_name=data.client_name,
+            inn=data.inn or "",
+            additional_notes=data.additional_notes or "",
+            save_report=True,
         )
-        result = await coro
+        logger.structured(
+            "debug",
+            "agent_analyze_response",
+            component="agent_api",
+            status=result.get("status"),
+            session_id=result.get("session_id"),
+        )
         return result
     except Exception as e:
         logger.error(f"Client analysis error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка анализа: {str(e)}") from e
+
+
+@agent_router.post("/prompt")
+@limiter.limit(f"{RATE_LIMIT_SEARCH_PER_MINUTE}/minute")
+async def prompt_agent(request: Request, data: PromptRequest) -> Dict[str, Any]:
+    """
+    Backward-compatible endpoint for the Streamlit "Запрос агенту" page.
+
+    Accepts a free-form prompt and runs the client analysis workflow.
+    """
+    prompt = (data.prompt or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required")
+
+    # Extract INN if present
+    inn_match = re.search(r"\b(\d{10}|\d{12})\b", prompt)
+    inn = inn_match.group(1) if inn_match else ""
+
+    # Heuristic client name: prompt without INN + common leading verbs
+    client_name = prompt
+    if inn:
+        client_name = re.sub(rf"\b{re.escape(inn)}\b", "", client_name).strip()
+    client_name = re.sub(r"^\s*(проанализируй|анализ|проверь|проверка)\s+", "", client_name, flags=re.I).strip()
+    if not client_name:
+        client_name = prompt
+
+    result = await execute_client_analysis(
+        client_name=client_name,
+        inn=inn,
+        additional_notes="",
+        save_report=True,
+    )
+
+    # Streamlit expects {response, thread_id, tools_used, timestamp}
+    return {
+        "response": result.get("summary", "") or "",
+        "thread_id": result.get("session_id", ""),
+        "tools_used": True,
+        "timestamp": datetime.utcnow().isoformat(),
+        "raw_result": result,
+    }
 
 
 async def _stream_client_analysis(
@@ -177,28 +206,35 @@ async def _stream_client_analysis(
 
 
 @agent_router.get("/threads")
-async def list_threads() -> Dict[str, Any]:
+@limiter.limit(f"{RATE_LIMIT_SEARCH_PER_MINUTE}/minute")
+async def list_threads(request: Request) -> Dict[str, Any]:
     from app.storage.tarantool import TarantoolClient
 
     try:
         client = await TarantoolClient.get_instance()
-        threads_data = await client.scan_threads()
+        threads_repo = client.get_threads_repository()
+        
+        # Используем ThreadsRepository
+        threads_list = await threads_repo.list(limit=50)
+        
         threads = [
             {
-                "thread_id": item["key"].replace("thread:", ""),
+                "thread_id": item.get("thread_id", ""),
                 "user_prompt": (
-                    item["input"][:100] + "..."
-                    if len(item["input"]) > 100
-                    else item["input"]
+                    item.get("thread_data", {}).get("input", "")[:100] + "..."
+                    if len(item.get("thread_data", {}).get("input", "")) > 100
+                    else item.get("thread_data", {}).get("input", "")
                 ),
                 "created_at": (
-                    datetime.fromtimestamp(item["created_at"]).isoformat()
-                    if item["created_at"]
+                    datetime.fromtimestamp(item.get("created_at", 0)).isoformat()
+                    if item.get("created_at")
                     else "Неизвестно"
                 ),
-                "message_count": item["message_count"],
+                "message_count": len(item.get("thread_data", {}).get("messages", [])) if isinstance(item.get("thread_data"), dict) else 0,
+                "client_name": item.get("client_name", ""),
+                "inn": item.get("inn", ""),
             }
-            for item in threads_data
+            for item in threads_list
         ]
         return {
             "total": len(threads),

@@ -1,4 +1,97 @@
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: counterparty-analyzer
+    ports:
+      - "5000:5000"
+      - "8000:8000"
+    environment:
+      - BACKEND_PORT=8000
+      - STREAMLIT_SERVER_PORT=5000
+      - TARANTOOL_HOST=tarantool
+      - TARANTOOL_PORT=3302
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      # По умолчанию задачи выполняются in-process.
+      # Чтобы включить очередь: RABBITMQ_ENABLED=true
+    env_file:
+      - .env
+    depends_on:
+      tarantool:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+    volumes:
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/utility/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: counterparty-worker
+    command: ["python", "-m", "app.messaging.worker"]
+    environment:
+      - TARANTOOL_HOST=tarantool
+      - TARANTOOL_PORT=3302
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_ENABLED=true
+    env_file:
+      - .env
+    depends_on:
+      tarantool:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+    volumes:
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: counterparty-mcp
+    command: ["python", "-m", "app.mcp_server.main"]
+    ports:
+      - "8011:8011"
+    environment:
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8011
+      - MCP_PATH=/mcp
+      - TARANTOOL_HOST=tarantool
+      - TARANTOOL_PORT=3302
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+    env_file:
+      - .env
+    depends_on:
+      tarantool:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+    volumes:
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+
   tarantool:
     image: tarantool/tarantool:2.11
     container_name: tarantool-cache
@@ -7,27 +100,45 @@ services:
     environment:
       - TARANTOOL_INIT_SCRIPT=/opt/tarantool/init.lua
     volumes:
-      - ./tarantool/init.lua:/opt/tarantool/init.lua:ro
+      - ./app/storage/init.lua:/opt/tarantool/init.lua:ro
       - tarantool_data:/var/lib/tarantool
     command: ["tarantool", "/opt/tarantool/init.lua"]
     restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "tarantool", "-e", "require('console').connect('localhost:3302')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: rabbitmq-broker
+    ports:
+      - "5672:5672"   # AMQP port
+      - "15672:15672" # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin123
+      - RABBITMQ_DEFAULT_VHOST=/
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 volumes:
   tarantool_data:
+  rabbitmq_data:
 
-
-# services:
-#   ollama:
-#     image: ollama/ollama:latest
-#     container_name: ollama_qwen
-#     ports:
-#       - '11434:11434'
-#     volumes:
-#       - ./ollama_data:/root/.ollama
-#       - /tmp:/tmp
-#     environment:
-#       - OLLAMA_HOST=0.0.0.0
-#       - OLLAMA_ORIGINS=*
-#     restart: unless-stopped
-  
-# sudo docker exec -it ollama_qwen ollama pull qwen2.5:7b
+networks:
+  app-network:
+    driver: bridge
