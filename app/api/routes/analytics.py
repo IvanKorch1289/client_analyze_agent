@@ -12,14 +12,13 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from slowapi import Limiter
 
 from app.config.constants import RATE_LIMIT_SEARCH_PER_MINUTE
+from app.api.rate_limit import limiter_for_client_ip
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
 from app.services.openrouter_client import get_openrouter_client
 from app.storage.tarantool import TarantoolClient
-from app.utility.helpers import get_client_ip
 from app.utility.logging_client import logger
 
 analytics_router = APIRouter(
@@ -28,7 +27,7 @@ analytics_router = APIRouter(
     responses={404: {"description": "Не найдено"}},
 )
 
-limiter = Limiter(key_func=get_client_ip)
+limiter = limiter_for_client_ip()
 
 
 class DashboardResponse(BaseModel):

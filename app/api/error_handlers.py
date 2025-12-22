@@ -56,14 +56,22 @@ def install_error_handlers(app: FastAPI) -> None:
     async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
         rid = _ensure_request_id()
         # FastAPI uses exc.detail for client-facing messages.
-        message = exc.detail if isinstance(exc.detail, str) else "Request failed"
+        # Allow dict-form details to carry a stable error code (Wave 2, additive).
+        code = "http_error"
+        details: Optional[Any] = None
+        if isinstance(exc.detail, dict):
+            code = str(exc.detail.get("code") or code)
+            message = str(exc.detail.get("message") or "Request failed")
+            details = exc.detail.get("details")
+        else:
+            message = exc.detail if isinstance(exc.detail, str) else "Request failed"
         return JSONResponse(
             status_code=exc.status_code,
             content=_error_payload(
-                code="http_error",
+                code=code,
                 message=message,
                 request_id=rid,
-                details={"detail": exc.detail} if not isinstance(exc.detail, str) else None,
+                details=details if details is not None else ({"detail": exc.detail} if not isinstance(exc.detail, str) else None),
             ),
             headers={"X-Request-ID": rid},
         )

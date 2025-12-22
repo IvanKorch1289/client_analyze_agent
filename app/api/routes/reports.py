@@ -15,9 +15,9 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
-from slowapi import Limiter
 
 from app.api.compat import fail
+from app.api.rate_limit import limiter_for_client_ip
 from app.config.constants import RATE_LIMIT_ADMIN_PER_MINUTE, RATE_LIMIT_SEARCH_PER_MINUTE
 from app.storage.tarantool import TarantoolClient
 from app.utility.auth import require_admin
@@ -27,7 +27,6 @@ from app.utility.export_helpers import (
     report_to_json,
     reports_summary_to_csv,
 )
-from app.utility.helpers import get_client_ip
 from app.utility.logging_client import logger
 
 reports_router = APIRouter(
@@ -36,7 +35,7 @@ reports_router = APIRouter(
     responses={404: {"description": "Не найдено"}},
 )
 
-limiter = Limiter(key_func=get_client_ip)
+limiter = limiter_for_client_ip()
 
 
 class ReportListResponse(BaseModel):

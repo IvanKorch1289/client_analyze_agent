@@ -8,9 +8,9 @@ from typing import Any, AsyncGenerator, Dict, Optional
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.api.rate_limit import create_limiter
 from app.agents.client_workflow import run_client_analysis_streaming
 from app.config.constants import (
     RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE,
@@ -22,7 +22,7 @@ from app.utility.logging_client import logger
 agent_router = APIRouter(prefix="/agent", tags=["Агент"])
 
 # Rate limiter для агентских эндпоинтов
-limiter = Limiter(key_func=get_remote_address)
+limiter = create_limiter(get_remote_address)
 
 
 class ClientAnalysisRequest(BaseModel):
