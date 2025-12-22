@@ -287,6 +287,14 @@ class AsyncHttpClient:
                     failure_threshold=3, success_threshold=1, timeout=30.0
                 ),
             },
+            # LLM gateway (OpenRouter)
+            "openrouter": {
+                "timeout": TimeoutConfig(connect=5.0, read=60.0, write=10.0, pool=5.0),
+                "retry": RetryConfig(max_attempts=2, min_wait=0.5, max_wait=5.0),
+                "circuit_breaker": CircuitBreakerConfig(
+                    failure_threshold=3, success_threshold=1, timeout=30.0
+                ),
+            },
         }
 
     async def _initialize(self):
@@ -342,6 +350,8 @@ class AsyncHttpClient:
             return "infosphere"
         elif "casebook" in url_lower:
             return "casebook"
+        elif "openrouter" in url_lower:
+            return "openrouter"
         return "default"
 
     async def request_with_resilience(

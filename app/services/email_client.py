@@ -11,6 +11,7 @@ from email.mime.text import MIMEText
 from typing import Any, Dict, Optional
 
 from app.config import settings
+from app.services.service_status import status_error, status_not_configured, status_ready
 from app.utility.logging_client import logger
 
 
@@ -174,9 +175,22 @@ class EmailClient:
     def get_status(self) -> Dict[str, Any]:
         """Get email service status."""
         health = self.check_health()
+        configured = self.is_configured()
+        available = bool(health.get("status") == "ok")
+
+        # Additive normalized status (without removing legacy keys).
+        if not configured:
+            normalized = status_not_configured(error=health.get("message", "SMTP not configured"), integration="smtp")
+        elif available:
+            normalized = status_ready(integration="smtp")
+        else:
+            normalized = status_error(error=health.get("message", "SMTP unavailable"), integration="smtp")
+
         return {
-            "configured": self.is_configured(),
+            "configured": configured,
             "smtp_host": self.smtp_host if self.smtp_host else None,
             "smtp_port": self.smtp_port,
             "health": health,
+            # normalized fields (top-level)
+            **normalized,
         }

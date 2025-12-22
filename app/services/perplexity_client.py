@@ -312,6 +312,8 @@ class PerplexityClient:
         # Status != healthcheck; does not call external service.
         return {
             "configured": self.is_configured(),
+            # Additive: normalize to the same minimal shape as other clients.
+            "available": self.is_configured(),
             "model": self.model,
             "status": "ready" if self.is_configured() else "not_configured",
             "integration": "langchain-openai",

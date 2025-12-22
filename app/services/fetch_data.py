@@ -5,12 +5,12 @@ import xmltodict
 
 from app.config import settings
 from app.services.http_client import AsyncHttpClient
-from app.storage.tarantool import TarantoolClient
 from app.utility.decorators import cache_with_tarantool
 from app.utility.helpers import clean_xml_dict
 from app.utility.logging_client import logger
 
 
+@cache_with_tarantool(ttl=7200, source="dadata", key_prefix="dadata:inn")
 async def fetch_from_dadata(inn: str) -> Dict[str, Any]:
     """
     Fetch company data from DaData API.
@@ -21,16 +21,6 @@ async def fetch_from_dadata(inn: str) -> Dict[str, Any]:
     Returns:
         Dict with company data or error
     """
-    # Check cache
-    cache_key = f"dadata:{inn}"
-    client = await TarantoolClient.get_instance()
-    cache_repo = client.get_cache_repository()
-    
-    cached = await cache_repo.get(cache_key)
-    if cached:
-        logger.debug(f"DaData cache HIT for {inn}", component="dadata")
-        return cached
-
     url = settings.dadata.api_url
     headers = {
         "Authorization": f"Token {settings.dadata.api_key}",
@@ -55,13 +45,6 @@ async def fetch_from_dadata(inn: str) -> Dict[str, Any]:
             return {"error": "No data found in DaData"}
         
         result = {"status": "success", "data": suggestions[0]["data"]}
-        
-        # Save to cache
-        await cache_repo.set_with_ttl(
-            cache_key, result, ttl=settings.dadata.cache_ttl or 7200, source="dadata"
-        )
-        logger.debug(f"DaData cache SET for {inn}", component="dadata")
-        
         return result
         
     except Exception as e:

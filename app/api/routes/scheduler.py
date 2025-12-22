@@ -7,15 +7,14 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from slowapi import Limiter
 
+from app.api.rate_limit import limiter_for_client_ip
 from app.config import RATE_LIMIT_GENERAL_PER_MINUTE
 from app.services.scheduler_service import get_scheduler_service
-from app.utility.helpers import get_client_ip
 from app.utility.logging_client import logger
 
 scheduler_router = APIRouter(prefix="/scheduler", tags=["scheduler"])
-limiter = Limiter(key_func=get_client_ip)
+limiter = limiter_for_client_ip()
 
 
 class ScheduleClientAnalysisRequest(BaseModel):
