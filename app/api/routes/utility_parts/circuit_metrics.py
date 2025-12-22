@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import Depends, Request
 
-from app.api.compat import fail, is_versioned_request
+from app.api.compat import fail_code, is_versioned_request
 from app.api.routes.utility import limiter, utility_router
 from app.config.constants import RATE_LIMIT_ADMIN_PER_MINUTE
 from app.schemas.api import AppMetricsResponse
@@ -20,7 +20,12 @@ async def app_circuit_breaker_status(request: Request) -> Dict[str, Any]:
     """
     breaker = getattr(request.app.state, "app_circuit_breaker", None)
     if breaker is None:
-        return fail(request, status_code=503, message="app circuit breaker is not configured")
+        return fail_code(
+            request,
+            status_code=503,
+            code="app_circuit_breaker_not_configured",
+            message="app circuit breaker is not configured",
+        )
     return {"status": "success", "breaker": breaker.status()}
 
 
@@ -30,7 +35,12 @@ async def app_circuit_breaker_reset(request: Request, role: str = Depends(requir
     """Сбросить app-level circuit breaker. Requires admin role."""
     breaker = getattr(request.app.state, "app_circuit_breaker", None)
     if breaker is None:
-        return fail(request, status_code=503, message="app circuit breaker is not configured")
+        return fail_code(
+            request,
+            status_code=503,
+            code="app_circuit_breaker_not_configured",
+            message="app circuit breaker is not configured",
+        )
     breaker.reset()
     return {"status": "success", "message": "app circuit breaker reset"}
 

@@ -41,3 +41,31 @@ def fail(
         raise HTTPException(status_code=status_code, detail=message)
     return legacy_error_payload(message, details=details)
 
+
+def fail_code(
+    request: Request,
+    *,
+    status_code: int,
+    code: str,
+    message: str,
+    details: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """
+    Fail with a stable error code (Wave 2, additive).
+
+    - v1: raises HTTPException with dict `detail` (handled by error_handlers.py)
+    - legacy: returns {status:error, message, error_code, details?}
+    """
+    if is_versioned_request(request):
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "code": code,
+                "message": message,
+                "details": details,
+            },
+        )
+    payload = legacy_error_payload(message, details=details)
+    payload["error_code"] = code
+    return payload
+

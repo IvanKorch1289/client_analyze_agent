@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import Depends, Request
 
-from app.api.compat import fail
+from app.api.compat import fail_code
 from app.api.routes.utility import limiter, utility_router
 from app.config.constants import RATE_LIMIT_ADMIN_PER_MINUTE
 from app.utility.auth import require_admin
@@ -22,7 +22,12 @@ async def get_traces(
     """Get recent traces. Requires admin role."""
     exporter = get_span_exporter()
     if not exporter:
-        return fail(request, status_code=503, message="Telemetry not initialized")
+        return fail_code(
+            request,
+            status_code=503,
+            code="telemetry_not_initialized",
+            message="Telemetry not initialized",
+        )
 
     spans = exporter.get_spans(limit=limit, since_minutes=since_minutes)
     stats = exporter.get_trace_stats()
@@ -41,7 +46,12 @@ async def get_trace_stats(request: Request, role: str = Depends(require_admin)) 
     """Get trace statistics. Requires admin role."""
     exporter = get_span_exporter()
     if not exporter:
-        return fail(request, status_code=503, message="Telemetry not initialized")
+        return fail_code(
+            request,
+            status_code=503,
+            code="telemetry_not_initialized",
+            message="Telemetry not initialized",
+        )
 
     return {"status": "success", "stats": exporter.get_trace_stats()}
 
@@ -52,7 +62,12 @@ async def clear_traces(request: Request, role: str = Depends(require_admin)) -> 
     """Clear all stored traces. Requires admin role."""
     exporter = get_span_exporter()
     if not exporter:
-        return fail(request, status_code=503, message="Telemetry not initialized")
+        return fail_code(
+            request,
+            status_code=503,
+            code="telemetry_not_initialized",
+            message="Telemetry not initialized",
+        )
 
     exporter.clear()
     return {"status": "success", "message": "Traces cleared"}
@@ -70,7 +85,12 @@ async def get_logs(
     """Get application logs. Requires admin role."""
     log_store = get_log_store()
     if not log_store:
-        return fail(request, status_code=503, message="Log store not initialized")
+        return fail_code(
+            request,
+            status_code=503,
+            code="log_store_not_initialized",
+            message="Log store not initialized",
+        )
 
     logs = log_store.get_logs(limit=limit, since_minutes=since_minutes, level=level)
     stats = log_store.get_stats()
@@ -89,7 +109,12 @@ async def get_log_stats(request: Request, role: str = Depends(require_admin)) ->
     """Get log statistics. Requires admin role."""
     log_store = get_log_store()
     if not log_store:
-        return fail(request, status_code=503, message="Log store not initialized")
+        return fail_code(
+            request,
+            status_code=503,
+            code="log_store_not_initialized",
+            message="Log store not initialized",
+        )
 
     return {"status": "success", "stats": log_store.get_stats()}
 
@@ -100,7 +125,12 @@ async def clear_logs(request: Request, role: str = Depends(require_admin)) -> Di
     """Clear all stored logs. Requires admin role."""
     log_store = get_log_store()
     if not log_store:
-        return fail(request, status_code=503, message="Log store not initialized")
+        return fail_code(
+            request,
+            status_code=503,
+            code="log_store_not_initialized",
+            message="Log store not initialized",
+        )
 
     log_store.clear()
     return {"status": "success", "message": "Logs cleared"}

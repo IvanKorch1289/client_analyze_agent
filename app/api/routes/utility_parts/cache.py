@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from fastapi import Depends, Request
 
 from app.api.compat import is_versioned_request
+from app.api.response import ok
 from app.api.routes.utility import limiter, utility_router
 from app.config.constants import RATE_LIMIT_ADMIN_PER_MINUTE
 from app.storage.tarantool import TarantoolClient
@@ -32,12 +33,13 @@ async def get_cache_metrics(request: Request) -> Dict[str, Any]:
         metrics = tarantool.get_metrics()
         config = tarantool.get_config()
         cache_size = tarantool.get_cache_size()
-        return {
-            "status": "success",
-            "metrics": metrics,
-            "config": config,
-            "cache_size": cache_size,
-        }
+        # Keep legacy keys, add normalized `data`.
+        return ok(
+            data={"metrics": metrics, "config": config, "cache_size": cache_size},
+            metrics=metrics,
+            config=config,
+            cache_size=cache_size,
+        )
     except Exception as e:
         if is_versioned_request(request):
             raise

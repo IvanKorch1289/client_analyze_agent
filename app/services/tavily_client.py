@@ -271,6 +271,8 @@ class TavilyClient:
     async def get_status(self) -> Dict[str, Any]:
         return {
             "configured": self.is_configured(),
+            # Additive: normalize to the same minimal shape as other clients.
+            "available": self.is_configured(),
             "status": "ready" if self.is_configured() else "not_configured",
             "integration": "langchain-community",
             "cache_stats": self.get_cache_stats(),
