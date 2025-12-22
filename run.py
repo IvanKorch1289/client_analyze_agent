@@ -32,7 +32,7 @@ def run_streamlit():
     os.environ["STREAMLIT_PORT"] = "5000"
     subprocess.run([
         sys.executable, "-m", "streamlit", "run",
-        "app/frontend/pages/0_🏠_Главная.py",  # Entry point - главная страница
+        "app/frontend/app.py",  # Entry point - single-page frontend
         "--server.port=5000",
         "--server.address=0.0.0.0",
         "--server.headless=true",
