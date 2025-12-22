@@ -1,8 +1,8 @@
 from typing import Any, Dict, List, Optional
 
-import httpx
-
 from app.config import settings
+from app.services.http_client import AsyncHttpClient, TimeoutConfig
+from app.services.service_status import status_error, status_not_configured, status_ready
 from app.utility.logging_client import logger
 
 
@@ -32,6 +32,9 @@ class OpenRouterClient:
                 "[OPENROUTER] API key not configured",
                 component="openrouter"
             )
+
+    def is_configured(self) -> bool:
+        return bool(self.api_key)
 
     async def chat(
         self,
@@ -74,42 +77,27 @@ class OpenRouterClient:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(
-                    f"{self.BASE_URL}/chat/completions",
-                    headers=headers,
-                    json=payload,
-                )
+            http_client = await AsyncHttpClient.get_instance()
+            response = await http_client.request_with_resilience(
+                method="POST",
+                url=f"{self.BASE_URL}/chat/completions",
+                service="openrouter",
+                timeout_config=TimeoutConfig(connect=5.0, read=120.0, write=10.0, pool=5.0),
+                headers=headers,
+                json=payload,
+            )
 
-                if response.status_code == 200:
-                    data = response.json()
-                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    return {
-                        "success": True,
-                        "content": content,
-                        "model": data.get("model", self.model),
-                        "usage": data.get("usage", {}),
-                    }
-                else:
-                    error_msg = response.text
-                    logger.error(
-                        f"[OPENROUTER] API error: {response.status_code} - {error_msg}",
-                        component="openrouter"
-                    )
-                    return {
-                        "success": False,
-                        "error": f"API error: {response.status_code}",
-                        "content": "",
-                    }
-
-        except httpx.TimeoutException:
-            logger.error("[OPENROUTER] Request timeout", component="openrouter")
+            data = response.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
             return {
-                "success": False,
-                "error": "Request timeout",
-                "content": "",
+                "success": True,
+                "content": content,
+                "model": data.get("model", self.model),
+                "usage": data.get("usage", {}),
             }
+
         except Exception as e:
+            # Keep legacy return shape (success/error/content).
             logger.error(f"[OPENROUTER] Request failed: {e}", component="openrouter")
             return {
                 "success": False,
@@ -137,34 +125,22 @@ class OpenRouterClient:
     async def check_status(self) -> Dict[str, Any]:
         """Check OpenRouter API status."""
         if not self.api_key:
-            return {
-                "available": False,
-                "error": "API key not configured",
-            }
+            return status_not_configured(error="API key not configured", integration="openrouter")
 
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    f"{self.BASE_URL}/models",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                )
-
-                if response.status_code == 200:
-                    return {
-                        "available": True,
-                        "model": self.model,
-                    }
-                else:
-                    return {
-                        "available": False,
-                        "error": f"API error: {response.status_code}",
-                    }
-
+            http_client = await AsyncHttpClient.get_instance()
+            response = await http_client.request_with_resilience(
+                method="GET",
+                url=f"{self.BASE_URL}/models",
+                service="openrouter",
+                timeout_config=TimeoutConfig(connect=5.0, read=10.0, write=5.0, pool=5.0),
+                headers={"Authorization": f"Bearer {self.api_key}"},
+            )
+            # If we got here, it's 2xx.
+            _ = response.json()
+            return status_ready(integration="openrouter", model=self.model)
         except Exception as e:
-            return {
-                "available": False,
-                "error": str(e),
-            }
+            return status_error(error=str(e), integration="openrouter", model=self.model)
 
 
 _openrouter_client: Optional[OpenRouterClient] = None
