@@ -6,20 +6,9 @@ from typing import Any, Dict, Optional
 import streamlit as st
 
 from app.frontend.api_client import ApiClient
-
-
-def _format_ts(ts: Any) -> str:
-    try:
-        return datetime.fromtimestamp(float(ts)).strftime("%Y-%m-%d %H:%M:%S")
-    except Exception:
-        return str(ts or "")
-
-
-def _valid_inn(inn: str) -> bool:
-    inn = (inn or "").strip()
-    if not inn:
-        return True
-    return inn.isdigit() and len(inn) in (10, 12)
+from app.frontend.lib.validators import validate_inn, validate_client_name
+from app.frontend.lib.formatters import format_ts, get_risk_emoji
+from app.frontend.lib.ui import section_header, render_payload, render_metric_cards, info_box
 
 
 def render(api: ApiClient) -> None:
@@ -29,17 +18,20 @@ def render(api: ApiClient) -> None:
     with st.form("run_analysis_now"):
         col1, col2 = st.columns([2, 1])
         with col1:
-            client_name = st.text_input("Client name", placeholder="ООО Ромашка")
+            client_name = st.text_input("Название компании", placeholder="ООО Ромашка")
         with col2:
             inn = st.text_input("ИНН (опционально)", placeholder="7707083893", max_chars=12)
-        additional_notes = st.text_area("Additional notes (опционально)", height=120)
+        additional_notes = st.text_area("Дополнительные заметки (опционально)", height=120)
         run_now = st.form_submit_button("Запустить", type="primary")
 
     if run_now:
-        if not client_name.strip():
-            st.error("client_name обязателен")
-        elif not _valid_inn(inn):
-            st.error("ИНН должен содержать 10 или 12 цифр")
+        name_valid, name_err = validate_client_name(client_name)
+        inn_valid, inn_err = validate_inn(inn, required=False)
+        
+        if not name_valid:
+            st.error(f"❌ {name_err}")
+        elif not inn_valid:
+            st.error(f"❌ {inn_err}")
         else:
             payload = {
                 "client_name": client_name.strip(),
@@ -56,13 +48,13 @@ def render(api: ApiClient) -> None:
         st.success("Анализ выполнен")
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("status", str(last.get("status", "")))
+            st.metric("Статус", str(last.get("status", "")))
         with col2:
-            st.metric("session_id", str(last.get("session_id", ""))[:32])
+            st.metric("ID сессии", str(last.get("session_id", ""))[:32])
         with col3:
             report = last.get("report") or {}
             ra = report.get("risk_assessment") or {}
-            st.metric("risk_score", ra.get("score", 0))
+            st.metric("Риск-скор", ra.get("score", 0))
         with st.expander("Полный результат (JSON)"):
             st.json(last)
 
@@ -72,10 +64,10 @@ def render(api: ApiClient) -> None:
     with st.form("schedule_analysis"):
         col1, col2 = st.columns([2, 1])
         with col1:
-            sch_client_name = st.text_input("Client name", key="sch_client_name")
+            sch_client_name = st.text_input("Название компании", key="sch_client_name")
         with col2:
             sch_inn = st.text_input("ИНН (обязательно)", key="sch_inn", max_chars=12)
-        sch_notes = st.text_area("Additional notes (опционально)", key="sch_notes", height=100)
+        sch_notes = st.text_area("Дополнительные заметки (опционально)", key="sch_notes", height=100)
 
         when_mode = st.radio(
             "Когда выполнить",
@@ -105,12 +97,13 @@ def render(api: ApiClient) -> None:
         schedule = st.form_submit_button("Запланировать", type="primary")
 
     if schedule:
-        if not sch_client_name.strip():
-            st.error("client_name обязателен")
-        elif not sch_inn.strip():
-            st.error("ИНН обязателен для планирования")
-        elif not _valid_inn(sch_inn.strip()):
-            st.error("ИНН должен содержать 10 или 12 цифр")
+        name_valid, name_err = validate_client_name(sch_client_name)
+        inn_valid, inn_err = validate_inn(sch_inn, required=True)
+        
+        if not name_valid:
+            st.error(f"❌ {name_err}")
+        elif not inn_valid:
+            st.error(f"❌ {inn_err}")
         else:
             payload = {
                 "client_name": sch_client_name.strip(),
@@ -128,16 +121,15 @@ def render(api: ApiClient) -> None:
                 resp = api.post("/scheduler/schedule-analysis", json=payload)
             if resp is not None:
                 st.success("Запланировано")
-                st.write(f"**task_id:** `{resp.get('task_id')}`")
-                st.write(f"**run_date:** `{resp.get('run_date')}`")
+                st.write(f"**ID задачи:** `{resp.get('task_id')}`")
+                st.write(f"**Дата выполнения:** `{resp.get('run_date')}`")
 
     st.divider()
 
     st.subheader("Предыдущие анализы (Tarantool, TTL ~ 30 дней)")
     
     # Статистика
-    stats_col1, stats_col2, stats_col3 = st.columns(3)
-    if st.button("Загрузить статистику", type="secondary"):
+    if st.button("📊 Загрузить статистику", type="secondary"):
         with st.spinner("Загружаю статистику..."):
             stats_data = api.get("/reports/stats/summary")
         if stats_data is not None:
@@ -146,13 +138,12 @@ def render(api: ApiClient) -> None:
     stats = st.session_state.get("reports_stats") or {}
     if stats and stats.get("stats"):
         s = stats["stats"]
-        with stats_col1:
-            st.metric("Всего отчётов", s.get("total", 0))
-        with stats_col2:
-            st.metric("Средний риск-скор", f"{s.get('avg_risk_score', 0):.1f}")
-        with stats_col3:
-            high_risk = s.get("by_risk_level", {}).get("high", 0) + s.get("by_risk_level", {}).get("critical", 0)
-            st.metric("Высокий/Критический риск", high_risk)
+        metrics = {
+            "Всего отчётов": s.get("total", 0),
+            "Средний риск-скор": f"{s.get('avg_risk_score', 0):.1f}",
+            "Высокий/Критический риск": s.get("by_risk_level", {}).get("high", 0) + s.get("by_risk_level", {}).get("critical", 0),
+        }
+        render_metric_cards(metrics, columns=3)
     
     st.divider()
     
@@ -185,11 +176,12 @@ def render(api: ApiClient) -> None:
     st.markdown("**Список отчётов**")
     table_data = []
     for r in reports:
+        risk_level = r.get("risk_level", "")
         table_data.append({
-            "Дата": _format_ts(r.get("created_at")),
+            "Дата": format_ts(r.get("created_at")),
             "Компания": r.get("client_name", "")[:30],
             "ИНН": r.get("inn", ""),
-            "Риск": r.get("risk_level", ""),
+            "Риск": f"{get_risk_emoji(risk_level)} {risk_level}",
             "Баллы": r.get("risk_score", 0),
             "ID": r.get("report_id", "")[:8],
         })
@@ -204,19 +196,51 @@ def render(api: ApiClient) -> None:
     
     selected_report_id = reports[selected_idx].get("report_id", "")
 
-    col_open, col_export_json, col_export_csv = st.columns([1, 1, 1])
+    col_open, col_pdf, col_csv = st.columns([1, 1, 1])
     with col_open:
         open_btn = st.button("Открыть детали", type="primary")
-    with col_export_json:
-        st.link_button("Экспорт JSON", api.url(f"/reports/{selected_report_id}/export?format=json"))
-    with col_export_csv:
-        st.link_button("Экспорт CSV", api.url(f"/reports/{selected_report_id}/export?format=csv"))
+    with col_pdf:
+        download_pdf_btn = st.button("📄 Скачать PDF", type="secondary")
+    with col_csv:
+        st.link_button("📊 Экспорт CSV", api.url(f"/reports/{selected_report_id}/export?format=csv"))
 
     if open_btn:
         with st.spinner("Загружаю отчёт..."):
             detail = api.get(f"/reports/{selected_report_id}")
         if detail is not None:
             st.session_state["opened_report"] = detail.get("report") if isinstance(detail, dict) else detail
+    
+    if download_pdf_btn:
+        with st.spinner("Генерирую PDF отчёт..."):
+            # Загружаем полный отчёт если ещё не загружен
+            if not st.session_state.get("opened_report") or st.session_state["opened_report"].get("report_id") != selected_report_id:
+                detail = api.get(f"/reports/{selected_report_id}")
+                if detail is not None:
+                    report_full = detail.get("report") if isinstance(detail, dict) else detail
+                else:
+                    st.error("❌ Не удалось загрузить отчёт")
+                    report_full = None
+            else:
+                report_full = st.session_state["opened_report"]
+            
+            if report_full:
+                report_data = report_full.get("report_data") or {}
+                pdf_payload = {
+                    "client_name": report_full.get("client_name", "") or report_data.get("metadata", {}).get("client_name", ""),
+                    "inn": report_full.get("inn", "") or None,
+                    "session_id": report_full.get("report_id", "") or None,
+                    "report_data": report_data,
+                }
+                pdf_resp = api.post("/utility/reports/pdf", json=pdf_payload)
+                if isinstance(pdf_resp, dict) and pdf_resp.get("status") == "success":
+                    download_url = pdf_resp.get("download_url") or ""
+                    if download_url:
+                        st.success("✅ PDF отчёт сгенерирован!")
+                        st.link_button("⬇️ Скачать PDF", api.absolute_url(download_url), type="primary")
+                    else:
+                        st.warning("⚠️ PDF создан, но ссылка на скачивание не получена")
+                else:
+                    st.error("❌ Ошибка при генерации PDF")
 
     opened = st.session_state.get("opened_report")
     if isinstance(opened, dict) and opened.get("report_id") == selected_report_id:
@@ -224,17 +248,15 @@ def render(api: ApiClient) -> None:
         st.subheader("📄 Детали отчёта")
 
         ra = (opened.get("report_data") or {}).get("risk_assessment") or {}
-        m1, m2, m3, m4 = st.columns(4)
-        with m1:
-            risk_level = opened.get("risk_level", ra.get("level", "unknown"))
-            risk_colors = {"low": "🟢", "medium": "🟡", "high": "🟠", "critical": "🔴"}
-            st.metric("Уровень риска", f"{risk_colors.get(risk_level, '')} {risk_level.upper()}")
-        with m2:
-            st.metric("Риск-скор", f"{opened.get('risk_score', ra.get('score', 0))}/100")
-        with m3:
-            st.metric("Компания", opened.get("client_name", ""))
-        with m4:
-            st.metric("Дата", _format_ts(opened.get("created_at")))
+        risk_level = opened.get("risk_level", ra.get("level", "unknown"))
+        
+        metrics = {
+            "Уровень риска": f"{get_risk_emoji(risk_level)} {risk_level.upper()}",
+            "Риск-скор": f"{opened.get('risk_score', ra.get('score', 0))}/100",
+            "Компания": opened.get("client_name", ""),
+            "Дата": format_ts(opened.get("created_at")),
+        }
+        render_metric_cards(metrics, columns=4)
 
         # Основная информация
         col_main, col_side = st.columns([2, 1])
@@ -266,11 +288,14 @@ def render(api: ApiClient) -> None:
                 if len(factors) > 15:
                     st.caption(f"... и ещё {len(factors) - 15} факторов")
 
-        pdf_col1, pdf_col2 = st.columns([1, 3])
-        with pdf_col1:
-            gen_pdf = st.button("Сгенерировать PDF")
-        with pdf_col2:
-            st.caption("PDF генерируется через `/utility/reports/pdf` и сохраняется в `./reports`.")
+        st.divider()
+        
+        # PDF генерация
+        col_actions = st.columns([1, 1, 2])
+        with col_actions[0]:
+            gen_pdf = st.button("📄 Сгенерировать PDF", use_container_width=True)
+        with col_actions[1]:
+            st.link_button("📊 Экспорт CSV", api.url(f"/reports/{selected_report_id}/export?format=csv"), use_container_width=True)
 
         if gen_pdf:
             report_data = opened.get("report_data") or {}
@@ -280,15 +305,18 @@ def render(api: ApiClient) -> None:
                 "session_id": opened.get("report_id", "") or None,
                 "report_data": report_data,
             }
-            with st.spinner("Генерирую PDF..."):
+            with st.spinner("Генерирую PDF отчёт..."):
                 pdf_resp = api.post("/utility/reports/pdf", json=pdf_payload)
             if isinstance(pdf_resp, dict) and pdf_resp.get("status") == "success":
                 download_url = pdf_resp.get("download_url") or ""
                 if download_url:
-                    st.link_button("Скачать PDF", api.absolute_url(download_url))
+                    st.success("✅ PDF отчёт успешно сгенерирован!")
+                    st.link_button("⬇️ Скачать PDF файл", api.absolute_url(download_url), type="primary", use_container_width=True)
                 else:
-                    st.info("PDF создан, но download_url не получен")
+                    st.warning("⚠️ PDF создан, но ссылка на скачивание не получена")
+            else:
+                st.error("❌ Ошибка при генерации PDF")
 
-        with st.expander("Полный JSON"):
+        with st.expander("📋 Полные данные отчёта (JSON)", expanded=False):
             st.json(opened)
 

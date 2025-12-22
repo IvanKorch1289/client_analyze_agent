@@ -351,11 +351,9 @@ class LLMManager:
         total_duration = time.perf_counter() - start_time
         
         logger.error(
-            "All LLM providers failed",
+            f"All LLM providers failed (duration: {total_duration*1000:.2f}ms, attempts: {attempts})",
             component="llm_manager",
             exc_info=True,
-            total_duration_ms=round(total_duration * 1000, 2),
-            attempts=attempts,
         )
         raise Exception(
             f"All LLM providers failed after {attempts} attempts. Last error: {last_error}"

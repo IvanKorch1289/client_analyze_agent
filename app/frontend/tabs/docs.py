@@ -5,14 +5,15 @@ import pathlib
 import streamlit as st
 
 from app.frontend.api_client import ApiClient
+from app.frontend.lib.ui import section_header, info_box
 
 
 def render(api: ApiClient) -> None:
     st.header("📚 Документация (admin)")
 
-    st.info("🔒 Эта вкладка содержит техническую документацию и описание проекта.")
+    info_box("Эта вкладка содержит техническую документацию и описание проекта.", emoji="🔒")
 
-    st.subheader("🔗 API Документация")
+    section_header("API Документация", emoji="🔗")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -26,7 +27,7 @@ def render(api: ApiClient) -> None:
         st.link_button("📄 AsyncAPI JSON", api.url("/utility/asyncapi.json"), use_container_width=True)
 
     st.divider()
-    st.subheader("📖 Описание проекта")
+    section_header("Описание проекта", emoji="📖")
 
     readme_path = pathlib.Path(__file__).resolve().parents[3] / "README.md"
     try:
@@ -37,7 +38,7 @@ def render(api: ApiClient) -> None:
         return
     
     st.divider()
-    st.subheader("🏗️ Архитектура")
+    section_header("Архитектура", emoji="🏗️")
     
     st.markdown("""
     ### Основные компоненты
@@ -70,7 +71,7 @@ def render(api: ApiClient) -> None:
     """)
     
     st.divider()
-    st.subheader("🔐 Безопасность")
+    section_header("Безопасность", emoji="🔐")
     
     st.markdown("""
     ### Механизмы защиты
@@ -83,7 +84,7 @@ def render(api: ApiClient) -> None:
     """)
     
     st.divider()
-    st.subheader("📊 Мониторинг")
+    section_header("Мониторинг", emoji="📊")
     
     st.markdown("""
     ### Доступные метрики

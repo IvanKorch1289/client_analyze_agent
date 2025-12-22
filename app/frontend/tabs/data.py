@@ -5,19 +5,19 @@ from typing import Any, Dict, Optional
 import streamlit as st
 
 from app.frontend.api_client import ApiClient
-
-
-def _valid_inn_required(inn: str) -> bool:
-    inn = (inn or "").strip()
-    return inn.isdigit() and len(inn) in (10, 12)
+from app.frontend.lib.validators import validate_inn
+from app.frontend.lib.ui import section_header, render_payload, info_box
 
 
 def render(api: ApiClient) -> None:
     st.header("🔍 Внешние данные")
     
-    st.info("💡 Этот раздел позволяет получить данные о компании из различных источников: реестры, судебные дела, финансовая информация.")
+    info_box(
+        "Этот раздел позволяет получить данные о компании из различных источников: "
+        "реестры, судебные дела, финансовая информация."
+    )
 
-    st.subheader("A) Источники по ИНН (DaData / Casebook / Инфосфера)")
+    section_header("Источники по ИНН", emoji="📦", help_text="DaData, Casebook, Инфосфера")
     inn = st.text_input("ИНН", placeholder="7707083893", max_chars=12)
 
     c1, c2, c3, c4 = st.columns(4)
@@ -31,8 +31,9 @@ def render(api: ApiClient) -> None:
         btn_infosphere = st.button("Инфосфера")
 
     if btn_all or btn_dadata or btn_casebook or btn_infosphere:
-        if not _valid_inn_required(inn):
-            st.error("ИНН должен содержать 10 или 12 цифр")
+        is_valid, error_msg = validate_inn(inn, required=True)
+        if not is_valid:
+            st.error(f"❌ {error_msg}")
         else:
             results: Dict[str, Any] = {}
             with st.spinner("Запрашиваю данные..."):
@@ -47,42 +48,34 @@ def render(api: ApiClient) -> None:
                         results["Инфосфера"] = api.get(f"/data/client/infosphere/{inn.strip()}")
 
             for title, payload in results.items():
-                with st.expander(f"📦 {title}", expanded=True):
-                    if payload is None:
-                        st.warning("⚠️ Нет данных (ошибка запроса)")
-                    elif isinstance(payload, dict):
-                        # Красивое отображение для общего источника
-                        if title == "Все источники":
-                            for source_name, source_data in payload.items():
-                                if isinstance(source_data, dict) and source_data:
-                                    st.markdown(f"**{source_name}:**")
-                                    st.json(source_data)
-                                    st.divider()
-                        else:
-                            st.json(payload)
-                    else:
-                        st.json(payload)
+                render_payload(payload, title=f"📦 {title}", expanded=True, show_status=False)
 
     st.divider()
 
-    st.subheader("B) Веб-поиск (Perplexity / Tavily)")
+    section_header("Веб-поиск", emoji="🔎", help_text="Perplexity AI, Tavily")
     col1, col2 = st.columns([1, 2])
     with col1:
         search_inn = st.text_input("ИНН для поиска", key="search_inn", placeholder="7707083893", max_chars=12)
     with col2:
-        query = st.text_input("Query", key="search_query", placeholder="судебные дела, банкротство, новости")
+        query = st.text_input("Поисковый запрос", key="search_query", placeholder="судебные дела, банкротство, новости")
 
     colp1, colp2 = st.columns(2)
     with colp1:
         perplexity_recency = st.selectbox(
-            "Perplexity recency",
+            "Perplexity: актуальность",
             options=["day", "week", "month"],
+            format_func=lambda x: {"day": "День", "week": "Неделя", "month": "Месяц"}[x],
             index=2,
         )
     with colp2:
-        tavily_depth = st.selectbox("Tavily depth", options=["basic", "advanced"], index=0)
-    max_results = st.slider("Tavily max_results", min_value=1, max_value=10, value=5)
-    include_answer = st.checkbox("Tavily include_answer", value=True)
+        tavily_depth = st.selectbox(
+            "Tavily: глубина поиска",
+            options=["basic", "advanced"],
+            format_func=lambda x: {"basic": "Базовая", "advanced": "Расширенная"}[x],
+            index=0
+        )
+    max_results = st.slider("Tavily: максимум результатов", min_value=1, max_value=10, value=5)
+    include_answer = st.checkbox("Tavily: включить краткий ответ", value=True)
 
     b1, b2, b3 = st.columns(3)
     with b1:
@@ -93,11 +86,12 @@ def render(api: ApiClient) -> None:
         do_both = st.button("Искать в обоих")
 
     if do_p or do_t or do_both:
-        if not _valid_inn_required(search_inn):
-            st.error("ИНН должен содержать 10 или 12 цифр")
+        is_valid, error_msg = validate_inn(search_inn, required=True)
+        if not is_valid:
+            st.error(f"❌ {error_msg}")
             return
         if not (query or "").strip():
-            st.error("query обязателен")
+            st.error("❌ Поисковый запрос обязателен")
             return
 
         outputs: Dict[str, Any] = {}
@@ -121,50 +115,61 @@ def render(api: ApiClient) -> None:
                 )
 
         for source, payload in outputs.items():
-            with st.expander(f"🔎 {source}", expanded=True):
-                if payload is None:
-                    st.warning("⚠️ Нет данных (ошибка запроса)")
-                    continue
+            st.markdown(f"#### 🔎 {source}")
+            
+            if payload is None:
+                st.warning("⚠️ Нет данных (ошибка запроса)")
+                continue
 
-                if source == "Perplexity" and isinstance(payload, dict):
-                    if payload.get("status") == "success":
-                        content = payload.get("content", "") or ""
-                        if content:
-                            st.markdown("### 📝 Результат поиска")
-                            st.markdown(content)
-                        cites = payload.get("citations") or []
-                        if cites:
-                            with st.expander("📚 Источники", expanded=False):
-                                for i, c in enumerate(cites, 1):
-                                    st.markdown(f"{i}. {c}")
-                    else:
-                        st.json(payload)
-                elif source == "Tavily" and isinstance(payload, dict):
-                    if payload.get("status") == "success":
-                        answer = payload.get("answer") or ""
-                        if answer:
-                            st.markdown("### 💡 Краткий ответ")
-                            st.info(answer)
-                        results = payload.get("results") or []
-                        if results:
-                            st.markdown("### 🔗 Найденные источники")
-                            for i, item in enumerate(results, 1):
-                                title = item.get("title") or "Без заголовка"
-                                url = item.get("url") or ""
-                                snippet = item.get("content") or item.get("snippet") or ""
-                                score = item.get("score", 0)
-                                
-                                st.markdown(f"**{i}. {title}**")
-                                if score:
-                                    st.caption(f"Релевантность: {score:.2f}")
-                                if url:
-                                    st.caption(f"🔗 {url}")
-                                if snippet:
-                                    with st.expander("Содержание", expanded=False):
-                                        st.write(snippet[:800] + ("..." if len(snippet) > 800 else ""))
-                                st.divider()
-                    else:
-                        st.json(payload)
+            if source == "Perplexity" and isinstance(payload, dict):
+                if payload.get("status") == "success":
+                    content = payload.get("content", "") or ""
+                    if content:
+                        st.markdown("**📝 Результат поиска:**")
+                        st.markdown(content)
+                    
+                    cites = payload.get("citations") or []
+                    if cites:
+                        st.markdown("**📚 Источники:**")
+                        for i, c in enumerate(cites, 1):
+                            st.caption(f"{i}. {c}")
                 else:
                     st.json(payload)
+                    
+            elif source == "Tavily" and isinstance(payload, dict):
+                if payload.get("status") == "success":
+                    answer = payload.get("answer") or ""
+                    if answer:
+                        st.info(f"💡 **Краткий ответ:** {answer}")
+                    
+                    results = payload.get("results") or []
+                    if results:
+                        st.markdown(f"**🔗 Найдено источников: {len(results)}**")
+                        for i, item in enumerate(results, 1):
+                            title = item.get("title") or "Без заголовка"
+                            url = item.get("url") or ""
+                            snippet = item.get("content") or item.get("snippet") or ""
+                            score = item.get("score", 0)
+                            
+                            st.markdown(f"**{i}. {title}**")
+                            if score:
+                                st.caption(f"Релевантность: {score:.2f}")
+                            if url:
+                                st.caption(f"🔗 {url}")
+                            if snippet:
+                                # Не вкладывать expander в expander - показать сразу
+                                st.text_area(
+                                    f"Содержание #{i}",
+                                    snippet[:800] + ("..." if len(snippet) > 800 else ""),
+                                    height=150,
+                                    key=f"tavily_snippet_{i}",
+                                    disabled=True,
+                                )
+                            st.divider()
+                else:
+                    st.json(payload)
+            else:
+                st.json(payload)
+            
+            st.divider()
 

@@ -26,7 +26,7 @@ def _safe_json(resp: requests.Response) -> Any:
 @dataclass(frozen=True)
 class ApiClient:
     base_url: str
-    timeout_seconds: int = 30
+    timeout_seconds: int = 120  # Увеличено с 30 до 120 секунд для анализа клиентов
 
     @property
     def origin(self) -> str:
@@ -133,6 +133,7 @@ class ApiClient:
 
 def get_api_client() -> ApiClient:
     base_url = _normalize_base_url(os.getenv("API_BASE_URL", ""))
-    timeout_seconds = int(os.getenv("API_TIMEOUT_SECONDS", "30"))
+    # Увеличенный таймаут для долгих операций (анализ клиента может занять 60+ секунд)
+    timeout_seconds = int(os.getenv("API_TIMEOUT_SECONDS", "120"))
     return ApiClient(base_url=base_url, timeout_seconds=timeout_seconds)
 

@@ -17,12 +17,14 @@ except ImportError:
 def run_backend():
     """Run FastAPI backend on port 8000."""
     os.environ["BACKEND_PORT"] = "8000"
+    # Отключён --reload для стабильной работы долгих запросов (анализ клиента 30+ сек)
+    # Для разработки запускайте uvicorn вручную с --reload
     subprocess.run([
         sys.executable, "-m", "uvicorn",
         "app.main:app",
         "--host", "0.0.0.0",
         "--port", "8000",
-        "--reload"
+        # "--reload"  # Отключено для production/testing
     ])
 
 

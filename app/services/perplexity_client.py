@@ -154,13 +154,16 @@ class PerplexityClient:
                     component="perplexity",
                 )
 
+            # Perplexity API через OpenAI-compatible endpoint
+            # Параметр search_recency_filter не поддерживается в текущей версии API
+            # Используем базовый вызов без фильтра актуальности
             llm = ChatOpenAI(
                 api_key=self.api_key,
                 model=use_model,
                 base_url=self.BASE_URL,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                model_kwargs={"search_recency_filter": search_recency_filter},
+                # model_kwargs={"search_recency_filter": search_recency_filter},  # Временно отключено
             )
 
             msg = await llm.ainvoke(lc_messages)

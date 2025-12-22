@@ -1,10 +1,17 @@
 """
 Agent-Orchestrator: координирует workflow анализа клиентов.
-Получает данные клиента и определяет стратегию поиска.
+Получает данные клиента и определяет стратегию поиска через LLM.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
+from app.agents.shared.llm import llm_generate_json
+from app.agents.shared.prompts import (
+    ORCHESTRATOR_INTENT_GENERATION_PROMPT,
+    format_dadata_for_prompt,
+)
+from app.agents.shared.utils import validate_inn
+from app.services.fetch_data import fetch_from_dadata
 from app.utility.logging_client import logger
 
 SEARCH_INTENTS = [
@@ -38,7 +45,12 @@ SEARCH_INTENTS = [
 
 async def orchestrator_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Агент-оркестратор: валидирует входные данные и формирует план поиска.
+    Агент-оркестратор: валидирует входные данные и формирует план поиска через LLM.
+    
+    P0 ИЗМЕНЕНИЯ:
+    - Получает точное название из DaData если есть ИНН
+    - Использует LLM для генерации адаптивных search_intents
+    - Fallback на жёсткие шаблоны если LLM недоступен
 
     Входные данные в state:
         - client_name: str - название компании
@@ -65,7 +77,137 @@ async def orchestrator_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         f"Orchestrator: начинаем анализ клиента '{client_name}'",
         component="orchestrator",
     )
+    
+    # P0: Валидация ИНН
+    if inn:
+        is_valid, error_msg = validate_inn(inn)
+        if not is_valid:
+            logger.warning(f"Orchestrator: Invalid INN: {error_msg}", component="orchestrator")
+            inn = ""  # Продолжаем без ИНН
 
+    # P0: НОВОЕ - Получаем точное название из DaData если есть ИНН
+    dadata_info = None
+    canonical_name = client_name
+    
+    if inn and len(inn) in (10, 12):
+        try:
+            logger.info(f"Orchestrator: fetching DaData for INN {inn}", component="orchestrator")
+            dadata_result = await fetch_from_dadata(inn)
+            if dadata_result and "data" in dadata_result:
+                dadata_info = dadata_result.get("data", {})
+                # Используем официальное название из ЕГРЮЛ
+                full_name = dadata_info.get("name", {}).get("full_with_opf")
+                if full_name:
+                    canonical_name = full_name
+                    logger.info(
+                        f"Orchestrator: using canonical name from ЕГРЮЛ: {canonical_name}",
+                        component="orchestrator"
+                    )
+        except Exception as e:
+            logger.warning(f"Orchestrator: DaData fetch failed: {e}", component="orchestrator")
+
+    # P0: НОВОЕ - Генерируем search_intents через LLM
+    search_queries = await _generate_search_intents_llm(
+        client_name=canonical_name,
+        inn=inn,
+        additional_notes=additional_notes,
+        dadata_info=dadata_info,
+    )
+    
+    # Fallback на старые шаблоны если LLM не вернул ничего
+    if not search_queries:
+        logger.warning("Orchestrator: LLM failed, using fallback templates", component="orchestrator")
+        search_queries = _generate_search_intents_fallback(canonical_name, inn, additional_notes)
+
+    logger.info(
+        f"Orchestrator: сформировано {len(search_queries)} поисковых запросов",
+        component="orchestrator",
+    )
+
+    return {
+        **state,
+        "search_intents": search_queries,
+        "current_step": "searching",
+        "orchestrator_result": {
+            "client_name": canonical_name,
+            "original_name": client_name,
+            "inn": inn,
+            "search_count": len(search_queries),
+            "has_dadata": bool(dadata_info),
+        },
+    }
+
+
+async def _generate_search_intents_llm(
+    client_name: str,
+    inn: str,
+    additional_notes: str,
+    dadata_info: Optional[Dict] = None,
+) -> List[Dict[str, str]]:
+    """
+    P0: НОВОЕ - Генерация search_intents через LLM.
+    
+    Использует системный промпт для адаптивной генерации запросов.
+    """
+    from app.agents.shared.prompts import ORCHESTRATOR_SYSTEM_PROMPT
+    
+    # Форматируем данные DaData для промпта
+    dadata_section = ""
+    if dadata_info:
+        dadata_section = "\nДАННЫЕ ЕГРЮЛ:\n" + format_dadata_for_prompt(dadata_info)
+    
+    user_message = ORCHESTRATOR_INTENT_GENERATION_PROMPT.format(
+        client_name=client_name,
+        inn=inn if inn else "не указан",
+        dadata_section=dadata_section,
+        additional_notes=additional_notes if additional_notes else "нет",
+    )
+    
+    try:
+        result = await llm_generate_json(
+            system_prompt=ORCHESTRATOR_SYSTEM_PROMPT,
+            user_message=user_message,
+            temperature=0.3,  # Низкая для точности
+            max_tokens=1500,
+            fallback_on_error={"search_intents": []},
+        )
+        
+        search_intents = result.get("search_intents", [])
+        
+        # Валидация и нормализация
+        normalized = []
+        for idx, intent in enumerate(search_intents):
+            if not isinstance(intent, dict):
+                continue
+            
+            category = intent.get("category", f"generated_{idx}")
+            query = intent.get("query", "")
+            if not query:
+                continue
+            
+            normalized.append({
+                "id": category,
+                "query": query.strip(),
+                "description": intent.get("description", f"Поиск: {category}"),
+            })
+        
+        return normalized
+        
+    except Exception as e:
+        logger.error(f"Orchestrator LLM generation failed: {e}", component="orchestrator")
+        return []
+
+
+def _generate_search_intents_fallback(
+    client_name: str,
+    inn: str,
+    additional_notes: str,
+) -> List[Dict[str, str]]:
+    """
+    Fallback: генерация search_intents по жёстким шаблонам.
+    
+    Используется если LLM недоступен или вернул пустой результат.
+    """
     search_queries: List[Dict[str, str]] = []
     for intent in SEARCH_INTENTS:
         query = intent["query_template"].format(
@@ -87,19 +229,5 @@ async def orchestrator_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 "description": "Дополнительный запрос",
             }
         )
-
-    logger.info(
-        f"Orchestrator: сформировано {len(search_queries)} поисковых запросов",
-        component="orchestrator",
-    )
-
-    return {
-        **state,
-        "search_intents": search_queries,
-        "current_step": "searching",
-        "orchestrator_result": {
-            "client_name": client_name,
-            "inn": inn,
-            "search_count": len(search_queries),
-        },
-    }
+    
+    return search_queries

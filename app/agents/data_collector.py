@@ -7,6 +7,9 @@ import asyncio
 import time
 from typing import Any, Dict, List, Optional
 
+from app.agents.shared.prompts import DATA_COLLECTOR_SEARCH_PROMPT
+from app.agents.shared.utils import truncate
+from app.agents.web_scraper import scrape_top_tavily_links
 from app.config import MAX_CONCURRENT_SEARCHES, MAX_CONTENT_LENGTH, SEARCH_TIMEOUT_SECONDS
 from app.services.fetch_data import (
     fetch_from_casebook,
@@ -18,16 +21,8 @@ from app.services.tavily_client import TavilyClient
 from app.utility.logging_client import logger
 
 
-def _truncate(text: str, max_len: int = MAX_CONTENT_LENGTH) -> str:
-    if not text:
-        return ""
-    if len(text) <= max_len:
-        return text
-    return text[: max_len - 3] + "..."
-
-
-async def _fetch_perplexity(intent_id: str, query: str, client_name: str) -> Dict[str, Any]:
-    """Запрос к Perplexity AI."""
+async def _fetch_perplexity(intent_id: str, query: str, client_name: str, inn: str = "") -> Dict[str, Any]:
+    """Запрос к Perplexity AI с recency=year."""
     client = PerplexityClient.get_instance()
     if not client.is_configured():
         return {
@@ -38,23 +33,24 @@ async def _fetch_perplexity(intent_id: str, query: str, client_name: str) -> Dic
         }
 
     try:
-        question = (
-            "Найди проверяемые факты о компании и укажи источники.\n"
-            f"Компания: {client_name}\n"
-            f"Запрос: {query}\n"
-            "Формат: кратко, по пунктам (факты/риски/упоминания в СМИ/суды/финансы)."
+        # Используем промпт из shared модуля
+        question = DATA_COLLECTOR_SEARCH_PROMPT.format(
+            client_name=client_name,
+            inn=inn if inn else "не указан",
+            query=query,
         )
         system_prompt = (
-            "Ты аналитик комплаенса. Ищи только проверяемые факты, не выдумывай. "
-            "Пиши по-русски."
+            "Ты аналитик комплаенса. Ищи только проверяемые факты из ПОСЛЕДНЕГО ГОДА. "
+            "Не выдумывай. Пиши по-русски. Указывай источники и даты."
         )
 
-        # Требование: клиент Perplexity работает через LangChain.
+        # P0: MAXIMUM DEPTH - recency="year", max_tokens увеличен
         result = await asyncio.wait_for(
             client.ask(
                 question=question,
-                system_prompt=system_prompt,
-                search_recency_filter="month",
+                system_prompt="Глубокий анализ за последний год. Ищи 20+ источников. Только проверяемые факты. Пиши по-русски.",
+                search_recency_filter="year",  # БЫЛО: "month", СТАЛО: "year"
+                max_tokens=2000,  # Увеличено для более полных ответов
             ),
             timeout=SEARCH_TIMEOUT_SECONDS,
         )
@@ -63,7 +59,7 @@ async def _fetch_perplexity(intent_id: str, query: str, client_name: str) -> Dic
             "source": "perplexity",
             "intent_id": intent_id,
             "success": bool(result.get("success", False)),
-            "content": _truncate(result.get("content", "") or ""),
+            "content": truncate(result.get("content", "") or "", MAX_CONTENT_LENGTH),
             "citations": result.get("citations", []) or [],
             "error": result.get("error"),
             "integration": result.get("integration"),
@@ -84,8 +80,8 @@ async def _fetch_perplexity(intent_id: str, query: str, client_name: str) -> Dic
         }
 
 
-async def _fetch_tavily(intent_id: str, query: str, client_name: str) -> Dict[str, Any]:
-    """Запрос к Tavily Search."""
+async def _fetch_tavily(intent_id: str, query: str, client_name: str, inn: str = "") -> Dict[str, Any]:
+    """Запрос к Tavily Search с time_range=year."""
     client = TavilyClient.get_instance()
     if not client.is_configured():
         return {
@@ -96,12 +92,14 @@ async def _fetch_tavily(intent_id: str, query: str, client_name: str) -> Dict[st
         }
 
     try:
+        # P0: MAXIMUM DEPTH - search_depth="extreme", max_results=20
         result = await asyncio.wait_for(
             client.search(
                 query=query if client_name in query else f"{client_name} {query}",
-                search_depth="advanced",
-                max_results=10,
+                search_depth="advanced",  # "extreme" не поддерживается, используем "advanced"
+                max_results=20,  # БЫЛО: 10, СТАЛО: 20
                 include_answer=True,
+                include_raw_content=False,  # Сначала сниппеты, потом скрейпим
             ),
             timeout=SEARCH_TIMEOUT_SECONDS,
         )
@@ -109,7 +107,7 @@ async def _fetch_tavily(intent_id: str, query: str, client_name: str) -> Dict[st
             "source": "tavily",
             "intent_id": intent_id,
             "success": bool(result.get("success", False)),
-            "answer": _truncate(result.get("answer", "") or "", max_len=1200),
+            "answer": truncate(result.get("answer", "") or "", max_length=1200),
             "results": result.get("results", []),
             "error": result.get("error"),
         }
@@ -234,8 +232,9 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     for intent in intents:
         intent_id = str(intent.get("id"))
         query = str(intent.get("query") or client_name)
-        web_tasks.append(asyncio.create_task(_bounded(_fetch_perplexity(intent_id, query, client_name))))
-        web_tasks.append(asyncio.create_task(_bounded(_fetch_tavily(intent_id, query, client_name))))
+        # P0: Передаём inn в функции для более точного поиска
+        web_tasks.append(asyncio.create_task(_bounded(_fetch_perplexity(intent_id, query, client_name, inn))))
+        web_tasks.append(asyncio.create_task(_bounded(_fetch_tavily(intent_id, query, client_name, inn))))
 
     web_results: List[Any] = []
     if web_tasks:
@@ -302,6 +301,40 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     duration_ms = (time.perf_counter() - start_time) * 1000
 
     search_results = _build_search_results(source_data, intents)
+    
+    # P0: НОВОЕ - Скрейпинг TOP-5 ссылок Tavily для глубокого анализа
+    tavily_full_texts = []
+    if source_data.get("tavily", {}).get("success"):
+        try:
+            # Собираем все результаты Tavily
+            all_tavily_results = []
+            tavily_intents = source_data["tavily"].get("intents", {})
+            for intent_data in tavily_intents.values():
+                if intent_data.get("success") and intent_data.get("results"):
+                    all_tavily_results.extend(intent_data["results"])
+            
+            if all_tavily_results:
+                logger.info(
+                    f"Data collector: starting web scraping of TOP-5 Tavily links",
+                    component="data_collector"
+                )
+                tavily_full_texts = await scrape_top_tavily_links(
+                    all_tavily_results,
+                    top_n=5,
+                    max_content_length=10000,
+                )
+                logger.info(
+                    f"Data collector: scraped {len(tavily_full_texts)} pages",
+                    component="data_collector"
+                )
+        except Exception as e:
+            logger.error(
+                f"Data collector: web scraping failed: {e}",
+                component="data_collector"
+            )
+    
+    # Добавляем полные тексты в source_data
+    source_data["tavily_full_texts"] = tavily_full_texts
 
     logger.structured(
         "info",
@@ -310,6 +343,7 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         successful_sources=successful_sources,
         total_sources=len([v for v in source_data.values() if v]),
         search_results_count=len(search_results),
+        scraped_pages=len(tavily_full_texts),
         duration_ms=round(duration_ms, 2),
     )
 
@@ -372,7 +406,7 @@ def _build_search_results(
             ).strip()
             tav_block = "\n\n".join([p for p in [answer, results_text] if p]).strip()
             if tav_block:
-                content_parts.append(f"[Tavily]\n{_truncate(tav_block, max_len=1600)}")
+                content_parts.append(f"[Tavily]\n{truncate(tav_block, max_length=1600)}")
             citations.extend(
                 [
                     r.get("url")
@@ -382,7 +416,7 @@ def _build_search_results(
             )
             success = True
 
-        combined = _truncate("\n\n".join([p for p in content_parts if p]).strip())
+        combined = truncate("\n\n".join([p for p in content_parts if p]).strip(), MAX_CONTENT_LENGTH)
         if not combined:
             # Если оба источника упали — фиксируем это как неуспех, но сохраняем intent_id/query.
             search_results.append(
