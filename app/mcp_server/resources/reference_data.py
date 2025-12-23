@@ -5,7 +5,7 @@ Contains enums, constants, and reference values used in analysis.
 """
 
 from enum import Enum
-from typing import Dict, List
+from typing import Any, Dict
 
 
 # ============================================================================
@@ -22,7 +22,7 @@ class RiskLevel(str, Enum):
     CRITICAL = "critical"
 
 
-RISK_LEVELS: Dict[str, Dict[str, any]] = {
+RISK_LEVELS: Dict[str, Dict[str, Any]] = {
     "low": {
         "label": "Низкий риск",
         "score_range": (0, 24),
@@ -50,7 +50,7 @@ RISK_LEVELS: Dict[str, Dict[str, any]] = {
 }
 
 
-RISK_CATEGORIES: Dict[str, Dict[str, any]] = {
+RISK_CATEGORIES: Dict[str, Dict[str, Any]] = {
     "legal_risk": {
         "label": "Юридический риск",
         "description": "Ликвидация, судебные дела, исполнительные производства",
@@ -125,7 +125,7 @@ RISK_CATEGORIES: Dict[str, Dict[str, any]] = {
 # ============================================================================
 
 
-SEARCH_CATEGORIES: Dict[str, Dict[str, any]] = {
+SEARCH_CATEGORIES: Dict[str, Dict[str, Any]] = {
     "legal": {
         "label": "Юридические данные",
         "description": "ЕГРЮЛ, статус, учредители, лицензии",
@@ -182,7 +182,7 @@ SEARCH_CATEGORIES: Dict[str, Dict[str, any]] = {
 # ============================================================================
 
 
-COMPANY_STATUSES: Dict[str, Dict[str, any]] = {
+COMPANY_STATUSES: Dict[str, Dict[str, Any]] = {
     "ACTIVE": {
         "label": "Действующая",
         "risk_modifier": 0,
@@ -216,7 +216,7 @@ COMPANY_STATUSES: Dict[str, Dict[str, any]] = {
 # ============================================================================
 
 
-API_SOURCES: Dict[str, Dict[str, any]] = {
+API_SOURCES: Dict[str, Dict[str, Any]] = {
     "dadata": {
         "name": "DaData",
         "base_url": "https://suggestions.dadata.ru",
@@ -294,4 +294,3 @@ __all__ = [
     "COMPANY_STATUSES",
     "API_SOURCES",
 ]
-

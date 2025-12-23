@@ -257,18 +257,22 @@ async def fs_delete(path: str) -> Dict[str, Any]:
     return {"status": "success", "deleted": True, "path": str(p)}
 
 
-@mcp.tool(
-    name="get_asyncapi_spec",
-    title="Получить AsyncAPI спецификацию",
-    description="Возвращает AsyncAPI JSON для RabbitMQ/FastStream.",
-)
-async def get_asyncapi_spec() -> Dict[str, Any]:
+async def _build_asyncapi_spec() -> Dict[str, Any]:
     from faststream.specification import AsyncAPI
 
     from app.messaging.broker import broker
 
     spec = AsyncAPI(broker, title="Client Analysis Messaging", version="1.0.0").to_specification()
     return json.loads(spec.to_json())
+
+
+@mcp.tool(
+    name="get_asyncapi_spec",
+    title="Получить AsyncAPI спецификацию",
+    description="Возвращает AsyncAPI JSON для RabbitMQ/FastStream.",
+)
+async def get_asyncapi_spec() -> Dict[str, Any]:
+    return await _build_asyncapi_spec()
 
 
 @mcp.resource(
@@ -293,7 +297,7 @@ async def openapi_resource() -> Dict[str, Any]:
     tags={"spec"},
 )
 async def asyncapi_resource() -> Dict[str, Any]:
-    return await get_asyncapi_spec()
+    return await _build_asyncapi_spec()
 
 
 @mcp.prompt(

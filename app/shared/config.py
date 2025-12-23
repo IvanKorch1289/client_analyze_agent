@@ -5,7 +5,6 @@ All configuration is loaded from environment variables (.env file).
 Never hardcode API keys or secrets in code!
 """
 
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -92,9 +91,17 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     EMAIL_FROM: Optional[str] = None
 
-    @field_validator("DADATA_API_TOKEN", "DADATA_API_SECRET", "CASEBOOK_API_KEY", 
-                     "INFOSFERA_API_KEY", "PERPLEXITY_API_KEY", "TAVILY_API_KEY",
-                     "OPENROUTER_API_KEY", "SECRET_KEY", "API_KEY_SALT")
+    @field_validator(
+        "DADATA_API_TOKEN",
+        "DADATA_API_SECRET",
+        "CASEBOOK_API_KEY",
+        "INFOSFERA_API_KEY",
+        "PERPLEXITY_API_KEY",
+        "TAVILY_API_KEY",
+        "OPENROUTER_API_KEY",
+        "SECRET_KEY",
+        "API_KEY_SALT",
+    )
     @classmethod
     def validate_no_whitespace(cls, v: str) -> str:
         """Ensure API keys have no leading/trailing whitespace."""
@@ -125,7 +132,7 @@ class Settings(BaseSettings):
 # Singleton instance
 # Use this throughout the application instead of creating new instances
 try:
-    settings = Settings()
+    settings = Settings()  # type: ignore[call-arg]
 except Exception as e:
     print(f"❌ Failed to load configuration: {e}")
     print("📝 Make sure .env file exists and contains all required variables")
@@ -134,4 +141,3 @@ except Exception as e:
 
 
 __all__ = ["settings", "Settings"]
-

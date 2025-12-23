@@ -3,7 +3,7 @@ General helper utilities.
 """
 
 import asyncio
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TypeVar
 
 from app.shared.logger import get_logger
 
@@ -31,7 +31,7 @@ def safe_dict_get(data: Dict[str, Any], *keys: str, default: Any = None) -> Any:
         >>> safe_dict_get({"a": {"b": {}}}, "a", "b", "c", default="N/A")
         "N/A"
     """
-    result = data
+    result: Any = data
     for key in keys:
         if not isinstance(result, dict):
             return default
@@ -76,11 +76,11 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 0) -> List[str]
 
 
 async def retry_async(
-    func: Callable[..., T],
+    func: Callable[..., Awaitable[T]],
     max_retries: int = 3,
     delay: float = 1.0,
     backoff: float = 2.0,
-    exceptions: tuple = (Exception,),
+    exceptions: tuple[type[Exception], ...] = (Exception,),
     *args: Any,
     **kwargs: Any,
 ) -> T:
@@ -123,7 +123,7 @@ async def retry_async(
                     attempt=attempt + 1,
                     max_retries=max_retries + 1,
                     delay=current_delay,
-                    exc=str(e),
+                    exc=e,
                 )
                 await asyncio.sleep(current_delay)
                 current_delay *= backoff
@@ -131,7 +131,7 @@ async def retry_async(
                 logger.error(
                     f"All {max_retries + 1} attempts failed",
                     func=func.__name__,
-                    exc=str(e),
+                    exc=e,
                 )
 
     if last_exception:
@@ -144,4 +144,3 @@ __all__ = [
     "chunk_text",
     "retry_async",
 ]
-

@@ -17,4 +17,3 @@ __all__ = [
     "get_system_prompt",
     "get_prompt_metadata",
 ]
-

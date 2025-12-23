@@ -76,6 +76,7 @@ def sanitize_for_llm(text: str, max_length: int = 10000, strict: bool = True) ->
             else:
                 # Log warning but continue
                 from app.shared.logger import get_logger
+
                 logger = get_logger(__name__)
                 logger.warning(
                     "Suspicious pattern detected",
@@ -286,4 +287,3 @@ __all__ = [
     "sanitize_for_sql",
     "sanitize_filename",
 ]
-

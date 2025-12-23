@@ -4,10 +4,9 @@ Validation and cache management tools.
 
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from app.shared.logger import get_logger
-from app.shared.security import sanitize_for_llm
 
 logger = get_logger(__name__)
 
@@ -30,29 +29,19 @@ class ValidateInputRequest(BaseModel):
 class InvalidateCacheRequest(BaseModel):
     """Request to invalidate cache."""
 
-    cache_key: Optional[str] = Field(
+    prefix: Optional[str] = Field(
         default=None,
         max_length=200,
-        description="Specific cache key (or None for all)",
+        description="Cache prefix (or None for all)",
     )
-    pattern: Optional[str] = Field(
+    invalidate_all: bool = Field(
+        default=False,
+        description="Invalidate all cache entries (overrides prefix)",
+    )
+    prefer_queue: Optional[bool] = Field(
         default=None,
-        max_length=200,
-        description="Pattern to match cache keys",
+        description="Force queue usage (True) or direct (False). Defaults to queue setting if None.",
     )
-
-    @field_validator("cache_key", "pattern")
-    @classmethod
-    def validate_key(cls, v: Optional[str]) -> Optional[str]:
-        """Validate cache key format."""
-        if v:
-            # Only allow alphanumeric, underscore, hyphen, colon, asterisk
-            import re
-            if not re.match(r"^[a-zA-Z0-9_:*-]+$", v):
-                raise ValueError(
-                    "Cache key must contain only alphanumeric, underscore, hyphen, colon, asterisk"
-                )
-        return v
 
 
 # ============================================================================
@@ -131,7 +120,7 @@ async def invalidate_cache_tool(request: InvalidateCacheRequest) -> Dict[str, An
     """
     Invalidate cache entries.
 
-    Can invalidate specific key, pattern, or all cache.
+    Can invalidate specific prefix or all cache entries.
 
     Args:
         request: Validated request
@@ -144,29 +133,31 @@ async def invalidate_cache_tool(request: InvalidateCacheRequest) -> Dict[str, An
 
     Examples:
         >>> result = await invalidate_cache_tool(
-        ...     InvalidateCacheRequest(pattern="dadata:*")
+        ...     InvalidateCacheRequest(prefix="dadata:")
         ... )
         >>> result
         {'status': 'success', 'invalidated_count': 15}
     """
     logger.log_action(
         "invalidate_cache_start",
-        cache_key=request.cache_key,
-        pattern=request.pattern,
+        prefix=request.prefix,
+        invalidate_all=request.invalidate_all,
+        prefer_queue=request.prefer_queue,
     )
 
     try:
         from app.services.app_actions import dispatch_cache_invalidate
 
         result = await dispatch_cache_invalidate(
-            cache_key=request.cache_key,
-            pattern=request.pattern,
+            prefix=request.prefix,
+            invalidate_all=request.invalidate_all,
+            prefer_queue=request.prefer_queue,
         )
 
         logger.log_action(
             "invalidate_cache_success",
-            cache_key=request.cache_key,
-            pattern=request.pattern,
+            prefix=request.prefix,
+            invalidate_all=request.invalidate_all,
             invalidated_count=result.get("invalidated_count", 0),
         )
 
@@ -176,8 +167,8 @@ async def invalidate_cache_tool(request: InvalidateCacheRequest) -> Dict[str, An
         logger.error(
             "invalidate_cache_failed",
             exc=e,
-            cache_key=request.cache_key,
-            pattern=request.pattern,
+            prefix=request.prefix,
+            invalidate_all=request.invalidate_all,
         )
         raise
 
@@ -188,4 +179,3 @@ __all__ = [
     "validate_input_tool",
     "invalidate_cache_tool",
 ]
-

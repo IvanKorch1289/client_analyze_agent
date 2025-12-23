@@ -340,4 +340,3 @@ __all__ = [
     "get_prompt_metadata",
     "format_dadata_for_prompt",
 ]
-

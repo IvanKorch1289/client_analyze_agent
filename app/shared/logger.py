@@ -32,7 +32,7 @@ class JSONFormatter(logging.Formatter):
         Returns:
             JSON-formatted log string
         """
-        log_data = {
+        log_data: Dict[str, Any] = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "level": record.levelname,
             "logger": record.name,
@@ -163,9 +163,7 @@ class StructuredLogger:
         """Log error message."""
         self._log(logging.ERROR, message, exc, **kwargs)
 
-    def critical(
-        self, message: str, exc: Optional[Exception] = None, **kwargs: Any
-    ) -> None:
+    def critical(self, message: str, exc: Optional[Exception] = None, **kwargs: Any) -> None:
         """Log critical message."""
         self._log(logging.CRITICAL, message, exc, **kwargs)
 
@@ -279,4 +277,3 @@ __all__ = [
     "get_logger",
     "JSONFormatter",
 ]
-

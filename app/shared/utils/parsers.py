@@ -73,13 +73,13 @@ def parse_csv(
         return []
 
     try:
-        reader = csv.DictReader(StringIO(text), delimiter=delimiter) if has_header else csv.reader(StringIO(text), delimiter=delimiter)
-
         if has_header:
-            return list(reader)
-        else:
-            # Convert to list of lists if no header
-            return [{"col_" + str(i): val for i, val in enumerate(row)} for row in reader]
+            dict_reader = csv.DictReader(StringIO(text), delimiter=delimiter)
+            return list(dict_reader)
+
+        row_reader = csv.reader(StringIO(text), delimiter=delimiter)
+        # Convert to list of lists if no header
+        return [{"col_" + str(i): val for i, val in enumerate(row)} for row in row_reader]
 
     except Exception as e:
         raise ValidationError(
@@ -93,4 +93,3 @@ __all__ = [
     "parse_json",
     "parse_csv",
 ]
-

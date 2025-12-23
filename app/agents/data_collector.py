@@ -7,7 +7,6 @@ import asyncio
 import time
 from typing import Any, Dict, List
 
-from app.mcp_server.prompts.system_prompts import AnalyzerRole, get_system_prompt
 from app.shared.utils.formatters import truncate
 from app.agents.web_scraper import scrape_top_tavily_links
 from app.config import (

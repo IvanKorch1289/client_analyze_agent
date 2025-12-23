@@ -131,21 +131,13 @@ DADATA_SWAGGER = {
                                                             "ogrn": {"type": "string"},
                                                             "name": {
                                                                 "type": "object",
-                                                                "properties": {
-                                                                    "full_with_opf": {
-                                                                        "type": "string"
-                                                                    }
-                                                                },
+                                                                "properties": {"full_with_opf": {"type": "string"}},
                                                             },
                                                             "state": {
                                                                 "type": "object",
                                                                 "properties": {
-                                                                    "status": {
-                                                                        "type": "string"
-                                                                    },
-                                                                    "registration_date": {
-                                                                        "type": "integer"
-                                                                    },
+                                                                    "status": {"type": "string"},
+                                                                    "registration_date": {"type": "integer"},
                                                                 },
                                                             },
                                                         },
@@ -262,4 +254,3 @@ __all__ = [
     "DADATA_SWAGGER",
     "CASEBOOK_SWAGGER",
 ]
-

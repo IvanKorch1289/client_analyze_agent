@@ -121,4 +121,3 @@ __all__ = [
     "format_json",
     "format_csv",
 ]
-

@@ -6,14 +6,13 @@ All file operations are restricted to MCP_FILES_ROOT for security.
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.shared.config import settings
 from app.shared.exceptions import ValidationError
 from app.shared.logger import get_logger
-from app.shared.security import sanitize_filename
 
 logger = get_logger(__name__)
 
@@ -198,12 +197,14 @@ async def list_files_tool(request: ListFilesRequest) -> Dict[str, Any]:
         for file_path in dir_path.glob(request.pattern):
             if file_path.is_file():
                 stat = file_path.stat()
-                files.append({
-                    "name": file_path.name,
-                    "path": str(file_path.relative_to(MCP_FILES_ROOT)),
-                    "size_bytes": stat.st_size,
-                    "modified": stat.st_mtime,
-                })
+                files.append(
+                    {
+                        "name": file_path.name,
+                        "path": str(file_path.relative_to(MCP_FILES_ROOT)),
+                        "size_bytes": stat.st_size,
+                        "modified": stat.st_mtime,
+                    }
+                )
 
         logger.log_action(
             "list_files_success",
@@ -230,4 +231,3 @@ __all__ = [
     "read_file_tool",
     "list_files_tool",
 ]
-

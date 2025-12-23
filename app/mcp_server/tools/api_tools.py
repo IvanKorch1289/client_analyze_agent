@@ -4,9 +4,9 @@ API tools for external data sources.
 All tools are async and use proper validation.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Literal
 
-import httpx
+from httpx import AsyncClient, HTTPStatusError, RequestError
 from pydantic import BaseModel, Field, field_validator
 
 from app.shared.config import settings
@@ -81,10 +81,9 @@ class TavilyRequest(BaseModel):
 
     query: str = Field(..., max_length=1000, description="Search query")
     max_results: int = Field(default=5, ge=1, le=10, description="Max results")
-    search_depth: str = Field(
+    search_depth: Literal["basic", "advanced", "fast", "ultra-fast"] = Field(
         default="basic",
-        description="Search depth: basic or advanced",
-        pattern="^(basic|advanced)$",
+        description="Search depth",
     )
 
     @field_validator("query")
@@ -120,7 +119,7 @@ async def fetch_dadata_company_tool(request: DaDataRequest) -> Dict[str, Any]:
     logger.log_action("dadata_api_call", query=request.query, count=request.count)
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 "https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/party",
                 headers={
@@ -144,16 +143,24 @@ async def fetch_dadata_company_tool(request: DaDataRequest) -> Dict[str, Any]:
 
             return data
 
-    except httpx.HTTPError as e:
+    except HTTPStatusError as e:
+        status_code = e.response.status_code if e.response else None
         logger.error(
             "dadata_api_failed",
             exc=e,
             query=request.query,
-            status_code=getattr(e.response, "status_code", None),
+            status_code=status_code,
         )
         raise APIError(
             f"DaData API error: {e}",
-            status_code=getattr(e.response, "status_code", None),
+            status_code=status_code,
+            api_name="DaData",
+            original_error=e,
+        )
+    except RequestError as e:
+        logger.error("dadata_api_failed", exc=e, query=request.query)
+        raise APIError(
+            f"DaData API request error: {e}",
             api_name="DaData",
             original_error=e,
         )
@@ -175,10 +182,10 @@ async def fetch_casebook_data_tool(request: CasebookRequest) -> Dict[str, Any]:
     logger.log_action("casebook_api_call", inn=request.inn)
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with AsyncClient(timeout=30.0) as client:
             # Casebook API endpoint (placeholder - adjust based on actual API)
             response = await client.get(
-                f"https://api3.casebook.ru/api/search",
+                "https://api3.casebook.ru/api/search",
                 headers={
                     "Authorization": f"Bearer {settings.CASEBOOK_API_KEY}",
                     "Content-Type": "application/json",
@@ -200,16 +207,24 @@ async def fetch_casebook_data_tool(request: CasebookRequest) -> Dict[str, Any]:
 
             return data
 
-    except httpx.HTTPError as e:
+    except HTTPStatusError as e:
+        status_code = e.response.status_code if e.response else None
         logger.error(
             "casebook_api_failed",
             exc=e,
             inn=request.inn,
-            status_code=getattr(e.response, "status_code", None),
+            status_code=status_code,
         )
         raise APIError(
             f"Casebook API error: {e}",
-            status_code=getattr(e.response, "status_code", None),
+            status_code=status_code,
+            api_name="Casebook",
+            original_error=e,
+        )
+    except RequestError as e:
+        logger.error("casebook_api_failed", exc=e, inn=request.inn)
+        raise APIError(
+            f"Casebook API request error: {e}",
             api_name="Casebook",
             original_error=e,
         )
@@ -231,10 +246,10 @@ async def fetch_infosfera_data_tool(request: InfosferaRequest) -> Dict[str, Any]
     logger.log_action("infosfera_api_call", inn=request.inn)
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with AsyncClient(timeout=30.0) as client:
             # Infosfera API endpoint (placeholder)
             response = await client.get(
-                f"https://api.infosfera.ru/v1/company",
+                "https://api.infosfera.ru/v1/company",
                 headers={
                     "Authorization": f"Bearer {settings.INFOSFERA_API_KEY}",
                     "Content-Type": "application/json",
@@ -256,16 +271,24 @@ async def fetch_infosfera_data_tool(request: InfosferaRequest) -> Dict[str, Any]
 
             return data
 
-    except httpx.HTTPError as e:
+    except HTTPStatusError as e:
+        status_code = e.response.status_code if e.response else None
         logger.error(
             "infosfera_api_failed",
             exc=e,
             inn=request.inn,
-            status_code=getattr(e.response, "status_code", None),
+            status_code=status_code,
         )
         raise APIError(
             f"Infosfera API error: {e}",
-            status_code=getattr(e.response, "status_code", None),
+            status_code=status_code,
+            api_name="Infosfera",
+            original_error=e,
+        )
+    except RequestError as e:
+        logger.error("infosfera_api_failed", exc=e, inn=request.inn)
+        raise APIError(
+            f"Infosfera API request error: {e}",
             api_name="Infosfera",
             original_error=e,
         )
@@ -290,7 +313,10 @@ async def search_perplexity_tool(request: PerplexityRequest) -> Dict[str, Any]:
         from app.services.perplexity_client import PerplexityClient
 
         client = PerplexityClient()
-        result = await client.search(query=request.query, focus=request.focus)
+        result = await client.ask(
+            question=request.query,
+            system_prompt=request.focus,
+        )
 
         logger.log_action(
             "perplexity_search_success",
@@ -368,4 +394,3 @@ __all__ = [
     "search_perplexity_tool",
     "search_tavily_tool",
 ]
-

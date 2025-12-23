@@ -24,4 +24,3 @@ __all__ = [
     "RISK_LEVELS",
     "SEARCH_CATEGORIES",
 ]
-
