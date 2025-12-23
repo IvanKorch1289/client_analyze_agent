@@ -7,8 +7,8 @@ import asyncio
 import time
 from typing import Any, Dict, List
 
-from app.agents.shared.prompts import DATA_COLLECTOR_SEARCH_PROMPT
-from app.agents.shared.utils import truncate
+from app.mcp_server.prompts.system_prompts import AnalyzerRole, get_system_prompt
+from app.shared.utils.formatters import truncate
 from app.agents.web_scraper import scrape_top_tavily_links
 from app.config import (
     MAX_CONCURRENT_SEARCHES,
@@ -37,13 +37,20 @@ async def _fetch_perplexity(intent_id: str, query: str, client_name: str, inn: s
         }
 
     try:
-        # Используем промпт из shared модуля
-        question = DATA_COLLECTOR_SEARCH_PROMPT.format(
-            client_name=client_name,
-            inn=inn if inn else "не указан",
-            query=query,
-        )
-        # system_prompt встроен в DATA_COLLECTOR_SEARCH_PROMPT
+        # Формируем вопрос для поиска
+        question = f"""Найди проверяемые факты о компании и укажи источники.
+
+Компания: {client_name}
+ИНН: {inn if inn else "не указан"}
+Запрос: {query}
+
+Формат ответа:
+- Кратко, по пунктам
+- Только проверяемые факты
+- Источники (URL, даты)
+- Категории: факты/риски/суды/финансы/репутация
+
+Период поиска: ПОСЛЕДНИЙ ГОД (актуальная информация)."""
 
         # P0: MAXIMUM DEPTH - recency="year", max_tokens увеличен
         system_prompt = (

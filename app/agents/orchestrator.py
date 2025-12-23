@@ -6,11 +6,8 @@ Agent-Orchestrator: координирует workflow анализа клиен�
 from typing import Any, Dict, List, Optional
 
 from app.agents.shared.llm import llm_generate_json
-from app.agents.shared.prompts import (
-    ORCHESTRATOR_INTENT_GENERATION_PROMPT,
-    format_dadata_for_prompt,
-)
-from app.agents.shared.utils import validate_inn
+from app.mcp_server.prompts.system_prompts import format_dadata_for_prompt
+from app.shared.security import validate_inn
 from app.services.fetch_data import fetch_from_dadata
 from app.utility.logging_client import logger
 
@@ -152,23 +149,30 @@ async def _generate_search_intents_llm(
 
     Использует системный промпт для адаптивной генерации запросов.
     """
-    from app.agents.shared.prompts import ORCHESTRATOR_SYSTEM_PROMPT
+    from app.mcp_server.prompts.system_prompts import AnalyzerRole, get_system_prompt
 
     # Форматируем данные DaData для промпта
     dadata_section = ""
     if dadata_info:
         dadata_section = "\nДАННЫЕ ЕГРЮЛ:\n" + format_dadata_for_prompt(dadata_info)
 
-    user_message = ORCHESTRATOR_INTENT_GENERATION_PROMPT.format(
-        client_name=client_name,
-        inn=inn if inn else "не указан",
-        dadata_section=dadata_section,
-        additional_notes=additional_notes if additional_notes else "нет",
-    )
+    # Используем typed system prompt
+    user_message = f"""На основе данных о клиенте сгенерируй поисковые запросы.
+
+ДАННЫЕ КЛИЕНТА:
+- Название: {client_name}
+- ИНН: {inn if inn else "не указан"}{dadata_section}
+- Доп. заметки: {additional_notes if additional_notes else "нет"}
+
+Сгенерируй 6-8 запросов по категориям: legal, court, finance, news_year, reputation, affiliates.
+Используй ТОЧНОЕ название из ЕГРЮЛ если доступно. Обязательно включай ИНН.
+
+Ответ в формате JSON:
+{{"search_intents": [{{"category": "legal", "query": "..."}}]}}"""
 
     try:
         result = await llm_generate_json(
-            system_prompt=ORCHESTRATOR_SYSTEM_PROMPT,
+            system_prompt=get_system_prompt(AnalyzerRole.ORCHESTRATOR),
             user_message=user_message,
             temperature=0.3,  # Низкая для точности
             max_tokens=1500,

@@ -1,22 +1,33 @@
 """
 Shared utilities and components for agents.
 
-This module contains common functions, schemas, and utilities
-used across multiple agents to avoid code duplication.
+DEPRECATED: This module is being phased out in favor of:
+- app.shared (for config, security, logger, utils)
+- app.mcp_server.prompts (for typed prompts)
+
+Please update imports:
+- validate_inn → app.shared.security.validate_inn
+- truncate, format_ts → app.shared.utils.formatters
+- System prompts → app.mcp_server.prompts.system_prompts
 """
 
-from app.agents.shared.llm import get_llm_manager
-from app.agents.shared.prompts import (
-    ANALYZER_SYSTEM_PROMPT,
-    ORCHESTRATOR_SYSTEM_PROMPT,
+import warnings
+
+warnings.warn(
+    "app.agents.shared is deprecated. Use app.shared and app.mcp_server.prompts instead.",
+    DeprecationWarning,
+    stacklevel=2,
 )
+
+from app.agents.shared.llm import get_llm_manager
 from app.agents.shared.schemas import ClientAnalysisState, ReportData
-from app.agents.shared.utils import format_ts, truncate, validate_inn
+
+# Re-export from new locations (for compatibility)
+from app.shared.security import validate_inn
+from app.shared.utils.formatters import format_ts, truncate
 
 __all__ = [
     "get_llm_manager",
-    "ORCHESTRATOR_SYSTEM_PROMPT",
-    "ANALYZER_SYSTEM_PROMPT",
     "ClientAnalysisState",
     "ReportData",
     "format_ts",

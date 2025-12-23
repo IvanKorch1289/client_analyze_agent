@@ -15,8 +15,9 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from app.agents.shared.llm import llm_generate_json
-from app.agents.shared.prompts import ANALYZER_SYSTEM_PROMPT
-from app.agents.shared.utils import safe_dict_get, truncate
+from app.mcp_server.prompts.system_prompts import AnalyzerRole, get_system_prompt
+from app.shared.utils import safe_dict_get
+from app.shared.utils.formatters import truncate
 from app.schemas.report import ClientAnalysisReport
 from app.utility.logging_client import logger
 
@@ -136,7 +137,7 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
 Создай JSON отчёт с оценкой рисков по формату из системного промпта."""
 
     llm_report = await llm_generate_json(
-        system_prompt=ANALYZER_SYSTEM_PROMPT,
+        system_prompt=get_system_prompt(AnalyzerRole.REPORT_ANALYZER),
         user_message=user_message,
         temperature=0.2,
         max_tokens=4000,
