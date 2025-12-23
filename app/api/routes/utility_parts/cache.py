@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from fastapi import Depends, Request
 
@@ -132,4 +132,3 @@ async def tarantool_status(request: Request) -> Dict[str, Any]:
             "mode": "unavailable",
             "message": str(e),
         }
-

@@ -97,4 +97,3 @@ def _latency_stats(durations_ms: List[float]) -> Dict[str, float]:
 
 
 app_metrics = AppMetrics()
-

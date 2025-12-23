@@ -14,7 +14,6 @@ from app.agents.data_collector import data_collector_agent
 from app.agents.file_writer import file_writer_agent
 from app.agents.orchestrator import orchestrator_agent
 from app.agents.report_analyzer import report_analyzer_agent
-from app.storage.tarantool import save_thread_to_tarantool
 from app.utility.logging_client import logger
 
 
@@ -125,9 +124,7 @@ def run_client_analysis_streaming(
         "search_error": "",
     }
 
-    logger.info(
-        f"Starting client analysis workflow: {session_id}", component="workflow"
-    )
+    logger.info(f"Starting client analysis workflow: {session_id}", component="workflow")
 
     if stream:
         return _run_streaming_analysis(initial_state, session_id, client_name, inn)
@@ -176,9 +173,7 @@ async def _run_streaming_analysis(
         current_state = await orchestrator_agent(current_state)
 
         intents = current_state.get("search_intents", [])
-        intent_categories = [
-            i.get("category") or i.get("query", "")[:30] for i in intents
-        ]
+        intent_categories = [i.get("category") or i.get("query", "")[:30] for i in intents]
         yield {
             "type": "orchestrator",
             "data": {
@@ -278,10 +273,10 @@ async def _run_streaming_analysis(
         try:
             # Сохраняем через ThreadsRepository для лучшей структуры данных
             from app.storage.tarantool import TarantoolClient
-            
+
             client = await TarantoolClient.get_instance()
             threads_repo = client.get_threads_repository()
-            
+
             thread_data = {
                 "input": f"Анализ клиента: {client_name}",
                 "created_at": time.time(),
@@ -293,22 +288,20 @@ async def _run_streaming_analysis(
                 "client_name": client_name,
                 "inn": inn,
             }
-            
+
             asyncio.create_task(
                 threads_repo.save_thread(
                     thread_id=session_id,
                     thread_data=thread_data,
                     client_name=client_name,
-                    inn=inn
+                    inn=inn,
                 )
             )
         except Exception as e:
             logger.error(f"Failed to save thread: {e}", component="workflow")
 
     except asyncio.CancelledError:
-        logger.info(
-            f"Streaming cancelled for session {session_id}", component="workflow"
-        )
+        logger.info(f"Streaming cancelled for session {session_id}", component="workflow")
         raise
     except Exception as e:
         logger.error(f"Streaming workflow error: {e}", component="workflow")
@@ -331,10 +324,10 @@ async def _run_batch_analysis(
     try:
         # Сохраняем через ThreadsRepository
         from app.storage.tarantool import TarantoolClient
-        
+
         client_inst = await TarantoolClient.get_instance()
         threads_repo = client_inst.get_threads_repository()
-        
+
         thread_data = {
             "input": f"Анализ клиента: {client_name}",
             "created_at": time.time(),
@@ -346,13 +339,13 @@ async def _run_batch_analysis(
             "client_name": client_name,
             "inn": inn,
         }
-        
+
         asyncio.create_task(
             threads_repo.save_thread(
                 thread_id=session_id,
                 thread_data=thread_data,
                 client_name=client_name,
-                inn=inn
+                inn=inn,
             )
         )
     except Exception as e:

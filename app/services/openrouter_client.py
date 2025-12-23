@@ -2,7 +2,11 @@ from typing import Any, Dict, List, Optional
 
 from app.config import settings
 from app.services.http_client import AsyncHttpClient, TimeoutConfig
-from app.services.service_status import status_error, status_not_configured, status_ready
+from app.services.service_status import (
+    status_error,
+    status_not_configured,
+    status_ready,
+)
 from app.utility.logging_client import logger
 
 
@@ -28,10 +32,7 @@ class OpenRouterClient:
         self.max_tokens = max_tokens or settings.openrouter.max_tokens
 
         if not self.api_key:
-            logger.warning(
-                "[OPENROUTER] API key not configured",
-                component="openrouter"
-            )
+            logger.warning("[OPENROUTER] API key not configured", component="openrouter")
 
     def is_configured(self) -> bool:
         return bool(self.api_key)

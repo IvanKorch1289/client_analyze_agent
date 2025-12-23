@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-from urllib.parse import urlencode, urljoin, urlparse
+from urllib.parse import urlparse
 
 import requests
 import streamlit as st
@@ -114,7 +114,13 @@ class ApiClient:
         st.caption(details)
         return None
 
-    def get(self, path: str, params: Optional[dict] = None, *, admin_token: Optional[str] = None) -> Any:
+    def get(
+        self,
+        path: str,
+        params: Optional[dict] = None,
+        *,
+        admin_token: Optional[str] = None,
+    ) -> Any:
         return self._request("GET", path, params=params, admin_token=admin_token)
 
     def post(
@@ -127,7 +133,13 @@ class ApiClient:
     ) -> Any:
         return self._request("POST", path, params=params, json=json, admin_token=admin_token)
 
-    def delete(self, path: str, params: Optional[dict] = None, *, admin_token: Optional[str] = None) -> Any:
+    def delete(
+        self,
+        path: str,
+        params: Optional[dict] = None,
+        *,
+        admin_token: Optional[str] = None,
+    ) -> Any:
         return self._request("DELETE", path, params=params, admin_token=admin_token)
 
 
@@ -136,4 +148,3 @@ def get_api_client() -> ApiClient:
     # Увеличенный таймаут для долгих операций (анализ клиента может занять 60+ секунд)
     timeout_seconds = int(os.getenv("API_TIMEOUT_SECONDS", "120"))
     return ApiClient(base_url=base_url, timeout_seconds=timeout_seconds)
-

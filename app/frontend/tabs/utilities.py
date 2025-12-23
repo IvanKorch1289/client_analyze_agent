@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import streamlit as st
 
 from app.frontend.api_client import ApiClient
 from app.frontend.lib.formatters import format_ts, get_status_emoji
-from app.frontend.lib.ui import section_header, confirm_action, render_payload, render_status_badge
+from app.frontend.lib.ui import (
+    confirm_action,
+    render_payload,
+    section_header,
+)
 
 
 def _bool_param(val: bool) -> str:
@@ -23,7 +26,7 @@ def render(api: ApiClient, *, admin_token: str) -> None:
     st.header("⚙️ Утилиты (admin)")
 
     st.info("🔒 Эта вкладка доступна только в админ-режиме. Destructive операции требуют подтверждения.")
-    
+
     # Навигация по секциям
     section = st.selectbox(
         "Выберите секцию",
@@ -33,13 +36,13 @@ def render(api: ApiClient, *, admin_token: str) -> None:
             "Cache & Tarantool",
             "External Services",
             "Logs & Traces",
-            "Reports Management"
+            "Reports Management",
         ],
-        index=0
+        index=0,
     )
-    
+
     st.divider()
-    
+
     if section == "Health & Config":
         _render_health_config(api, admin_token)
     elif section == "Circuit Breakers & Metrics":
@@ -59,26 +62,30 @@ def _render_health_config(api: ApiClient, admin_token: str) -> None:
 
     deep = st.checkbox("deep=true (реальные проверки внешних сервисов)", value=False)
     if st.button("🔍 Проверить /utility/health", type="primary"):
-        payload = api.get("/utility/health", params={"deep": _bool_param(deep)}, admin_token=admin_token)
+        payload = api.get(
+            "/utility/health",
+            params={"deep": _bool_param(deep)},
+            admin_token=admin_token,
+        )
         if payload is not None:
             status = payload.get("status", "unknown")
             if status == "healthy":
                 st.success(f"✅ Статус: {status}")
             else:
                 st.warning(f"⚠️ Статус: {status}")
-            
+
             issues = payload.get("issues")
             if issues:
                 st.error("Проблемы:")
                 for issue in issues:
                     st.write(f"- {issue}")
-            
+
             with st.expander("Детали компонентов", expanded=False):
                 st.json(payload.get("components", {}))
 
     st.divider()
     st.markdown("### ⚙️ Конфигурация")
-    
+
     col1, col2 = st.columns([1, 1])
     with col1:
         if st.button("📄 Снимок /utility/config"):
@@ -92,7 +99,7 @@ def _render_health_config(api: ApiClient, admin_token: str) -> None:
             if resp is not None:
                 st.success("Конфигурация перезагружена")
                 st.json(resp)
-    
+
     cfg_snapshot = st.session_state.get("utility_config_snapshot")
     if cfg_snapshot:
         with st.expander("📋 Config snapshot", expanded=False):
@@ -127,7 +134,7 @@ def _render_circuit_metrics(api: ApiClient, admin_token: str) -> None:
         cb = api.get("/utility/circuit-breakers", admin_token=admin_token)
         if cb is not None:
             st.session_state["cb_status"] = cb
-    
+
     cb = st.session_state.get("cb_status")
     if cb is not None:
         # ИСПРАВЛЕНИЕ: backend возвращает circuit_breakers, не breakers
@@ -145,22 +152,25 @@ def _render_circuit_metrics(api: ApiClient, admin_token: str) -> None:
                         st.error(f"{emoji} {name}")
                     else:
                         st.warning(f"{emoji} {name}")
-        
+
         with st.expander("📋 Детали всех CB", expanded=False):
             st.json(cb)
-        
-        services = sorted(list(breakers.keys())) if breakers else ["perplexity", "tavily", "openrouter"]
+
+        services = sorted(breakers.keys()) if breakers else ["perplexity", "tavily", "openrouter"]
         service = st.selectbox("Выбрать сервис для сброса", options=services, index=0)
         if confirm_action("cb_confirm_service_reset", "Подтвердить сброс CB"):
             if st.button("🔄 Сбросить circuit breaker"):
-                payload = api.post(f"/utility/circuit-breakers/{service}/reset", admin_token=admin_token)
+                payload = api.post(
+                    f"/utility/circuit-breakers/{service}/reset",
+                    admin_token=admin_token,
+                )
                 if payload is not None:
                     st.success(f"Circuit breaker для {service} сброшен")
                     st.json(payload)
 
     st.divider()
     st.markdown("### 📊 Metrics")
-    
+
     colm1, colm2, colm3 = st.columns(3)
     with colm1:
         if st.button("📈 Метрики HTTP клиента"):
@@ -174,15 +184,15 @@ def _render_circuit_metrics(api: ApiClient, admin_token: str) -> None:
                 st.session_state["utility_app_metrics"] = payload
     with colm3:
         st.caption("Сброс метрик")
-    
+
     if st.session_state.get("utility_metrics"):
         with st.expander("📊 Метрики HTTP клиента", expanded=False):
             st.json(st.session_state["utility_metrics"])
-    
+
     if st.session_state.get("utility_app_metrics"):
         with st.expander("📊 Метрики приложения", expanded=False):
             st.json(st.session_state["utility_app_metrics"])
-    
+
     col_reset1, col_reset2 = st.columns(2)
     with col_reset1:
         confirm_reset_metrics = st.checkbox("✅ Подтвердить сброс метрик HTTP", value=False)
@@ -226,17 +236,21 @@ def _render_cache_tarantool(api: ApiClient, admin_token: str) -> None:
             if payload is not None:
                 st.success("Метрики кэша сброшены")
                 st.json(payload)
-    
+
     if st.session_state.get("utility_cache_metrics"):
         with st.expander("📊 Cache Metrics", expanded=False):
             st.json(st.session_state["utility_cache_metrics"])
 
     st.divider()
     st.markdown("### 🔍 Cache Entries")
-    
+
     limit = st.number_input("Количество записей", min_value=1, max_value=100, value=10)
     if st.button("📋 Показать /utility/cache/entries"):
-        payload = api.get("/utility/cache/entries", params={"limit": int(limit)}, admin_token=admin_token)
+        payload = api.get(
+            "/utility/cache/entries",
+            params={"limit": int(limit)},
+            admin_token=admin_token,
+        )
         if payload is not None:
             entries = payload.get("entries", [])
             if entries:
@@ -249,7 +263,7 @@ def _render_cache_tarantool(api: ApiClient, admin_token: str) -> None:
 
     st.divider()
     st.markdown("### 🗑️ Удаление по префиксу")
-    
+
     prefix = st.text_input("Префикс (например: search:)", value="search:")
     confirm_prefix = st.checkbox("✅ Подтвердить удаление по префиксу", value=False)
     if st.button("🗑️ Удалить по префиксу", disabled=not confirm_prefix):
@@ -310,7 +324,7 @@ def _render_external_services(api: ApiClient, admin_token: str) -> None:
 
     st.divider()
     section_header("Очистка кэша сервисов", emoji="🗑️")
-    
+
     clear1, clear2 = st.columns(2)
     with clear1:
         if confirm_action("confirm_tavily_cache_clear", "Подтвердить очистку кэша Tavily"):
@@ -355,7 +369,12 @@ def _render_logs_traces(api: ApiClient, admin_token: str) -> None:
                 st.success(f"Найдено логов: {len(logs)}")
                 with st.expander("📋 Логи", expanded=True):
                     for log in logs[:50]:  # Показываем первые 50
-                        level_emoji = {"DEBUG": "🔍", "INFO": "ℹ️", "WARNING": "⚠️", "ERROR": "❌"}.get(log.get("level", ""), "📝")
+                        level_emoji = {
+                            "DEBUG": "🔍",
+                            "INFO": "ℹ️",
+                            "WARNING": "⚠️",
+                            "ERROR": "❌",
+                        }.get(log.get("level", ""), "📝")
                         st.text(f"{level_emoji} [{log.get('timestamp', '')}] {log.get('message', '')}")
             else:
                 st.info("Логов не найдено")
@@ -374,12 +393,19 @@ def _render_logs_traces(api: ApiClient, admin_token: str) -> None:
 
     st.divider()
     section_header("Traces (Spans)", emoji="🔍")
-    
+
     t1, t2, t3 = st.columns(3)
     with t1:
         traces_limit = st.number_input("Лимит трейсов", min_value=1, max_value=200, value=20, step=5)
     with t2:
-        traces_since = st.number_input("За последние (мин)", min_value=0, max_value=1440, value=0, step=5, key="traces_since")
+        traces_since = st.number_input(
+            "За последние (мин)",
+            min_value=0,
+            max_value=1440,
+            value=0,
+            step=5,
+            key="traces_since",
+        )
     with t3:
         st.caption("Опции")
 
@@ -434,7 +460,7 @@ def _render_reports_management(api: ApiClient, admin_token: str) -> None:
 
     st.divider()
     st.markdown("### 🗑️ Удаление PDF файла")
-    
+
     filename = st.text_input("Имя файла (например: report_123.pdf)", value="")
     confirm_delete_pdf = st.checkbox("✅ Подтвердить удаление PDF", value=False)
     if st.button("🗑️ Удалить PDF файл", disabled=not (confirm_delete_pdf and filename.strip())):
@@ -445,15 +471,26 @@ def _render_reports_management(api: ApiClient, admin_token: str) -> None:
 
     st.divider()
     st.markdown("### 🗄️ Reports (Tarantool)")
-    
+
     colr1, colr2 = st.columns([1, 3])
     with colr1:
-        tar_limit = st.number_input("Лимит", min_value=5, max_value=200, value=20, step=5, key="tar_reports_limit")
+        tar_limit = st.number_input(
+            "Лимит",
+            min_value=5,
+            max_value=200,
+            value=20,
+            step=5,
+            key="tar_reports_limit",
+        )
     with colr2:
         tar_refresh = st.button("📋 Загрузить из Tarantool", type="primary")
 
     if tar_refresh:
-        payload = api.get("/reports", params={"limit": int(tar_limit), "offset": 0}, admin_token=admin_token)
+        payload = api.get(
+            "/reports",
+            params={"limit": int(tar_limit), "offset": 0},
+            admin_token=admin_token,
+        )
         if payload is not None:
             st.session_state["tar_reports_cache"] = payload
 
@@ -463,11 +500,13 @@ def _render_reports_management(api: ApiClient, admin_token: str) -> None:
         st.success(f"Найдено отчётов: {len(tar_reports)}")
         with st.expander("📋 Список отчётов", expanded=False):
             for r in tar_reports[:10]:  # Показываем первые 10
-                st.write(f"- **{r.get('client_name', 'N/A')}** (ИНН: {r.get('inn', 'N/A')}) — {r.get('report_id', '')[:16]}")
+                st.write(
+                    f"- **{r.get('client_name', 'N/A')}** (ИНН: {r.get('inn', 'N/A')}) — {r.get('report_id', '')[:16]}"
+                )
 
         st.divider()
         st.markdown("### 🗑️ Удаление отчёта из Tarantool")
-        
+
         report_id = st.text_input("report_id для удаления", value="")
         confirm_del = st.checkbox("✅ Подтвердить удаление отчёта", value=False)
         if st.button("🗑️ Удалить отчёт", disabled=not (confirm_del and report_id.strip())):
@@ -477,4 +516,3 @@ def _render_reports_management(api: ApiClient, admin_token: str) -> None:
                 st.json(resp)
     else:
         st.info("Отчётов в Tarantool нет или не загружены")
-

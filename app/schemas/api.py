@@ -70,4 +70,3 @@ class TavilySearchResponse(BaseModel):
 class AppMetricsResponse(BaseModel):
     status: str
     metrics: Dict[str, Any]
-

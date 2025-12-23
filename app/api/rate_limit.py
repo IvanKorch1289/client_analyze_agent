@@ -28,4 +28,3 @@ def create_limiter(key_func: Callable) -> Limiter:
 
 def limiter_for_client_ip() -> Limiter:
     return create_limiter(get_client_ip)
-

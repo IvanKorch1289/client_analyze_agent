@@ -67,4 +67,3 @@ async def email_healthcheck() -> Dict[str, Any]:
     """Perform SMTP server health check."""
     client = EmailClient.get_instance()
     return client.check_health()
-

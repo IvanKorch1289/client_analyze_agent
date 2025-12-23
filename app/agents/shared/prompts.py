@@ -191,11 +191,12 @@ DATA_COLLECTOR_SEARCH_PROMPT = """Найди проверяемые факты �
 # Helper Templates
 # =============================================================================
 
+
 def format_dadata_for_prompt(dadata_data: dict) -> str:
     """Форматирует данные DaData для промпта."""
     if not dadata_data:
         return ""
-    
+
     parts = []
     if name := dadata_data.get("name", {}).get("full_with_opf"):
         parts.append(f"- Официальное название (ЕГРЮЛ): {name}")
@@ -203,7 +204,7 @@ def format_dadata_for_prompt(dadata_data: dict) -> str:
         parts.append(f"- Статус: {status}")
     if date := dadata_data.get("state", {}).get("registration_date"):
         parts.append(f"- Дата регистрации: {date}")
-    
+
     return "\n".join(parts) if parts else ""
 
 
@@ -214,4 +215,3 @@ __all__ = [
     "DATA_COLLECTOR_SEARCH_PROMPT",
     "format_dadata_for_prompt",
 ]
-

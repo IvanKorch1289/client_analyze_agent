@@ -23,4 +23,3 @@ __all__ = [
     "truncate",
     "validate_inn",
 ]
-

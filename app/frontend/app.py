@@ -34,7 +34,10 @@ from app.frontend.tabs import utilities as tab_utilities
 def _load_css() -> None:
     css_path = Path(__file__).resolve().parent / "assets" / "styles.css"
     try:
-        st.markdown(f"<style>{css_path.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+        st.markdown(
+            f"<style>{css_path.read_text(encoding='utf-8')}</style>",
+            unsafe_allow_html=True,
+        )
     except Exception:
         # CSS is optional; UI should still work.
         pass
@@ -139,4 +142,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

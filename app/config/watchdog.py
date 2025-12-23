@@ -103,4 +103,3 @@ def create_config_watchdog() -> ConfigWatchdog:
     else:
         enabled_bool = enabled in ("1", "true", "yes", "y", "on")
     return ConfigWatchdog(Path("config"), enabled=enabled_bool)
-

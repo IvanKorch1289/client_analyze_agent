@@ -10,8 +10,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from slowapi.util import get_remote_address
 
-from app.api.rate_limit import create_limiter
 from app.agents.client_workflow import run_client_analysis_streaming
+from app.api.rate_limit import create_limiter
 from app.config.constants import (
     RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE,
     RATE_LIMIT_SEARCH_PER_MINUTE,
@@ -33,6 +33,7 @@ class ClientAnalysisRequest(BaseModel):
 
 class PromptRequest(BaseModel):
     """Back-compat endpoint payload for Streamlit UI."""
+
     prompt: str
 
 
@@ -43,7 +44,7 @@ async def get_thread_history(request: Request, thread_id: str):
 
     client = await TarantoolClient.get_instance()
     threads_repo = client.get_threads_repository()
-    
+
     # Используем ThreadsRepository
     result = await threads_repo.get(thread_id)
     if not result:
@@ -158,9 +159,7 @@ async def prompt_agent(request: Request, data: PromptRequest) -> Dict[str, Any]:
     }
 
 
-async def _stream_client_analysis(
-    client_name: str, inn: str, additional_notes: str
-) -> AsyncGenerator[str, None]:
+async def _stream_client_analysis(client_name: str, inn: str, additional_notes: str) -> AsyncGenerator[str, None]:
     """Генератор SSE событий для streaming анализа."""
     session_id = f"analysis_{int(time.time())}"
 
@@ -213,10 +212,10 @@ async def list_threads(request: Request) -> Dict[str, Any]:
     try:
         client = await TarantoolClient.get_instance()
         threads_repo = client.get_threads_repository()
-        
+
         # Используем ThreadsRepository
         threads_list = await threads_repo.list(limit=50)
-        
+
         threads = [
             {
                 "thread_id": item.get("thread_id", ""),
@@ -230,7 +229,11 @@ async def list_threads(request: Request) -> Dict[str, Any]:
                     if item.get("created_at")
                     else "Неизвестно"
                 ),
-                "message_count": len(item.get("thread_data", {}).get("messages", [])) if isinstance(item.get("thread_data"), dict) else 0,
+                "message_count": (
+                    len(item.get("thread_data", {}).get("messages", []))
+                    if isinstance(item.get("thread_data"), dict)
+                    else 0
+                ),
                 "client_name": item.get("client_name", ""),
                 "inn": item.get("inn", ""),
             }
@@ -238,12 +241,8 @@ async def list_threads(request: Request) -> Dict[str, Any]:
         ]
         return {
             "total": len(threads),
-            "threads": sorted(
-                threads, key=lambda x: x.get("created_at", ""), reverse=True
-            ),
+            "threads": sorted(threads, key=lambda x: x.get("created_at", ""), reverse=True),
         }
     except Exception as e:
         logger.error(f"Ошибка получения тредов: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail="Ошибка получения списка тредов"
-        ) from e
+        raise HTTPException(status_code=500, detail="Ошибка получения списка тредов") from e

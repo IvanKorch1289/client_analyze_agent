@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from app.api.compat import fail
+from app.schemas.api import PerplexitySearchResponse, TavilySearchResponse
 from app.services.fetch_data import (
     fetch_company_info,
     fetch_from_casebook,
@@ -12,7 +13,6 @@ from app.services.fetch_data import (
 )
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
-from app.schemas.api import PerplexitySearchResponse, TavilySearchResponse
 from app.utility.helpers import validate_inn
 
 data_router = APIRouter(
@@ -26,7 +26,7 @@ class PerplexityRequest(BaseModel):
     inn: str
     search_query: str
     search_recency: str = "month"
-    
+
     @property
     def query(self) -> str:
         return f"ИНН {self.inn}: {self.search_query}. Ответь только фактами без предположений."
@@ -40,7 +40,7 @@ class TavilyRequest(BaseModel):
     include_answer: bool = True
     include_domains: Optional[List[str]] = None
     exclude_domains: Optional[List[str]] = None
-    
+
     @property
     def query(self) -> str:
         return f"ИНН {self.inn} {self.search_query}"
@@ -67,14 +67,12 @@ async def get_all_client_data(inn: str):
 
 
 @data_router.post("/search/perplexity")
-async def perplexity_search(
-    http_request: Request, payload: PerplexityRequest
-) -> PerplexitySearchResponse:
+async def perplexity_search(http_request: Request, payload: PerplexityRequest) -> PerplexitySearchResponse:
     """Search via Perplexity."""
     is_valid, error_msg = validate_inn(payload.inn)
     if not is_valid:
         return fail(http_request, status_code=400, message=error_msg)
-    
+
     client = PerplexityClient.get_instance()
 
     if not client.is_configured():
@@ -85,9 +83,7 @@ async def perplexity_search(
         )
 
     # Клиент Perplexity работает через LangChain (OpenAI-compatible).
-    result = await client.ask(
-        question=payload.query, search_recency_filter=payload.search_recency
-    )
+    result = await client.ask(question=payload.query, search_recency_filter=payload.search_recency)
 
     if result.get("success"):
         return {
@@ -111,7 +107,7 @@ async def tavily_search(http_request: Request, payload: TavilyRequest) -> Tavily
     is_valid, error_msg = validate_inn(payload.inn)
     if not is_valid:
         return fail(http_request, status_code=400, message=error_msg)
-    
+
     client = TavilyClient.get_instance()
 
     if not client.is_configured():

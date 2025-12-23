@@ -23,9 +23,7 @@ try:
 except ImportError:
     tarantool = None
     TARANTOOL_AVAILABLE = False
-    logger.warning(
-        "Tarantool not available, using in-memory fallback", component="tarantool"
-    )
+    logger.warning("Tarantool not available, using in-memory fallback", component="tarantool")
 
 _executor = ThreadPoolExecutor(max_workers=5)
 
@@ -111,26 +109,25 @@ class TarantoolClient:
     def __new__(cls):
         # Блокируем прямое создание экземпляров
         raise RuntimeError(
-            f"Нельзя создавать экземпляр {cls.__name__} напрямую. "
-            f"Используйте {cls.__name__}.get_instance()"
+            f"Нельзя создавать экземпляр {cls.__name__} напрямую. Используйте {cls.__name__}.get_instance()"
         )
 
     @classmethod
     async def get_instance(cls) -> "TarantoolClient":
         """
         Thread-safe singleton pattern с async/await.
-        
+
         Returns:
             TarantoolClient: Единственный экземпляр клиента
         """
         # Быстрая проверка без блокировки
         if cls._instance is not None and cls._initialized:
             return cls._instance
-        
+
         # Создаем lock если еще нет
         if cls._lock is None:
             cls._lock = asyncio.Lock()
-        
+
         # Двойная проверка с блокировкой
         async with cls._lock:
             if cls._instance is None:
@@ -138,11 +135,11 @@ class TarantoolClient:
                 instance = object.__new__(cls)
                 instance.__init_once()
                 await instance._connect()
-                
+
                 # Атомарно устанавливаем instance и флаг
                 cls._initialized = True
                 cls._instance = instance
-                
+
         return cls._instance
 
     def __init_once(self):
@@ -223,9 +220,7 @@ class TarantoolClient:
 
     def _compress(self, data: bytes) -> bytes:
         if data and len(data) >= self._config.compression_threshold:
-            compressed = gzip.compress(
-                data, compresslevel=self._config.compression_level
-            )
+            compressed = gzip.compress(data, compresslevel=self._config.compression_level)
             if len(compressed) < len(data):
                 self._metrics.compressed_saves += 1
                 self._metrics.bytes_saved_by_compression += len(data) - len(compressed)
@@ -239,9 +234,7 @@ class TarantoolClient:
 
     def _generate_search_key(self, query: str, service: str = "default") -> str:
         normalized = query.lower().strip()
-        hash_val = hashlib.md5(normalized.encode(), usedforsecurity=False).hexdigest()[
-            :12
-        ]
+        hash_val = hashlib.md5(normalized.encode(), usedforsecurity=False).hexdigest()[:12]
         return f"search:{service}:{hash_val}"
 
     async def get(self, key: str) -> Optional[Dict[Any, Any]]:
@@ -351,9 +344,7 @@ class TarantoolClient:
                 if compress:
                     packed = self._compress(packed)
                 # Match init.lua cache schema: (key, value, ttl/expires_at, created_at, source)
-                self._connection.replace(
-                    self._space, (key, packed, expires_at, created_at, source)
-                )
+                self._connection.replace(self._space, (key, packed, expires_at, created_at, source))
             except Exception as e:
                 logger.error(f"Error on SET {key}: {e}", component="tarantool")
 
@@ -391,7 +382,9 @@ class TarantoolClient:
             for key in keys:
                 if key in _memory_cache:
                     packed_tuple = _memory_cache[key]
-                    value_packed = packed_tuple[0] if isinstance(packed_tuple, tuple) and len(packed_tuple) >= 2 else None
+                    value_packed = (
+                        packed_tuple[0] if isinstance(packed_tuple, tuple) and len(packed_tuple) >= 2 else None
+                    )
                     expires_at = packed_tuple[1] if isinstance(packed_tuple, tuple) and len(packed_tuple) >= 2 else 0
                     if now <= expires_at:
                         data = self._decompress(value_packed)
@@ -414,15 +407,11 @@ class TarantoolClient:
                     result = self._connection.select(self._space, key)
                     if result and len(result[0]) >= 3:
                         value_packed, expires_at = result[0][1], result[0][2]
-                        if now <= expires_at and isinstance(
-                            value_packed, (bytes, bytearray)
-                        ):
+                        if now <= expires_at and isinstance(value_packed, (bytes, bytearray)):
                             data = self._decompress(value_packed)
                             batch_results[key] = msgpack.unpackb(data, raw=False)
                 except Exception as e:
-                    logger.warning(
-                        f"Error in batch get for {key}: {e}", component="tarantool"
-                    )
+                    logger.warning(f"Error in batch get for {key}: {e}", component="tarantool")
             return batch_results
 
         loop = asyncio.get_event_loop()
@@ -474,13 +463,9 @@ class TarantoolClient:
                     packed = msgpack.packb(value, use_bin_type=True, strict_types=False)
                     if compress:
                         packed = self._compress(packed)
-                    self._connection.replace(
-                        self._space, (key, packed, expires_at, created_at, "api")
-                    )
+                    self._connection.replace(self._space, (key, packed, expires_at, created_at, "api"))
                 except Exception as e:
-                    logger.warning(
-                        f"Error in batch set for {key}: {e}", component="tarantool"
-                    )
+                    logger.warning(f"Error in batch set for {key}: {e}", component="tarantool")
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(_executor, do_batch_set)
@@ -503,17 +488,13 @@ class TarantoolClient:
                 try:
                     self._connection.delete(self._space, key)
                 except Exception as e:
-                    logger.warning(
-                        f"Error in batch delete for {key}: {e}", component="tarantool"
-                    )
+                    logger.warning(f"Error in batch delete for {key}: {e}", component="tarantool")
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(_executor, do_batch_delete)
         self._metrics.deletes += len(keys)
 
-    async def cache_search_result(
-        self, query: str, result: Any, service: str = "default"
-    ):
+    async def cache_search_result(self, query: str, result: Any, service: str = "default"):
         key = self._generate_search_key(query, service)
         await self.set(
             key,
@@ -523,9 +504,7 @@ class TarantoolClient:
         )
         self._search_cache[key] = (result, time.time() + self._config.search_cache_ttl)
 
-    async def get_cached_search(
-        self, query: str, service: str = "default"
-    ) -> Optional[Any]:
+    async def get_cached_search(self, query: str, service: str = "default") -> Optional[Any]:
         key = self._generate_search_key(query, service)
         if key in self._search_cache:
             result, expires_at = self._search_cache[key]
@@ -574,9 +553,7 @@ class TarantoolClient:
                         deleted += 1
                 return deleted
             except Exception as e:
-                logger.error(
-                    f"Error deleting by prefix {prefix}: {e}", component="tarantool"
-                )
+                logger.error(f"Error deleting by prefix {prefix}: {e}", component="tarantool")
                 return 0
 
         loop = asyncio.get_event_loop()
@@ -607,7 +584,7 @@ class TarantoolClient:
         """Получить первые N записей кеша для UI (без полного скана)."""
         await self._ensure_connection()
         entries = []
-        
+
         if self._use_memory:
             now = time.time()
             for i, (key, packed_tuple) in enumerate(_memory_cache.items()):
@@ -621,16 +598,18 @@ class TarantoolClient:
                     try:
                         data = self._decompress(value_packed)
                         value = msgpack.unpackb(data, raw=False)
-                        entries.append({
-                            "key": key,
-                            "expires_in": int(expires_at - now),
-                            "size_bytes": len(value_packed),
-                            "preview": str(value)[:100] + "..." if len(str(value)) > 100 else str(value),
-                        })
+                        entries.append(
+                            {
+                                "key": key,
+                                "expires_in": int(expires_at - now),
+                                "size_bytes": len(value_packed),
+                                "preview": (str(value)[:100] + "..." if len(str(value)) > 100 else str(value)),
+                            }
+                        )
                     except Exception:
                         entries.append({"key": key, "error": "unpack failed"})
             return entries
-        
+
         # Быстрый путь: Tarantool делает выборку на своей стороне
         try:
             res = await self._call("cache_get_entries", limit)
@@ -657,18 +636,20 @@ class TarantoolClient:
                             try:
                                 data = self._decompress(value_packed)
                                 value = msgpack.unpackb(data, raw=False)
-                                result_entries.append({
-                                    "key": key,
-                                    "expires_in": int(expires_at - now),
-                                    "size_bytes": len(value_packed) if isinstance(value_packed, bytes) else 0,
-                                    "preview": str(value)[:100] + "..." if len(str(value)) > 100 else str(value),
-                                })
+                                result_entries.append(
+                                    {
+                                        "key": key,
+                                        "expires_in": int(expires_at - now),
+                                        "size_bytes": (len(value_packed) if isinstance(value_packed, bytes) else 0),
+                                        "preview": (str(value)[:100] + "..." if len(str(value)) > 100 else str(value)),
+                                    }
+                                )
                             except Exception:
                                 result_entries.append({"key": key, "error": "unpack failed"})
             except Exception as e:
                 logger.error(f"Error getting entries: {e}", component="tarantool")
             return result_entries
-        
+
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(_executor, do_get_entries)
 
@@ -697,9 +678,7 @@ class TarantoolClient:
                 packed = msgpack.packb(value, use_bin_type=True, strict_types=False)
                 self._connection.replace("persistent", (key, packed))
             except Exception as e:
-                logger.error(
-                    f"Failed to save persistent {key}: {e}", component="tarantool"
-                )
+                logger.error(f"Failed to save persistent {key}: {e}", component="tarantool")
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(_executor, do_set)
@@ -831,9 +810,7 @@ class TarantoolClient:
                                             "key": row[0],
                                             "input": value.get("input", "Без запроса"),
                                             "created_at": value.get("created_at", 0),
-                                            "message_count": len(
-                                                value.get("messages", [])
-                                            ),
+                                            "message_count": len(value.get("messages", [])),
                                         }
                                     )
                         except Exception as e:
@@ -919,39 +896,42 @@ class TarantoolClient:
     def get_cache_repository(self):
         """
         Получить CacheRepository для работы с cache space.
-        
+
         Returns:
             CacheRepository instance
         """
         global _cache_repo
         if _cache_repo is None:
             from app.storage.repositories.cache_repository import CacheRepository
+
             _cache_repo = CacheRepository(self)
         return _cache_repo
-    
+
     def get_reports_repository(self):
         """
         Получить ReportsRepository для работы с reports space.
-        
+
         Returns:
             ReportsRepository instance
         """
         global _reports_repo
         if _reports_repo is None:
             from app.storage.repositories.reports_repository import ReportsRepository
+
             _reports_repo = ReportsRepository(self)
         return _reports_repo
-    
+
     def get_threads_repository(self):
         """
         Получить ThreadsRepository для работы с threads space.
-        
+
         Returns:
             ThreadsRepository instance
         """
         global _threads_repo
         if _threads_repo is None:
             from app.storage.repositories.threads_repository import ThreadsRepository
+
             _threads_repo = ThreadsRepository(self)
         return _threads_repo
 
@@ -959,7 +939,7 @@ class TarantoolClient:
     async def close_global(cls):
         """Закрывает глобальный экземпляр."""
         global _cache_repo, _reports_repo, _threads_repo
-        
+
         if cls._instance is not None:
             await cls._instance.close()
             if cls._lock is not None:

@@ -14,7 +14,11 @@ from typing import Any, Dict
 from faststream.rabbit import RabbitBroker
 
 from app.config import settings
-from app.messaging.models import CacheInvalidateRequest, ClientAnalysisRequest, ClientAnalysisResult
+from app.messaging.models import (
+    CacheInvalidateRequest,
+    ClientAnalysisRequest,
+    ClientAnalysisResult,
+)
 from app.services.analysis_executor import execute_client_analysis
 from app.services.app_actions import dispatch_cache_invalidate
 from app.utility.logging_client import logger
@@ -76,4 +80,3 @@ async def handle_cache_invalidate(msg: CacheInvalidateRequest) -> Dict[str, Any]
         invalidate_all=msg.invalidate_all,
         prefer_queue=False,
     )
-

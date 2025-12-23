@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import streamlit as st
 
 from app.frontend.api_client import ApiClient
+from app.frontend.lib.ui import info_box, render_payload, section_header
 from app.frontend.lib.validators import validate_inn
-from app.frontend.lib.ui import section_header, render_payload, info_box
 
 
 def render(api: ApiClient) -> None:
     st.header("🔍 Внешние данные")
-    
+
     info_box(
         "Этот раздел позволяет получить данные о компании из различных источников: "
         "реестры, судебные дела, финансовая информация."
@@ -57,7 +57,11 @@ def render(api: ApiClient) -> None:
     with col1:
         search_inn = st.text_input("ИНН для поиска", key="search_inn", placeholder="7707083893", max_chars=12)
     with col2:
-        query = st.text_input("Поисковый запрос", key="search_query", placeholder="судебные дела, банкротство, новости")
+        query = st.text_input(
+            "Поисковый запрос",
+            key="search_query",
+            placeholder="судебные дела, банкротство, новости",
+        )
 
     colp1, colp2 = st.columns(2)
     with colp1:
@@ -72,7 +76,7 @@ def render(api: ApiClient) -> None:
             "Tavily: глубина поиска",
             options=["basic", "advanced"],
             format_func=lambda x: {"basic": "Базовая", "advanced": "Расширенная"}[x],
-            index=0
+            index=0,
         )
     max_results = st.slider("Tavily: максимум результатов", min_value=1, max_value=10, value=5)
     include_answer = st.checkbox("Tavily: включить краткий ответ", value=True)
@@ -100,7 +104,11 @@ def render(api: ApiClient) -> None:
             if do_p or do_both:
                 outputs["Perplexity"] = api.post(
                     "/data/search/perplexity",
-                    json={"inn": search_inn.strip(), "search_query": query.strip(), "search_recency": perplexity_recency},
+                    json={
+                        "inn": search_inn.strip(),
+                        "search_query": query.strip(),
+                        "search_recency": perplexity_recency,
+                    },
                 )
             if do_t or do_both:
                 outputs["Tavily"] = api.post(
@@ -116,7 +124,7 @@ def render(api: ApiClient) -> None:
 
         for source, payload in outputs.items():
             st.markdown(f"#### 🔎 {source}")
-            
+
             if payload is None:
                 st.warning("⚠️ Нет данных (ошибка запроса)")
                 continue
@@ -127,7 +135,7 @@ def render(api: ApiClient) -> None:
                     if content:
                         st.markdown("**📝 Результат поиска:**")
                         st.markdown(content)
-                    
+
                     cites = payload.get("citations") or []
                     if cites:
                         st.markdown("**📚 Источники:**")
@@ -135,13 +143,13 @@ def render(api: ApiClient) -> None:
                             st.caption(f"{i}. {c}")
                 else:
                     st.json(payload)
-                    
+
             elif source == "Tavily" and isinstance(payload, dict):
                 if payload.get("status") == "success":
                     answer = payload.get("answer") or ""
                     if answer:
                         st.info(f"💡 **Краткий ответ:** {answer}")
-                    
+
                     results = payload.get("results") or []
                     if results:
                         st.markdown(f"**🔗 Найдено источников: {len(results)}**")
@@ -150,7 +158,7 @@ def render(api: ApiClient) -> None:
                             url = item.get("url") or ""
                             snippet = item.get("content") or item.get("snippet") or ""
                             score = item.get("score", 0)
-                            
+
                             st.markdown(f"**{i}. {title}**")
                             if score:
                                 st.caption(f"Релевантность: {score:.2f}")
@@ -170,6 +178,5 @@ def render(api: ApiClient) -> None:
                     st.json(payload)
             else:
                 st.json(payload)
-            
-            st.divider()
 
+            st.divider()

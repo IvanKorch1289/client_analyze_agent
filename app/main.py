@@ -1,25 +1,24 @@
 import asyncio
+import ipaddress
 import os
 import time
-import ipaddress
 from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, Request
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from slowapi import Limiter
-from slowapi.errors import RateLimitExceeded
-from starlette.responses import JSONResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
+from starlette.responses import JSONResponse, RedirectResponse
 
+from app.api.error_handlers import install_error_handlers
 from app.api.routes.agent import agent_router
 from app.api.routes.data import data_router
 from app.api.routes.scheduler import scheduler_router
 from app.api.routes.utility import utility_router
 from app.api.v1 import v1_app
-from app.api.error_handlers import install_error_handlers
 from app.config.settings import settings
 from app.config.watchdog import create_config_watchdog
 from app.services.http_client import AsyncHttpClient
@@ -29,10 +28,10 @@ from app.utility.app_circuit_breaker import (
     AppCircuitBreakerConfig,
     AppCircuitBreakerMiddleware,
 )
+from app.utility.app_metrics import app_metrics
 from app.utility.helpers import get_client_ip
 from app.utility.logging_client import get_request_id, logger, set_request_id
 from app.utility.telemetry import init_telemetry
-from app.utility.app_metrics import app_metrics
 
 # Get backend port from environment or use default
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
@@ -59,6 +58,7 @@ limiter = Limiter(
     storage_uri=settings.secure.rate_limit_storage or "memory://",
 )
 
+
 def _bool_env(name: str, default: bool = False) -> bool:
     val = (os.getenv(name) or "").strip().lower()
     if not val:
@@ -75,7 +75,7 @@ def _bool_env(name: str, default: bool = False) -> bool:
 async def lifespan(app: FastAPI):
     """
     Application lifespan manager.
-    
+
     Initializes global clients, LLM, and background services on startup.
     Cleans up connections on shutdown.
     """
@@ -109,6 +109,7 @@ async def lifespan(app: FastAPI):
 
     # Запускаем Scheduler для отложенных задач
     from app.services.scheduler_service import get_scheduler_service
+
     scheduler = get_scheduler_service()
     scheduler.start()
     logger.info("Scheduler запущен для отложенных задач")
@@ -116,7 +117,7 @@ async def lifespan(app: FastAPI):
     logger.info("Клиенты инициализированы")
     yield
     logger.info("Завершение работы приложения...")
-    
+
     # Останавливаем watchdog
     try:
         wd = getattr(app.state, "config_watchdog", None)
@@ -128,7 +129,7 @@ async def lifespan(app: FastAPI):
     # Останавливаем Scheduler
     scheduler.shutdown()
     logger.info("Scheduler остановлен")
-    
+
     await TarantoolClient.close_global()
     await AsyncHttpClient.close_global()
     logger.info("Все соединения закрыты")
@@ -189,6 +190,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 # =======================
 # Request tracing & app metrics (debug)
 # =======================
+
 
 class RequestTraceMiddleware(BaseHTTPMiddleware):
     """
@@ -314,6 +316,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 # IP allow/deny filtering (optional)
 # =======================
 
+
 class IpFilterMiddleware(BaseHTTPMiddleware):
     """
     Optional IP allow/deny lists from settings.secure.
@@ -415,6 +418,7 @@ def _ip_in_rules(ip: str, rules) -> bool:
 # Dynamic trusted host check (config hot-reload friendly)
 # =======================
 
+
 class DynamicTrustedHostMiddleware(BaseHTTPMiddleware):
     """
     Trusted-host validation driven by settings.secure.trusted_hosts.
@@ -431,7 +435,10 @@ class DynamicTrustedHostMiddleware(BaseHTTPMiddleware):
         # strip port
         host = host.split(":")[0].strip().lower()
         if not host:
-            return JSONResponse(status_code=400, content={"status": "error", "message": "Missing Host header"})
+            return JSONResponse(
+                status_code=400,
+                content={"status": "error", "message": "Missing Host header"},
+            )
 
         if not _host_allowed(host, allowed):
             rid = request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
@@ -465,9 +472,11 @@ def _host_allowed(host: str, allowed_hosts: list[str]) -> bool:
             return True
     return False
 
+
 # =======================
 # Legacy API deprecation headers
 # =======================
+
 
 class LegacyApiDeprecationMiddleware(BaseHTTPMiddleware):
     """
@@ -492,9 +501,10 @@ class LegacyApiDeprecationMiddleware(BaseHTTPMiddleware):
 
         # Minimal standardized signals for clients/proxies.
         response.headers.setdefault("Deprecation", "true")
-        response.headers.setdefault("Link", "</api/v1>; rel=\"latest\"")
+        response.headers.setdefault("Link", '</api/v1>; rel="latest"')
         response.headers.setdefault("Sunset", "Thu, 31 Dec 2026 23:59:59 GMT")
         return response
+
 
 # =======================
 # FastAPI приложение
@@ -553,6 +563,7 @@ app.add_middleware(AppCircuitBreakerMiddleware, breaker=app_circuit_breaker)
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(RequestTraceMiddleware)
 
+
 # -----------------------
 # Root UX helpers
 # -----------------------
@@ -576,6 +587,7 @@ async def root_docs_redirect() -> RedirectResponse:
 @app.get("/openapi.json", include_in_schema=False)
 async def root_openapi_redirect() -> RedirectResponse:
     return RedirectResponse(url="/api/v1/openapi.json")
+
 
 # -----------------------
 # API versioning

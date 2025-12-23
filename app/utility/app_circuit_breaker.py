@@ -15,7 +15,7 @@ from __future__ import annotations
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, Iterable, Optional
+from typing import Deque
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -67,9 +67,7 @@ class AppCircuitBreaker:
         self._failures.append(now)
         self._trim(now)
         if len(self._failures) >= int(self.config.failure_threshold):
-            self._opened_until_ts = max(
-                self._opened_until_ts, now + float(self.config.open_seconds)
-            )
+            self._opened_until_ts = max(self._opened_until_ts, now + float(self.config.open_seconds))
 
     def record_success(self) -> None:
         # Для простоты не записываем успехи; сброс идёт по истечению open_seconds
@@ -129,4 +127,3 @@ class AppCircuitBreakerMiddleware(BaseHTTPMiddleware):
         except Exception:
             self.breaker.record_failure()
             raise
-

@@ -5,12 +5,16 @@ Casebook, InfoSphere, DaData + Perplexity, Tavily
 
 import asyncio
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from app.agents.shared.prompts import DATA_COLLECTOR_SEARCH_PROMPT
 from app.agents.shared.utils import truncate
 from app.agents.web_scraper import scrape_top_tavily_links
-from app.config import MAX_CONCURRENT_SEARCHES, MAX_CONTENT_LENGTH, SEARCH_TIMEOUT_SECONDS
+from app.config import (
+    MAX_CONCURRENT_SEARCHES,
+    MAX_CONTENT_LENGTH,
+    SEARCH_TIMEOUT_SECONDS,
+)
 from app.services.fetch_data import (
     fetch_from_casebook,
     fetch_from_dadata,
@@ -39,16 +43,16 @@ async def _fetch_perplexity(intent_id: str, query: str, client_name: str, inn: s
             inn=inn if inn else "не указан",
             query=query,
         )
-        system_prompt = (
-            "Ты аналитик комплаенса. Ищи только проверяемые факты из ПОСЛЕДНЕГО ГОДА. "
-            "Не выдумывай. Пиши по-русски. Указывай источники и даты."
-        )
+        # system_prompt встроен в DATA_COLLECTOR_SEARCH_PROMPT
 
         # P0: MAXIMUM DEPTH - recency="year", max_tokens увеличен
+        system_prompt = (
+            "Глубокий анализ за последний год. Ищи 20+ источников. Только проверяемые факты. Пиши по-русски."
+        )
         result = await asyncio.wait_for(
             client.ask(
                 question=question,
-                system_prompt="Глубокий анализ за последний год. Ищи 20+ источников. Только проверяемые факты. Пиши по-русски.",
+                system_prompt=system_prompt,
                 search_recency_filter="year",  # БЫЛО: "month", СТАЛО: "year"
                 max_tokens=2000,  # Увеличено для более полных ответов
             ),
@@ -112,9 +116,19 @@ async def _fetch_tavily(intent_id: str, query: str, client_name: str, inn: str =
             "error": result.get("error"),
         }
     except asyncio.TimeoutError:
-        return {"source": "tavily", "intent_id": intent_id, "success": False, "error": "Timeout"}
+        return {
+            "source": "tavily",
+            "intent_id": intent_id,
+            "success": False,
+            "error": "Timeout",
+        }
     except Exception as e:
-        return {"source": "tavily", "intent_id": intent_id, "success": False, "error": str(e)}
+        return {
+            "source": "tavily",
+            "intent_id": intent_id,
+            "success": False,
+            "error": str(e),
+        }
 
 
 async def _fetch_dadata_wrapper(inn: str) -> Dict[str, Any]:
@@ -220,7 +234,13 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(search_intents, list) and search_intents:
         intents = [i for i in search_intents if isinstance(i, dict) and i.get("id") and i.get("query")]
     if not intents:
-        intents = [{"id": "reputation", "query": client_name, "description": "Общая репутация и отзывы"}]
+        intents = [
+            {
+                "id": "reputation",
+                "query": client_name,
+                "description": "Общая репутация и отзывы",
+            }
+        ]
 
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
 
@@ -284,24 +304,18 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 intents_map = container.setdefault("intents", {})
                 intents_map[intent_id] = result
                 if result.get("success"):
-                    container["successful_intents"] = int(
-                        container.get("successful_intents", 0)
-                    ) + 1
+                    container["successful_intents"] = int(container.get("successful_intents", 0)) + 1
                     container["success"] = True
                 else:
-                    container.setdefault("errors", []).append(
-                        {"intent_id": intent_id, "error": result.get("error")}
-                    )
-                    container["failed_intents"] = int(
-                        container.get("failed_intents", 0)
-                    ) + 1
+                    container.setdefault("errors", []).append({"intent_id": intent_id, "error": result.get("error")})
+                    container["failed_intents"] = int(container.get("failed_intents", 0)) + 1
             continue
 
     successful_sources = [k for k, v in source_data.items() if v and v.get("success")]
     duration_ms = (time.perf_counter() - start_time) * 1000
 
     search_results = _build_search_results(source_data, intents)
-    
+
     # P0: НОВОЕ - Скрейпинг TOP-5 ссылок Tavily для глубокого анализа
     tavily_full_texts = []
     if source_data.get("tavily", {}).get("success"):
@@ -312,11 +326,11 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
             for intent_data in tavily_intents.values():
                 if intent_data.get("success") and intent_data.get("results"):
                     all_tavily_results.extend(intent_data["results"])
-            
+
             if all_tavily_results:
                 logger.info(
-                    f"Data collector: starting web scraping of TOP-5 Tavily links",
-                    component="data_collector"
+                    "Data collector: starting web scraping of TOP-5 Tavily links",
+                    component="data_collector",
                 )
                 tavily_full_texts = await scrape_top_tavily_links(
                     all_tavily_results,
@@ -325,14 +339,11 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 logger.info(
                     f"Data collector: scraped {len(tavily_full_texts)} pages",
-                    component="data_collector"
+                    component="data_collector",
                 )
         except Exception as e:
-            logger.error(
-                f"Data collector: web scraping failed: {e}",
-                component="data_collector"
-            )
-    
+            logger.error(f"Data collector: web scraping failed: {e}", component="data_collector")
+
     # Добавляем полные тексты в source_data
     source_data["tavily_full_texts"] = tavily_full_texts
 
@@ -360,9 +371,7 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _build_search_results(
-    source_data: Dict[str, Any], intents: List[Dict[str, str]]
-) -> List[Dict[str, Any]]:
+def _build_search_results(source_data: Dict[str, Any], intents: List[Dict[str, str]]) -> List[Dict[str, Any]]:
     """Собирает единый массив search_results для report_analyzer."""
     search_results = []
 
@@ -408,11 +417,7 @@ def _build_search_results(
             if tav_block:
                 content_parts.append(f"[Tavily]\n{truncate(tav_block, max_length=1600)}")
             citations.extend(
-                [
-                    r.get("url")
-                    for r in (tav_res.get("results", []) or [])
-                    if isinstance(r, dict) and r.get("url")
-                ]
+                [r.get("url") for r in (tav_res.get("results", []) or []) if isinstance(r, dict) and r.get("url")]
             )
             success = True
 
@@ -461,11 +466,7 @@ def _convert_registry_sources_to_search_results(
         content += f"Адрес: {data.get('address', {}).get('value', 'Н/Д')}"
 
         status = data.get("state", {}).get("status", "")
-        sentiment = (
-            {"label": "negative", "score": -0.5}
-            if status == "LIQUIDATED"
-            else {"label": "neutral", "score": 0}
-        )
+        sentiment = {"label": "negative", "score": -0.5} if status == "LIQUIDATED" else {"label": "neutral", "score": 0}
 
         search_results.append(
             {
@@ -509,9 +510,7 @@ def _convert_registry_sources_to_search_results(
     infosphere = source_data.get("infosphere", {})
     if infosphere and infosphere.get("success"):
         data = infosphere.get("data", {})
-        content = (
-            f"Проверка по базам: {len(data) if isinstance(data, list) else 'выполнена'}"
-        )
+        content = f"Проверка по базам: {len(data) if isinstance(data, list) else 'выполнена'}"
         search_results.append(
             {
                 "intent_id": "infosphere_check",

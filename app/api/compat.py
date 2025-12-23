@@ -68,4 +68,3 @@ def fail_code(
     payload = legacy_error_payload(message, details=details)
     payload["error_code"] = code
     return payload
-

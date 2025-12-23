@@ -102,4 +102,3 @@ async def dispatch_cache_invalidate(
         }
 
     return {"status": "error", "queued": False, "message": "prefix is required"}
-

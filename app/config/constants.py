@@ -129,33 +129,36 @@ RATE_LIMIT_ADMIN_PER_MINUTE: Final[int] = 60
 # Timeouts
 # =======================
 
+
 class TimeoutConfig:
     """Таймауты для различных операций"""
-    
+
     DADATA_CONNECT: Final[float] = 5.0
     DADATA_READ: Final[float] = 30.0
     DADATA_WRITE: Final[float] = 10.0
-    
+
     INFOSPHERE_CONNECT: Final[float] = 5.0
     INFOSPHERE_READ: Final[float] = 45.0
     INFOSPHERE_WRITE: Final[float] = 10.0
-    
+
     CASEBOOK_CONNECT: Final[float] = 5.0
     CASEBOOK_READ: Final[float] = 30.0
     CASEBOOK_WRITE: Final[float] = 10.0
-    
+
     PERPLEXITY_REQUEST: Final[float] = 60.0
     TAVILY_REQUEST: Final[float] = 60.0
-    
+
     DEFAULT_REQUEST: Final[float] = 30.0
+
 
 # =======================
 # Risk Assessment
 # =======================
 
+
 class RiskLevel(str, Enum):
     """Уровни риска для оценки клиентов"""
-    
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -164,16 +167,16 @@ class RiskLevel(str, Enum):
 
 class RiskThresholds:
     """Пороги для определения уровня риска"""
-    
+
     LOW_MAX: Final[int] = 24
     """Максимальный балл для низкого риска (0-24)"""
-    
+
     MEDIUM_MAX: Final[int] = 49
     """Максимальный балл для среднего риска (25-49)"""
-    
+
     HIGH_MAX: Final[int] = 74
     """Максимальный балл для высокого риска (50-74)"""
-    
+
     # CRITICAL = 75-100
 
 
@@ -194,18 +197,19 @@ TEMP_DIR: Final[str] = "temp"
 # Tarantool Spaces
 # =======================
 
+
 class TarantoolSpaces:
     """Имена spaces в Tarantool"""
-    
+
     CACHE: Final[str] = "cache"
     """Space для временного кеша"""
-    
+
     REPORTS: Final[str] = "reports"
     """Space для отчётов (TTL 30 дней)"""
-    
+
     THREADS: Final[str] = "threads"
     """Space для истории тредов (persistent)"""
-    
+
     PERSISTENT: Final[str] = "persistent"
     """Space для постоянных данных"""
 
@@ -248,9 +252,10 @@ SLOW_QUERY_THRESHOLD_MS: Final[float] = 500.0
 # Feature Flags
 # =======================
 
+
 class FeatureFlags:
     """Флаги для включения/выключения функций"""
-    
+
     ENABLE_CACHING: Final[bool] = True
     ENABLE_RATE_LIMITING: Final[bool] = True
     ENABLE_TELEMETRY: Final[bool] = True

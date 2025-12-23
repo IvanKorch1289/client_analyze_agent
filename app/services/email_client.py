@@ -11,7 +11,11 @@ from email.mime.text import MIMEText
 from typing import Any, Dict, Optional
 
 from app.config import settings
-from app.services.service_status import status_error, status_not_configured, status_ready
+from app.services.service_status import (
+    status_error,
+    status_not_configured,
+    status_ready,
+)
 from app.utility.logging_client import logger
 
 
@@ -63,9 +67,7 @@ class EmailClient:
             }
 
         try:
-            with socket.create_connection(
-                (self.smtp_host, self.smtp_port), timeout=timeout
-            ) as sock:
+            with socket.create_connection((self.smtp_host, self.smtp_port), timeout=timeout) as sock:
                 sock.close()
 
             return {

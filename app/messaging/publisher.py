@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from faststream.rabbit import RabbitBroker
 
@@ -59,9 +59,7 @@ class RabbitPublisher:
         )
         await self._broker.publish(msg, queue=settings.queue.analysis_queue)
 
-    async def publish_cache_invalidate(
-        self, *, prefix: Optional[str] = None, invalidate_all: bool = False
-    ) -> None:
+    async def publish_cache_invalidate(self, *, prefix: Optional[str] = None, invalidate_all: bool = False) -> None:
         await self._ensure_connected()
         msg = CacheInvalidateRequest(prefix=prefix, invalidate_all=invalidate_all)
         await self._broker.publish(msg, queue=settings.queue.cache_queue)
@@ -75,4 +73,3 @@ def get_rabbit_publisher() -> RabbitPublisher:
     if _publisher is None:
         _publisher = RabbitPublisher()
     return _publisher
-

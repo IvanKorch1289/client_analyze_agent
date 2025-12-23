@@ -90,7 +90,9 @@ async def get_metrics(request: Request, service: Optional[str] = None) -> Dict[s
 
 @utility_router.post("/metrics/reset")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
-async def reset_metrics(request: Request, service: Optional[str] = None, role: str = Depends(require_admin)) -> Dict[str, Any]:
+async def reset_metrics(
+    request: Request, service: Optional[str] = None, role: str = Depends(require_admin)
+) -> Dict[str, Any]:
     """Reset HTTP metrics. Requires admin role."""
     try:
         http_client = await AsyncHttpClient.get_instance()
@@ -116,4 +118,3 @@ async def reset_app_metrics(request: Request, role: str = Depends(require_admin)
     """Reset in-process application request metrics. Requires admin role."""
     app_metrics.reset()
     return {"status": "success", "message": "App metrics reset"}
-

@@ -76,4 +76,3 @@ async def force_config_reload(request: Request, role: str = Depends(require_admi
     """Force config reload immediately. Requires admin role."""
     reload_settings(reason="manual_api")
     return {"status": "success", "reload": get_reload_state()}
-

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import List
 
 from app.api.routes.utility import utility_router
 from app.schemas.api import HealthResponse
@@ -22,11 +22,7 @@ async def health_check(deep: bool = False) -> HealthResponse:
         http_status = "healthy"
 
         cb_status = http_client.get_circuit_breaker_status()
-        open_breakers = [
-            name
-            for name, cb in cb_status.items()
-            if isinstance(cb, dict) and cb.get("state") == "open"
-        ]
+        open_breakers = [name for name, cb in cb_status.items() if isinstance(cb, dict) and cb.get("state") == "open"]
         if open_breakers:
             issues.append(f"Circuit breakers open: {', '.join(open_breakers)}")
     except Exception as e:
@@ -93,4 +89,3 @@ async def health_check(deep: bool = False) -> HealthResponse:
             },
         },
     }
-

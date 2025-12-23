@@ -33,4 +33,3 @@ class CacheInvalidateRequest(BaseModel):
 
     prefix: Optional[str] = Field(default=None, description="Префикс ключей")
     invalidate_all: bool = Field(default=False, description="Инвалидировать всё")
-

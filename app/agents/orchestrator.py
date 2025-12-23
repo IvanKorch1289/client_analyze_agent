@@ -46,7 +46,7 @@ SEARCH_INTENTS = [
 async def orchestrator_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Агент-оркестратор: валидирует входные данные и формирует план поиска через LLM.
-    
+
     P0 ИЗМЕНЕНИЯ:
     - Получает точное название из DaData если есть ИНН
     - Использует LLM для генерации адаптивных search_intents
@@ -77,7 +77,7 @@ async def orchestrator_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         f"Orchestrator: начинаем анализ клиента '{client_name}'",
         component="orchestrator",
     )
-    
+
     # P0: Валидация ИНН
     if inn:
         is_valid, error_msg = validate_inn(inn)
@@ -88,7 +88,7 @@ async def orchestrator_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     # P0: НОВОЕ - Получаем точное название из DaData если есть ИНН
     dadata_info = None
     canonical_name = client_name
-    
+
     if inn and len(inn) in (10, 12):
         try:
             logger.info(f"Orchestrator: fetching DaData for INN {inn}", component="orchestrator")
@@ -101,7 +101,7 @@ async def orchestrator_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                     canonical_name = full_name
                     logger.info(
                         f"Orchestrator: using canonical name from ЕГРЮЛ: {canonical_name}",
-                        component="orchestrator"
+                        component="orchestrator",
                     )
         except Exception as e:
             logger.warning(f"Orchestrator: DaData fetch failed: {e}", component="orchestrator")
@@ -113,10 +113,13 @@ async def orchestrator_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         additional_notes=additional_notes,
         dadata_info=dadata_info,
     )
-    
+
     # Fallback на старые шаблоны если LLM не вернул ничего
     if not search_queries:
-        logger.warning("Orchestrator: LLM failed, using fallback templates", component="orchestrator")
+        logger.warning(
+            "Orchestrator: LLM failed, using fallback templates",
+            component="orchestrator",
+        )
         search_queries = _generate_search_intents_fallback(canonical_name, inn, additional_notes)
 
     logger.info(
@@ -146,23 +149,23 @@ async def _generate_search_intents_llm(
 ) -> List[Dict[str, str]]:
     """
     P0: НОВОЕ - Генерация search_intents через LLM.
-    
+
     Использует системный промпт для адаптивной генерации запросов.
     """
     from app.agents.shared.prompts import ORCHESTRATOR_SYSTEM_PROMPT
-    
+
     # Форматируем данные DaData для промпта
     dadata_section = ""
     if dadata_info:
         dadata_section = "\nДАННЫЕ ЕГРЮЛ:\n" + format_dadata_for_prompt(dadata_info)
-    
+
     user_message = ORCHESTRATOR_INTENT_GENERATION_PROMPT.format(
         client_name=client_name,
         inn=inn if inn else "не указан",
         dadata_section=dadata_section,
         additional_notes=additional_notes if additional_notes else "нет",
     )
-    
+
     try:
         result = await llm_generate_json(
             system_prompt=ORCHESTRATOR_SYSTEM_PROMPT,
@@ -171,28 +174,30 @@ async def _generate_search_intents_llm(
             max_tokens=1500,
             fallback_on_error={"search_intents": []},
         )
-        
+
         search_intents = result.get("search_intents", [])
-        
+
         # Валидация и нормализация
         normalized = []
         for idx, intent in enumerate(search_intents):
             if not isinstance(intent, dict):
                 continue
-            
+
             category = intent.get("category", f"generated_{idx}")
             query = intent.get("query", "")
             if not query:
                 continue
-            
-            normalized.append({
-                "id": category,
-                "query": query.strip(),
-                "description": intent.get("description", f"Поиск: {category}"),
-            })
-        
+
+            normalized.append(
+                {
+                    "id": category,
+                    "query": query.strip(),
+                    "description": intent.get("description", f"Поиск: {category}"),
+                }
+            )
+
         return normalized
-        
+
     except Exception as e:
         logger.error(f"Orchestrator LLM generation failed: {e}", component="orchestrator")
         return []
@@ -205,14 +210,12 @@ def _generate_search_intents_fallback(
 ) -> List[Dict[str, str]]:
     """
     Fallback: генерация search_intents по жёстким шаблонам.
-    
+
     Используется если LLM недоступен или вернул пустой результат.
     """
     search_queries: List[Dict[str, str]] = []
     for intent in SEARCH_INTENTS:
-        query = intent["query_template"].format(
-            client_name=client_name, inn=inn if inn else ""
-        )
+        query = intent["query_template"].format(client_name=client_name, inn=inn if inn else "")
         search_queries.append(
             {
                 "id": intent["id"],
@@ -229,5 +232,5 @@ def _generate_search_intents_fallback(
                 "description": "Дополнительный запрос",
             }
         )
-    
+
     return search_queries

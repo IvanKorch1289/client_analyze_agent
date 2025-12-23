@@ -9,13 +9,13 @@ Why a sub-app (mount) instead of duplicating routers with a prefix:
 
 from fastapi import FastAPI
 
+from app.api.error_handlers import install_error_handlers
 from app.api.routes.agent import agent_router
 from app.api.routes.analytics import analytics_router
 from app.api.routes.data import data_router
 from app.api.routes.reports import reports_router
 from app.api.routes.scheduler import scheduler_router
 from app.api.routes.utility import utility_router
-from app.api.error_handlers import install_error_handlers
 
 
 def create_v1_app() -> FastAPI:
@@ -34,13 +34,12 @@ def create_v1_app() -> FastAPI:
     app.include_router(data_router)
     app.include_router(scheduler_router)
     app.include_router(utility_router)
-    
+
     # New routers (for frontend analytics and history)
     app.include_router(reports_router)
     app.include_router(analytics_router)
-    
+
     return app
 
 
 v1_app = create_v1_app()
-

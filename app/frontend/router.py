@@ -121,4 +121,3 @@ def enforce_access(is_admin: bool) -> None:
     if st.session_state.get("tab") != desired:
         st.session_state["tab"] = desired
     _set_query_tab(desired)
-
