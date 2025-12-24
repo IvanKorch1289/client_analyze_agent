@@ -36,18 +36,21 @@
 
 ```
 app/frontend/
-├── app.py                      # Главная страница
-├── app.py.backup               # Бэкап старой версии
-├── pages/                      # Multi-page навигация
-│   ├── 1_🎯_Анализ.py         # Страница анализа контрагентов
-│   ├── 2_🔍_Поиск.py          # Внешние API (DaData, Perplexity, Tavily)
-│   ├── 3_📊_История.py        # История анализов с фильтрами
-│   └── 4_📈_Аналитика.py      # Dashboard с метриками
+├── app.py                      # Главная страница (single-page с табами)
+├── api_client.py               # API клиент для backend
+├── router.py                   # Роутер для табов
+├── tabs/                       # Вкладки интерфейса
+│   ├── analysis.py             # Анализ контрагентов
+│   ├── data.py                 # Внешние данные (DaData, Perplexity, Tavily)
+│   ├── docs.py                 # Документация
+│   └── utilities.py            # Утилиты и настройки
 ├── lib/                        # Переиспользуемые модули
-│   ├── __init__.py
-│   ├── api_client.py           # Централизованный API клиент
-│   └── components.py           # UI компоненты
+│   ├── formatters.py           # Форматирование данных
+│   ├── ui.py                   # UI компоненты
+│   └── validators.py           # Валидация ввода
 ├── assets/                     # Статические файлы
+│   ├── logo.png
+│   └── styles.css
 └── README.md                   # Эта документация
 ```
 
