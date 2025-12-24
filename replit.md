@@ -11,6 +11,7 @@ A multi-agent system for analyzing potential clients and counterparties using LL
 - Automated risk scoring (0-100) with PDF report generation
 - Scheduled analysis tasks via APScheduler
 - Message queue support via RabbitMQ/FastStream
+- **User feedback system** - allows users to flag incorrect reports and trigger re-analysis with their comments incorporated into LLM instructions
 
 ## User Preferences
 

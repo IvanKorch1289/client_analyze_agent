@@ -16,7 +16,7 @@ from app.config.constants import (
     RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE,
     RATE_LIMIT_SEARCH_PER_MINUTE,
 )
-from app.schemas import ClientAnalysisRequest, PromptRequest
+from app.schemas import ClientAnalysisRequest, FeedbackRequest, PromptRequest
 from app.services.analysis_executor import execute_client_analysis
 from app.utility.logging_client import logger
 
@@ -346,3 +346,128 @@ async def list_running_analyses(request: Request) -> Dict[str, Any]:
         "running_analyses": running,
         "cleaned_up": len(completed),
     }
+
+
+@agent_router.post("/feedback")
+@limiter.limit(f"{RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE}/minute")
+async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, Any]:
+    """
+    Отправить фидбек по отчёту и перезапустить анализ с учётом комментариев.
+    
+    Если LLM игнорирует данные или формирует некорректный отчёт,
+    пользователь может отправить фидбек с указанием проблем.
+    Система перезапустит анализ с дополнительными инструкциями.
+    
+    Args:
+        data: Данные фидбека (report_id, rating, comment, focus_areas)
+        
+    Returns:
+        Результат переанализа или подтверждение сохранения фидбека
+    """
+    from app.storage.tarantool import TarantoolClient
+    
+    logger.structured(
+        "info",
+        "feedback_received",
+        component="agent_api",
+        report_id=data.report_id,
+        rating=data.rating,
+        rerun_analysis=data.rerun_analysis,
+    )
+    
+    tarantool = await TarantoolClient.get_instance()
+    reports_repo = tarantool.get_reports_repository()
+    original_report = await reports_repo.get(data.report_id)
+    
+    if not original_report:
+        raise HTTPException(status_code=404, detail=f"Отчёт {data.report_id} не найден")
+    
+    client_name = original_report.get("client_name", "")
+    inn = original_report.get("inn", "")
+    original_notes = (original_report.get("report_data") or {}).get("metadata", {}).get("additional_notes", "")
+    
+    feedback_instructions = _build_feedback_instructions(data, original_report)
+    
+    feedback_record = {
+        "report_id": data.report_id,
+        "rating": data.rating,
+        "comment": data.comment,
+        "focus_areas": data.focus_areas,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    
+    if not data.rerun_analysis:
+        return {
+            "status": "feedback_saved",
+            "message": "Фидбек сохранён. Переанализ не запрошен.",
+            "feedback": feedback_record,
+        }
+    
+    combined_notes = f"{original_notes}\n\n{feedback_instructions}" if original_notes else feedback_instructions
+    
+    try:
+        result = await execute_client_analysis(
+            client_name=client_name,
+            inn=inn,
+            additional_notes=combined_notes,
+            save_report=True,
+        )
+        
+        logger.structured(
+            "info",
+            "feedback_reanalysis_complete",
+            component="agent_api",
+            original_report_id=data.report_id,
+            new_session_id=result.get("session_id"),
+        )
+        
+        return {
+            "status": "reanalysis_complete",
+            "message": "Переанализ выполнен с учётом вашего фидбека",
+            "original_report_id": data.report_id,
+            "new_session_id": result.get("session_id"),
+            "feedback": feedback_record,
+            "result": result,
+        }
+        
+    except Exception as e:
+        logger.error(f"Feedback reanalysis error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при переанализе: {str(e)}"
+        ) from e
+
+
+def _build_feedback_instructions(data: FeedbackRequest, original_report: Dict[str, Any]) -> str:
+    """Сформировать инструкции для LLM на основе фидбека пользователя."""
+    
+    instructions = ["[ФИДБЕК ПОЛЬЗОВАТЕЛЯ - КРИТИЧЕСКИ ВАЖНО УЧЕСТЬ]"]
+    
+    rating_messages = {
+        "accurate": "Пользователь оценил предыдущий анализ как ТОЧНЫЙ.",
+        "partially_accurate": "Пользователь оценил предыдущий анализ как ЧАСТИЧНО ТОЧНЫЙ. Требуется доработка.",
+        "inaccurate": "Пользователь оценил предыдущий анализ как НЕТОЧНЫЙ. Требуется полный пересмотр.",
+    }
+    instructions.append(rating_messages.get(data.rating, ""))
+    
+    if data.comment:
+        instructions.append(f"\nКОММЕНТАРИЙ ПОЛЬЗОВАТЕЛЯ: {data.comment}")
+        instructions.append("\nВНИМАТЕЛЬНО изучи комментарий и учти все замечания в новом анализе.")
+    
+    if data.focus_areas:
+        areas_str = ", ".join(data.focus_areas)
+        instructions.append(f"\nОБЛАСТИ ДЛЯ ОСОБОГО ВНИМАНИЯ: {areas_str}")
+        instructions.append("Убедись, что эти области детально проанализированы и отражены в отчёте.")
+    
+    previous_risk = original_report.get("risk_score", 0)
+    previous_level = original_report.get("risk_level", "unknown")
+    instructions.append(f"\nПРЕДЫДУЩИЙ РЕЗУЛЬТАТ: Риск-скор {previous_risk}/100, уровень: {previous_level}")
+    
+    if data.rating in ("partially_accurate", "inaccurate"):
+        instructions.append("\nВАЖНО:")
+        instructions.append("- НЕ пропускай никакие данные из источников")
+        instructions.append("- Проверь ВСЕ факторы риска")  
+        instructions.append("- Обоснуй каждый пункт оценки конкретными данными")
+        instructions.append("- Если данные противоречивы - укажи это явно")
+    
+    return "\n".join(instructions)

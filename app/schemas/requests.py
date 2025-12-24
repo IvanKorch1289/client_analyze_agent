@@ -111,3 +111,23 @@ class PromptRequest(BaseModel):
     """Back-compat endpoint payload for Streamlit UI."""
 
     prompt: str
+
+
+class FeedbackRequest(BaseModel):
+    """Запрос на отправку фидбека по отчёту с перезапуском анализа."""
+
+    report_id: str = Field(..., description="ID отчёта для фидбека")
+    rating: str = Field(
+        ...,
+        description="Оценка: accurate, partially_accurate, inaccurate",
+        pattern="^(accurate|partially_accurate|inaccurate)$",
+    )
+    comment: Optional[str] = Field(None, description="Комментарий пользователя")
+    rerun_analysis: bool = Field(
+        default=True,
+        description="Перезапустить анализ с учётом фидбека",
+    )
+    focus_areas: Optional[List[str]] = Field(
+        None,
+        description="Области для дополнительного внимания при переанализе",
+    )

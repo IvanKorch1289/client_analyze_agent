@@ -361,57 +361,94 @@ def render(api: ApiClient) -> None:
 
         st.divider()
 
-        with st.expander("📝 Обратная связь", expanded=False):
-            st.markdown("**Оцените качество анализа:**")
+        with st.expander("📝 Фидбек и переанализ", expanded=False):
+            st.markdown("**Если отчёт некорректен или LLM пропустила данные — отправьте фидбек:**")
+            st.caption("Система перезапустит анализ с учётом ваших замечаний")
+            
             feedback_rating = st.radio(
-                "Оценка",
+                "Оценка качества анализа",
                 options=["accurate", "partially_accurate", "inaccurate"],
                 format_func=lambda x: {
-                    "accurate": "✅ Точный",
-                    "partially_accurate": "⚠️ Частично точный",
-                    "inaccurate": "❌ Неточный",
+                    "accurate": "✅ Точный — всё верно",
+                    "partially_accurate": "⚠️ Частично точный — есть неточности",
+                    "inaccurate": "❌ Неточный — много ошибок",
                 }[x],
                 horizontal=True,
                 key=f"feedback_rating_{selected_report_id}",
+                index=1,
             )
+            
             feedback_comment = st.text_area(
-                "Комментарий (опционально)",
-                placeholder="Опишите что было неточно или что можно улучшить...",
+                "Опишите проблему подробно",
+                placeholder="Например: LLM не учла данные о судебных делах, пропущена информация о долгах в ФССП, неверно оценён риск по банкротству...",
                 key=f"feedback_comment_{selected_report_id}",
+                height=120,
             )
-            if st.button("Отправить отзыв", key=f"submit_feedback_{selected_report_id}"):
-                feedback_data = {
-                    "report_id": selected_report_id,
-                    "rating": feedback_rating,
-                    "comment": feedback_comment.strip() if feedback_comment else None,
-                }
-                st.session_state[f"feedback_{selected_report_id}"] = feedback_data
-                st.success("✅ Спасибо за отзыв! Он поможет улучшить анализ.")
-
-        with st.expander("🔄 Переанализировать", expanded=False):
-            st.markdown("**Запустить повторный анализ с дополнительным контекстом:**")
-            reanalyze_notes = st.text_area(
-                "Дополнительные указания",
-                placeholder="Укажите что проверить дополнительно или на что обратить внимание...",
-                key=f"reanalyze_notes_{selected_report_id}",
+            
+            focus_areas_options = [
+                "Судебные дела",
+                "Финансовое состояние",
+                "Банкротство",
+                "Исполнительные производства (ФССП)",
+                "Госконтракты",
+                "Аффилированность",
+                "Репутация",
+                "Учредители и руководство",
+            ]
+            focus_areas = st.multiselect(
+                "На что обратить особое внимание при переанализе",
+                options=focus_areas_options,
+                key=f"focus_areas_{selected_report_id}",
             )
-            if st.button("Запустить переанализ", type="primary", key=f"reanalyze_{selected_report_id}"):
-                original_client = opened.get("client_name", "")
-                original_inn = opened.get("inn", "")
-                original_notes = (opened.get("report_data") or {}).get("metadata", {}).get("additional_notes", "")
-                
-                combined_notes = original_notes
-                if reanalyze_notes.strip():
-                    combined_notes = f"{original_notes}\n\n[ПЕРЕАНАЛИЗ]: {reanalyze_notes.strip()}"
-                
-                reanalyze_payload = {
-                    "client_name": original_client,
-                    "inn": original_inn,
-                    "additional_notes": combined_notes,
-                }
-                with st.spinner("Запускаю переанализ..."):
-                    reanalyze_result = api.post("/agent/analyze-client", json=reanalyze_payload)
-                if reanalyze_result is not None:
-                    st.session_state["last_analysis_result"] = reanalyze_result
-                    st.success("✅ Переанализ завершён! Результат доступен в секции 'Запустить анализ сейчас'.")
-                    st.rerun()
+            
+            rerun_checkbox = st.checkbox(
+                "Перезапустить анализ с учётом фидбека",
+                value=True,
+                key=f"rerun_{selected_report_id}",
+            )
+            
+            col_submit, col_status = st.columns([1, 2])
+            with col_submit:
+                submit_feedback = st.button(
+                    "🔄 Отправить фидбек" if rerun_checkbox else "💾 Сохранить фидбек",
+                    type="primary",
+                    key=f"submit_feedback_{selected_report_id}",
+                    use_container_width=True,
+                )
+            
+            if submit_feedback:
+                if feedback_rating in ("partially_accurate", "inaccurate") and not feedback_comment.strip():
+                    st.error("❌ Пожалуйста, опишите проблему в комментарии для переанализа")
+                else:
+                    feedback_payload = {
+                        "report_id": selected_report_id,
+                        "rating": feedback_rating,
+                        "comment": feedback_comment.strip() if feedback_comment else None,
+                        "rerun_analysis": rerun_checkbox,
+                        "focus_areas": focus_areas if focus_areas else None,
+                    }
+                    
+                    with st.spinner("Отправляю фидбек и запускаю переанализ..." if rerun_checkbox else "Сохраняю фидбек..."):
+                        feedback_result = api.post("/agent/feedback", json=feedback_payload)
+                    
+                    if feedback_result is not None:
+                        status = feedback_result.get("status", "")
+                        
+                        if status == "reanalysis_complete":
+                            st.success("✅ Переанализ выполнен с учётом вашего фидбека!")
+                            new_session = feedback_result.get("new_session_id", "")
+                            if new_session:
+                                st.info(f"Новый ID сессии: `{new_session}`")
+                            
+                            if feedback_result.get("result"):
+                                st.session_state["last_analysis_result"] = feedback_result["result"]
+                            
+                            st.balloons()
+                            st.rerun()
+                            
+                        elif status == "feedback_saved":
+                            st.success("✅ Фидбек сохранён")
+                            st.json(feedback_result.get("feedback", {}))
+                        else:
+                            st.warning(f"Статус: {status}")
+                            st.json(feedback_result)
