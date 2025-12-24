@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 import time
+import uuid
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, Optional
 
@@ -183,7 +184,8 @@ async def prompt_agent(request: Request, data: PromptRequest) -> Dict[str, Any]:
 
 async def _stream_client_analysis(client_name: str, inn: str, additional_notes: str) -> AsyncGenerator[str, None]:
     """Генератор SSE событий для streaming анализа."""
-    session_id = f"analysis_{int(time.time())}"
+    # P2: UUID для уникальности session_id (предотвращение коллизий при параллельных запусках)
+    session_id = f"analysis_{uuid.uuid4().hex[:12]}_{int(time.time())}"
 
     def format_sse(event: str, data: Dict[str, Any]) -> str:
         return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"

@@ -9,6 +9,8 @@ Please update imports:
 - validate_inn → app.shared.security.validate_inn
 - truncate, format_ts → app.shared.utils.formatters
 - System prompts → app.mcp_server.prompts.system_prompts
+- ClientAnalysisState → app.agents.client_workflow.ClientAnalysisState
+- ReportData → app.schemas.report.ClientAnalysisReport
 """
 
 import warnings
@@ -20,7 +22,6 @@ warnings.warn(
 )
 
 from app.agents.shared.llm import get_llm_manager
-from app.agents.shared.schemas import ClientAnalysisState, ReportData
 
 # Re-export from new locations (for compatibility)
 from app.shared.security import validate_inn
@@ -28,8 +29,6 @@ from app.shared.utils.formatters import format_ts, truncate
 
 __all__ = [
     "get_llm_manager",
-    "ClientAnalysisState",
-    "ReportData",
     "format_ts",
     "truncate",
     "validate_inn",
