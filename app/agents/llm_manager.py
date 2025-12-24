@@ -1,11 +1,15 @@
 """
-LLM Manager с fallback стратегией.
+LLM Manager с fallback стратегией и поддержкой Jay Guard прокси.
 
 Fallback последовательность:
 1. OpenRouter (Primary) - anthropic/claude-3.5-sonnet
 2. HuggingFace (Fallback #1) - Meta-Llama-3.1-70B-Instruct
 3. GigaChat (Fallback #2) - GigaChat-Pro
 4. YandexGPT (Fallback #3) - YandexGPT-Lite
+
+Jay Guard Proxy:
+- Если включен (JAYGUARD_ENABLED=true), все запросы к OpenRouter идут через Jay Guard
+- Jay Guard обеспечивает PII маскирование и защиту данных
 
 Автоматически переключается при ошибках или недоступности провайдера.
 """
@@ -109,34 +113,58 @@ class LLMManager:
     def _get_openrouter_llm(self) -> Any:
         """
         Получить OpenRouter LLM (primary).
+        
+        Если включен Jay Guard прокси (JAYGUARD_ENABLED=true), запросы идут через него.
 
         Returns:
-            LLM: Настроенный LLM для OpenRouter
+            LLM: Настроенный LLM для OpenRouter (через Jay Guard если включен)
         """
         if self._openrouter_llm is None:
-            if not settings.openrouter.api_key:
-                raise ValueError("OpenRouter API key not configured")
-            # Импортируем здесь, чтобы не замедлять импорт модуля на холодном старте.
             from langchain_openai import ChatOpenAI
 
-            self._openrouter_llm = ChatOpenAI(
-                api_key=settings.openrouter.api_key,
-                base_url=settings.openrouter.api_url,
-                model=settings.openrouter.model,
-                temperature=settings.openrouter.temperature,
-                max_tokens=settings.openrouter.max_tokens,
-                timeout=settings.openrouter.timeout,
-                # OpenRouter specific headers
-                default_headers={
-                    "HTTP-Referer": "https://client-analysis-system.com",
-                    "X-Title": "Client Analysis System",
-                },
-            )
+            jayguard_enabled = settings.jayguard.enabled
+            jayguard_url = settings.jayguard.api_url
+            jayguard_key = settings.jayguard.api_key
 
-            logger.info(
-                f"OpenRouter LLM initialized: {settings.openrouter.model}",
-                component="llm_manager",
-            )
+            if jayguard_enabled and jayguard_url and jayguard_key:
+                self._openrouter_llm = ChatOpenAI(
+                    api_key=jayguard_key,
+                    base_url=jayguard_url,
+                    model=settings.openrouter.model,
+                    temperature=settings.openrouter.temperature,
+                    max_tokens=settings.openrouter.max_tokens,
+                    timeout=settings.jayguard.timeout,
+                    default_headers={
+                        "HTTP-Referer": "https://client-analysis-system.com",
+                        "X-Title": "Client Analysis System",
+                    },
+                )
+
+                logger.info(
+                    f"OpenRouter LLM via Jay Guard proxy: {settings.openrouter.model}",
+                    component="llm_manager",
+                )
+            else:
+                if not settings.openrouter.api_key:
+                    raise ValueError("OpenRouter API key not configured")
+
+                self._openrouter_llm = ChatOpenAI(
+                    api_key=settings.openrouter.api_key,
+                    base_url=settings.openrouter.api_url,
+                    model=settings.openrouter.model,
+                    temperature=settings.openrouter.temperature,
+                    max_tokens=settings.openrouter.max_tokens,
+                    timeout=settings.openrouter.timeout,
+                    default_headers={
+                        "HTTP-Referer": "https://client-analysis-system.com",
+                        "X-Title": "Client Analysis System",
+                    },
+                )
+
+                logger.info(
+                    f"OpenRouter LLM initialized: {settings.openrouter.model}",
+                    component="llm_manager",
+                )
 
         return self._openrouter_llm
 

@@ -25,6 +25,7 @@ Preferred communication style: Simple, everyday language.
 | Backend | FastAPI | REST API on port 8000 |
 | Orchestration | LangGraph (StateGraph) | Agent workflow coordination |
 | LLM Integration | LangChain + Multi-provider | OpenRouter → HuggingFace → GigaChat → YandexGPT fallback |
+| Data Protection | Jay Guard Proxy | PII маскирование через внешний прокси (опционально) |
 | Caching | Tarantool (in-memory fallback) | TTL-based caching |
 | Messaging | FastStream + RabbitMQ | Async task processing |
 | MCP Server | FastMCP | IDE integration on port 8011 |

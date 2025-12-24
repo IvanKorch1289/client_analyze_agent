@@ -33,6 +33,7 @@ from app.config.external_api import (
     HttpBaseSettings,
     HuggingFaceAPISettings,
     InfoSphereAPISettings,
+    JayGuardAPISettings,
     OpenRouterAPISettings,
     PerplexityAPISettings,
     SKBAPISettings,
@@ -42,6 +43,7 @@ from app.config.external_api import (
     dadata_api_settings,
     http_base_settings,
     infosphere_api_settings,
+    jayguard_api_settings,
     openrouter_api_settings,
     perplexity_api_settings,
     skb_api_settings,
@@ -149,6 +151,10 @@ class Settings:
     def yandexgpt(self) -> YandexGPTAPISettings:
         return YandexGPTAPISettings.get_instance()
 
+    @property
+    def jayguard(self) -> JayGuardAPISettings:
+        return JayGuardAPISettings.get_instance()
+
     # Internal services
     @property
     def queue(self) -> QueueSettings:
@@ -213,6 +219,7 @@ __all__ = [
     "TavilyAPISettings",
     "OpenRouterAPISettings",
     "YandexGPTAPISettings",
+    "JayGuardAPISettings",
     "http_base_settings",
     "dadata_api_settings",
     "casebook_api_settings",
@@ -222,6 +229,7 @@ __all__ = [
     "tavily_api_settings",
     "openrouter_api_settings",
     "yandexgpt_api_settings",
+    "jayguard_api_settings",
     # Services
     "RedisSettings",
     "QueueSettings",

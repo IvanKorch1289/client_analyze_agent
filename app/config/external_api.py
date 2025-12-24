@@ -262,6 +262,27 @@ class YandexGPTAPISettings(BaseSettingsWithLoader):
     model_config = ConfigDict(env_prefix="YANDEXGPT_")
 
 
+class JayGuardAPISettings(BaseSettingsWithLoader):
+    """
+    Настройки Jay Guard Proxy.
+    
+    Jay Guard - прокси для LLM запросов с защитой данных (PII маскирование).
+    Все запросы к LLM проходят через Jay Guard для фильтрации и анонимизации.
+    """
+
+    yaml_group = "jayguard"
+    vault_path = "secret/data/app/jayguard"
+
+    enabled: bool = Field(default=False, description="Включить Jay Guard прокси")
+    api_url: Optional[str] = Field(default=None, description="URL Jay Guard API прокси")
+    api_key: Optional[str] = Field(default=None, description="API ключ Jay Guard")
+
+    # Таймауты
+    timeout: float = Field(default=120.0, description="Таймаут запроса (сек)")
+
+    model_config = ConfigDict(env_prefix="JAYGUARD_")
+
+
 # Алиас для обратной совместимости
 SKBAPISettings = InfoSphereAPISettings
 
@@ -278,6 +299,7 @@ openrouter_api_settings = OpenRouterAPISettings.get_instance()
 huggingface_api_settings = HuggingFaceAPISettings.get_instance()
 gigachat_api_settings = GigaChatAPISettings.get_instance()
 yandexgpt_api_settings = YandexGPTAPISettings.get_instance()
+jayguard_api_settings = JayGuardAPISettings.get_instance()
 
 
 __all__ = [
@@ -292,6 +314,7 @@ __all__ = [
     "HuggingFaceAPISettings",
     "GigaChatAPISettings",
     "YandexGPTAPISettings",
+    "JayGuardAPISettings",
     "http_base_settings",
     "dadata_api_settings",
     "casebook_api_settings",
@@ -303,4 +326,5 @@ __all__ = [
     "huggingface_api_settings",
     "gigachat_api_settings",
     "yandexgpt_api_settings",
+    "jayguard_api_settings",
 ]
