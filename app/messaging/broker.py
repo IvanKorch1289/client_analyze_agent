@@ -132,13 +132,8 @@ async def handle_failed_analysis(msg: ClientAnalysisRequest) -> None:
     Логирует ошибку и сохраняет в persistent storage для анализа.
     """
     logger.error(
-        f"Failed message in DLQ: {msg.client_name} (INN: {msg.inn})",
+        f"Failed message in DLQ: {msg.client_name} (INN: {msg.inn}), session_id={msg.session_id}",
         component="faststream_dlq",
-        extra={
-            "session_id": msg.session_id,
-            "client_name": msg.client_name,
-            "inn": msg.inn,
-        }
     )
     
     # Сохраняем в Tarantool для дальнейшего анализа
