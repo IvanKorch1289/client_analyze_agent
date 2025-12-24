@@ -62,3 +62,19 @@ Configuration is loaded from:
 - Created missing `app/frontend/lib/` modules (formatters, ui, validators)
 - Configured trusted hosts and CORS for Replit environment
 - Set up workflow for port 5000 (Streamlit frontend)
+
+### December 24, 2025 - Risk Scoring and Analyzer Roles Refactor
+- **RiskScoreCalculator** (`app/agents/risk_calculator.py`): New normalized scoring system
+  - Category weights: Legal 35%, Financial 30%, Reputation 20%, Regulatory 15%
+  - Maximum scores per category: Legal 40, Financial 30, Reputation 20, Regulatory 15
+  - Key fix: 100 court cases now equals ~24 points (not inflated 75 points)
+  - Formula: `final_score = (raw_score / max_possible) * 100`
+- **New Analyzer Roles** (`app/mcp_server/prompts/system_prompts.py`):
+  - `REGISTRY_ANALYZER`: Analyzes DaData, Casebook, InfoSphere data (official registries)
+  - `WEB_ANALYZER`: Analyzes Perplexity, Tavily results (web search & reputation)
+  - `MASTER_SYNTHESIZER`: Combines Registry (70%) + Web (30%) into final assessment
+- **Feedback Mechanism** (`app/frontend/tabs/analysis.py`):
+  - Rating options: Точный / Частично точный / Неточный
+  - Optional comment field for user feedback
+  - Re-analysis workflow with additional context injection
+- All prompts and docstrings converted to Russian language
