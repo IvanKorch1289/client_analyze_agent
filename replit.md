@@ -24,7 +24,8 @@ Preferred communication style: Simple, everyday language.
 | Frontend | Streamlit | Web UI on port 5000 |
 | Backend | FastAPI | REST API on port 8000 |
 | Orchestration | LangGraph (StateGraph) | Agent workflow coordination |
-| LLM Integration | LangChain + OpenRouter | Claude 3.5 Sonnet default |
+| LLM Integration | LangChain + Multi-provider | OpenRouter → HuggingFace → GigaChat → YandexGPT fallback |
+| Data Protection | LLMGuardService | PII anonymization/de-anonymization |
 | Caching | Tarantool (in-memory fallback) | TTL-based caching |
 | Messaging | FastStream + RabbitMQ | Async task processing |
 | MCP Server | FastMCP | IDE integration on port 8011 |
@@ -70,6 +71,7 @@ app/
 │   └── responses.py # All API response models
 ├── services/        # External API clients and business logic
 │   ├── llm_provider.py  # Unified LLM access (llm_generate_json, llm_generate_text)
+│   ├── llm_guard.py     # PII anonymization/de-anonymization service
 │   ├── perplexity_client.py  # Perplexity AI search
 │   ├── tavily_client.py      # Tavily web search
 │   └── scheduler_service.py  # APScheduler integration
@@ -89,6 +91,9 @@ app/
 | Service | Purpose | Config Key |
 |---------|---------|------------|
 | OpenRouter | LLM provider | `OPENROUTER_API_KEY` |
+| HuggingFace | LLM fallback #1 | `HUGGINGFACE_API_KEY` |
+| GigaChat | LLM fallback #2 | `GIGACHAT_API_KEY` |
+| YandexGPT | LLM fallback #3 | `YANDEXGPT_IAM_TOKEN`, `YANDEXGPT_FOLDER_ID` |
 | DaData | Company registry lookup | `DADATA_API_KEY` |
 | Perplexity | AI-powered web search | `PERPLEXITY_API_KEY` |
 | Tavily | Extended web search | `TAVILY_API_KEY` |

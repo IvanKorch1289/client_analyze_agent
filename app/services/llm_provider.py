@@ -44,7 +44,7 @@ def _sanitize_for_llm(text: str) -> tuple[str, bool]:
         result = guard.sanitize_input(text)
         if result.has_pii:
             logger.debug(
-                f"LLM Guard: sanitized {len(result.matches)} PII matches",
+                f"LLM Guard: sanitized {result.pii_count} PII items, types: {result.pii_types}",
                 component="llm_provider",
             )
         return result.sanitized_text, result.has_pii
