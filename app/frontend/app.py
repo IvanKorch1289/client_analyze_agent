@@ -32,6 +32,7 @@ from app.frontend.tabs import utilities as tab_utilities
 
 
 def _load_css() -> None:
+    """Load custom CSS styles."""
     css_path = Path(__file__).resolve().parent / "assets" / "styles.css"
     try:
         st.markdown(
@@ -39,7 +40,45 @@ def _load_css() -> None:
             unsafe_allow_html=True,
         )
     except Exception:
-        # CSS is optional; UI should still work.
+        pass
+
+
+def _render_logo() -> None:
+    """
+    Render logo in top-right corner of the page.
+    
+    To change the logo:
+      - Replace app/frontend/assets/logo.png with your image
+      - Adjust height in the CSS below (currently 50px)
+      - Adjust top/right position if needed
+    """
+    import base64
+    logo_path = Path(__file__).resolve().parent / "assets" / "logo.png"
+    
+    if not logo_path.exists():
+        return
+    
+    try:
+        logo_b64 = base64.b64encode(logo_path.read_bytes()).decode()
+        st.markdown(
+            f"""
+            <style>
+            .top-right-logo {{
+                position: fixed;
+                top: 14px;
+                right: 20px;
+                z-index: 9999;
+                height: 50px;
+                width: auto;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            }}
+            </style>
+            <img src="data:image/png;base64,{logo_b64}" class="top-right-logo" alt="Logo">
+            """,
+            unsafe_allow_html=True,
+        )
+    except Exception:
         pass
 
 
@@ -113,6 +152,7 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     _load_css()
+    _render_logo()
     _init_state()
 
     # Router sync + access control (also handles direct ?tab=utilities/docs).
