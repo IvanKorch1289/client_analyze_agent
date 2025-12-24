@@ -37,6 +37,7 @@ from app.config.external_api import (
     PerplexityAPISettings,
     SKBAPISettings,
     TavilyAPISettings,
+    YandexGPTAPISettings,
     casebook_api_settings,
     dadata_api_settings,
     http_base_settings,
@@ -45,6 +46,7 @@ from app.config.external_api import (
     perplexity_api_settings,
     skb_api_settings,
     tavily_api_settings,
+    yandexgpt_api_settings,
 )
 from app.config.security import SecureSettings, secure_settings
 from app.config.services import (
@@ -143,6 +145,10 @@ class Settings:
     def gigachat(self) -> GigaChatAPISettings:
         return GigaChatAPISettings.get_instance()
 
+    @property
+    def yandexgpt(self) -> YandexGPTAPISettings:
+        return YandexGPTAPISettings.get_instance()
+
     # Internal services
     @property
     def queue(self) -> QueueSettings:
@@ -206,6 +212,7 @@ __all__ = [
     "PerplexityAPISettings",
     "TavilyAPISettings",
     "OpenRouterAPISettings",
+    "YandexGPTAPISettings",
     "http_base_settings",
     "dadata_api_settings",
     "casebook_api_settings",
@@ -214,6 +221,7 @@ __all__ = [
     "perplexity_api_settings",
     "tavily_api_settings",
     "openrouter_api_settings",
+    "yandexgpt_api_settings",
     # Services
     "RedisSettings",
     "QueueSettings",

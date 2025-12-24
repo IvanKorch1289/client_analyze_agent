@@ -5,6 +5,7 @@ Fallback последовательность:
 1. OpenRouter (Primary) - anthropic/claude-3.5-sonnet
 2. HuggingFace (Fallback #1) - Meta-Llama-3.1-70B-Instruct
 3. GigaChat (Fallback #2) - GigaChat-Pro
+4. YandexGPT (Fallback #3) - YandexGPT-Lite
 
 Автоматически переключается при ошибках или недоступности провайдера.
 """
@@ -54,6 +55,7 @@ class LLMProvider(str, Enum):
     OPENROUTER = "openrouter"
     HUGGINGFACE = "huggingface"
     GIGACHAT = "gigachat"
+    YANDEXGPT = "yandexgpt"
 
 
 class LLMManager:
@@ -86,17 +88,20 @@ class LLMManager:
         self._openrouter_llm: Any = None
         self._huggingface_llm: Any = None
         self._gigachat_llm: Any = None
+        self._yandexgpt_llm: Any = None
 
         self._provider_status: Dict[LLMProvider, bool] = {
             LLMProvider.OPENROUTER: True,
             LLMProvider.HUGGINGFACE: True,
             LLMProvider.GIGACHAT: True,
+            LLMProvider.YANDEXGPT: True,
         }
 
         self._fallback_order = [
             LLMProvider.OPENROUTER,
             LLMProvider.HUGGINGFACE,
             LLMProvider.GIGACHAT,
+            LLMProvider.YANDEXGPT,
         ]
 
         logger.info("LLMManager initialized", component="llm_manager")
@@ -193,6 +198,30 @@ class LLMManager:
 
         return self._gigachat_llm
 
+    def _get_yandexgpt_llm(self) -> Any:
+        """
+        Получить YandexGPT LLM (fallback #3).
+
+        Returns:
+            LLM: Настроенный LLM для YandexGPT
+        """
+        if self._yandexgpt_llm is None:
+            if not settings.yandexgpt.api_key:
+                raise ValueError("YandexGPT IAM token not configured")
+            from langchain_community.llms import YandexGPT
+
+            self._yandexgpt_llm = YandexGPT(
+                iam_token=settings.yandexgpt.api_key,
+                folder_id=settings.yandexgpt.folder_id,
+                model_uri=settings.yandexgpt.model_uri,
+                temperature=settings.yandexgpt.temperature,
+                max_tokens=settings.yandexgpt.max_tokens,
+            )
+
+            logger.info("YandexGPT LLM initialized", component="llm_manager")
+
+        return self._yandexgpt_llm
+
     def _get_llm_by_provider(self, provider: LLMProvider) -> Any:
         """
         Получить LLM по имени провайдера.
@@ -212,6 +241,8 @@ class LLMManager:
             return self._get_huggingface_llm()
         elif provider == LLMProvider.GIGACHAT:
             return self._get_gigachat_llm()
+        elif provider == LLMProvider.YANDEXGPT:
+            return self._get_yandexgpt_llm()
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
@@ -243,7 +274,7 @@ class LLMManager:
                 response = await llm.ainvoke(prompt, **kwargs)
                 return response.content if hasattr(response, "content") else str(response)
             else:
-                # HuggingFace и GigaChat возвращают строку
+                # HuggingFace, GigaChat и YandexGPT возвращают строку
                 response = await llm.ainvoke(prompt, **kwargs)
                 return str(response)
 

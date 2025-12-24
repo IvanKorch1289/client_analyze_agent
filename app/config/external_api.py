@@ -238,6 +238,30 @@ class GigaChatAPISettings(BaseSettingsWithLoader):
     model_config = ConfigDict(env_prefix="GIGACHAT_")
 
 
+class YandexGPTAPISettings(BaseSettingsWithLoader):
+    """Настройки YandexGPT API (Fallback #3)."""
+
+    yaml_group = "yandexgpt"
+    vault_path = "secret/data/app/yandexgpt"
+
+    api_key: str = Field(default="", description="IAM токен YandexGPT", alias="YANDEXGPT_IAM_TOKEN")
+    folder_id: str = Field(default="", description="ID папки в Yandex Cloud", alias="YANDEXGPT_FOLDER_ID")
+    model_uri: str = Field(
+        default="gpt://folder_id/yandexgpt-lite",
+        description="URI модели YandexGPT",
+        alias="YANDEXGPT_MODEL_URI",
+    )
+
+    # Параметры генерации
+    temperature: float = Field(default=0.3, description="Temperature для генерации")
+    max_tokens: int = Field(default=2000, description="Максимум токенов")
+
+    # Таймауты
+    timeout: int = Field(default=60, description="Таймаут запроса (сек)")
+
+    model_config = ConfigDict(env_prefix="YANDEXGPT_")
+
+
 # Алиас для обратной совместимости
 SKBAPISettings = InfoSphereAPISettings
 
@@ -253,6 +277,7 @@ tavily_api_settings = TavilyAPISettings.get_instance()
 openrouter_api_settings = OpenRouterAPISettings.get_instance()
 huggingface_api_settings = HuggingFaceAPISettings.get_instance()
 gigachat_api_settings = GigaChatAPISettings.get_instance()
+yandexgpt_api_settings = YandexGPTAPISettings.get_instance()
 
 
 __all__ = [
@@ -266,6 +291,7 @@ __all__ = [
     "OpenRouterAPISettings",
     "HuggingFaceAPISettings",
     "GigaChatAPISettings",
+    "YandexGPTAPISettings",
     "http_base_settings",
     "dadata_api_settings",
     "casebook_api_settings",
@@ -276,4 +302,5 @@ __all__ = [
     "openrouter_api_settings",
     "huggingface_api_settings",
     "gigachat_api_settings",
+    "yandexgpt_api_settings",
 ]
