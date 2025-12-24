@@ -1,10 +1,12 @@
-from typing import List, Optional
-
 from fastapi import APIRouter, Request
-from pydantic import BaseModel
 
 from app.api.compat import fail
-from app.schemas.api import PerplexitySearchResponse, TavilySearchResponse
+from app.schemas import (
+    PerplexityRequest,
+    PerplexitySearchResponse,
+    TavilyRequest,
+    TavilySearchResponse,
+)
 from app.services.fetch_data import (
     fetch_company_info,
     fetch_from_casebook,
@@ -20,30 +22,6 @@ data_router = APIRouter(
     tags=["Внешние данные"],
     responses={404: {"description": "Не найдено"}},
 )
-
-
-class PerplexityRequest(BaseModel):
-    inn: str
-    search_query: str
-    search_recency: str = "month"
-
-    @property
-    def query(self) -> str:
-        return f"ИНН {self.inn}: {self.search_query}. Ответь только фактами без предположений."
-
-
-class TavilyRequest(BaseModel):
-    inn: str
-    search_query: str
-    search_depth: str = "basic"
-    max_results: int = 5
-    include_answer: bool = True
-    include_domains: Optional[List[str]] = None
-    exclude_domains: Optional[List[str]] = None
-
-    @property
-    def query(self) -> str:
-        return f"ИНН {self.inn} {self.search_query}"
 
 
 @data_router.get("/client/infosphere/{inn}")

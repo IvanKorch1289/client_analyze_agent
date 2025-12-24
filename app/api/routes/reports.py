@@ -14,12 +14,17 @@ from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, Field
 
 from app.api.rate_limit import limiter_for_client_ip
 from app.config.constants import (
     RATE_LIMIT_ADMIN_PER_MINUTE,
     RATE_LIMIT_SEARCH_PER_MINUTE,
+)
+from app.schemas import (
+    BulkDeleteRequest,
+    ReportDetailResponse,
+    ReportListResponse,
+    ReportStatsResponse,
 )
 from app.storage.tarantool import TarantoolClient
 from app.utility.auth import require_admin
@@ -38,37 +43,6 @@ reports_router = APIRouter(
 )
 
 limiter = limiter_for_client_ip()
-
-
-class ReportListResponse(BaseModel):
-    """Response for list of reports."""
-
-    status: str = "success"
-    reports: List[Dict[str, Any]]
-    total: int
-    limit: int
-    offset: int
-    has_more: bool
-
-
-class ReportDetailResponse(BaseModel):
-    """Response for single report details."""
-
-    status: str = "success"
-    report: Dict[str, Any]
-
-
-class ReportStatsResponse(BaseModel):
-    """Response for reports statistics."""
-
-    status: str = "success"
-    stats: Dict[str, Any]
-
-
-class BulkDeleteRequest(BaseModel):
-    """Request for bulk delete operation."""
-
-    report_ids: List[str] = Field(..., min_items=1, max_items=100)
 
 
 @reports_router.get("", response_model=ReportListResponse)

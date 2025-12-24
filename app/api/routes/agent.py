@@ -8,7 +8,6 @@ from typing import Any, AsyncGenerator, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from slowapi.util import get_remote_address
 
 from app.agents.client_workflow import run_client_analysis_streaming
@@ -17,13 +16,13 @@ from app.config.constants import (
     RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE,
     RATE_LIMIT_SEARCH_PER_MINUTE,
 )
+from app.schemas import ClientAnalysisRequest, PromptRequest
 from app.services.analysis_executor import execute_client_analysis
 from app.utility.logging_client import logger
 
 agent_router = APIRouter(prefix="/agent", tags=["Агент"])
 
 
-# P2: Task registry для отслеживания и отмены задач анализа
 _running_tasks: Dict[str, asyncio.Task] = {}
 
 
@@ -44,20 +43,8 @@ def _get_running_task(session_id: str) -> Optional[asyncio.Task]:
     """Получить запущенную задачу по session_id."""
     return _running_tasks.get(session_id)
 
-# Rate limiter для агентских эндпоинтов
+
 limiter = create_limiter(get_remote_address)
-
-
-class ClientAnalysisRequest(BaseModel):
-    client_name: str
-    inn: Optional[str] = ""
-    additional_notes: Optional[str] = ""
-
-
-class PromptRequest(BaseModel):
-    """Back-compat endpoint payload for Streamlit UI."""
-
-    prompt: str
 
 
 @agent_router.get("/thread_history/{thread_id}")

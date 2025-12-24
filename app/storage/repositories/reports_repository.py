@@ -375,6 +375,8 @@ class ReportsRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Количество отчетов в space (не просроченных)
         """
+        if self.client._use_memory or not self.client._connection:
+            return 0
         try:
             result = await self.client._call("get_reports_count")
             return int(result) if result else 0

@@ -2,88 +2,24 @@
 Scheduler API endpoints - управление отложенными задачами.
 """
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
 
 from app.api.rate_limit import limiter_for_client_ip
 from app.config import RATE_LIMIT_GENERAL_PER_MINUTE
+from app.schemas import (
+    ScheduleClientAnalysisRequest,
+    ScheduleDataFetchRequest,
+    ScheduleTaskResponse,
+    SchedulerStatsResponse,
+    TaskInfoResponse,
+)
 from app.services.scheduler_service import get_scheduler_service
 from app.utility.logging_client import logger
 
 scheduler_router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 limiter = limiter_for_client_ip()
-
-
-class ScheduleClientAnalysisRequest(BaseModel):
-    """Запрос на планирование анализа клиента."""
-
-    client_name: str = Field(..., description="Название клиента")
-    inn: str = Field(..., description="ИНН клиента", min_length=10, max_length=12)
-    additional_notes: str = Field(default="", description="Дополнительные заметки")
-
-    # Время выполнения (один из параметров обязателен)
-    delay_minutes: Optional[int] = Field(None, description="Задержка в минутах", ge=1)
-    delay_seconds: Optional[int] = Field(None, description="Задержка в секундах", ge=1)
-    run_date: Optional[datetime] = Field(None, description="Конкретное время выполнения (ISO 8601)")
-
-    task_id: Optional[str] = Field(None, description="Пользовательский ID задачи (опционально)")
-
-
-class ScheduleTaskResponse(BaseModel):
-    """Ответ при создании задачи."""
-
-    task_id: str = Field(..., description="ID созданной задачи")
-    scheduled_at: datetime = Field(..., description="Время создания задачи")
-    run_date: datetime = Field(..., description="Время выполнения задачи")
-    status: str = Field(default="scheduled", description="Статус задачи")
-    message: str = Field(..., description="Сообщение")
-
-
-class TaskInfoResponse(BaseModel):
-    """Информация о задаче."""
-
-    task_id: str
-    func_name: str
-    scheduled_at: datetime
-    run_date: datetime
-    status: str
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-
-
-class ScheduleDataFetchRequest(BaseModel):
-    """Запрос на планирование сбора данных из внешних источников."""
-
-    inn: str = Field(..., description="ИНН компании", min_length=10, max_length=12)
-    sources: List[str] = Field(
-        ...,
-        description="Источники данных: dadata, casebook, infosphere, perplexity, tavily",
-    )
-    search_query: Optional[str] = Field(
-        None, description="Поисковый запрос (обязателен для perplexity/tavily)"
-    )
-
-    perplexity_recency: str = Field(default="month", description="Perplexity: фильтр актуальности (day/week/month)")
-    tavily_depth: str = Field(default="basic", description="Tavily: глубина поиска (basic/advanced)")
-    tavily_max_results: int = Field(default=5, description="Tavily: максимум результатов", ge=1, le=10)
-    tavily_include_answer: bool = Field(default=True, description="Tavily: включить краткий ответ")
-
-    delay_minutes: Optional[int] = Field(None, description="Задержка в минутах", ge=1)
-    delay_seconds: Optional[int] = Field(None, description="Задержка в секундах", ge=1)
-    run_date: Optional[datetime] = Field(None, description="Конкретное время выполнения (ISO 8601)")
-
-    task_id: Optional[str] = Field(None, description="Пользовательский ID задачи (опционально)")
-
-
-class SchedulerStatsResponse(BaseModel):
-    """Статистика scheduler."""
-
-    scheduler_running: bool
-    total_scheduled_tasks: int
-    total_tasks_history: int
-    tasks_by_status: Dict[str, int]
 
 
 @scheduler_router.post("/schedule-data-fetch", response_model=ScheduleTaskResponse)

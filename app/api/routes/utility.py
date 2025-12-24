@@ -24,7 +24,6 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel
 from slowapi import Limiter
 
 from app.api.compat import fail_code, is_versioned_request
@@ -33,7 +32,7 @@ from app.config import settings
 from app.config.constants import RATE_LIMIT_ADMIN_PER_MINUTE
 from app.config.reload import get_reload_state, reload_settings
 from app.config.settings import settings
-from app.schemas.api import AppMetricsResponse, HealthResponse
+from app.schemas import AppMetricsResponse, HealthResponse, PDFReportRequest
 from app.services.email_client import EmailClient
 from app.services.http_client import AsyncHttpClient
 from app.services.openrouter_client import get_openrouter_client
@@ -548,15 +547,6 @@ def _relative_path_for(request: Request, *, route_name: str, **params: Any) -> s
     if root_path and path.startswith(root_path):
         return path[len(root_path) :] or "/"
     return path
-
-
-class PDFReportRequest(BaseModel):
-    """Request body for PDF report generation."""
-
-    client_name: str
-    inn: Optional[str] = None
-    session_id: Optional[str] = None
-    report_data: Dict[str, Any]
 
 
 @utility_router.post("/reports/pdf")
