@@ -1,17 +1,18 @@
 """
 Common utilities used across the application.
 
-Centralized utility functions to avoid duplication.
+DEPRECATED: This module re-exports from app.shared.toolkit for backward compatibility.
+Please use app.shared.toolkit directly for new code.
 """
 
-from app.shared.utils.formatters import (
+from app.shared.toolkit.formatters import (
     format_csv,
     format_json,
     format_ts,
     truncate,
 )
-from app.shared.utils.helpers import chunk_text, retry_async, safe_dict_get
-from app.shared.utils.parsers import parse_csv, parse_json
+from app.shared.toolkit.helpers import chunk_text, retry_async, safe_dict_get
+from app.shared.toolkit.parsers import parse_csv, parse_json
 
 __all__ = [
     # Formatters

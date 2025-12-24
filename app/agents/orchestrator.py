@@ -5,7 +5,7 @@ Agent-Orchestrator: координирует workflow анализа клиен�
 
 from typing import Any, Dict, List, Optional
 
-from app.agents.shared.llm import llm_generate_json
+from app.services.llm_provider import llm_generate_json
 from app.mcp_server.prompts.system_prompts import format_dadata_for_prompt
 from app.shared.security import validate_inn
 from app.services.fetch_data import fetch_from_dadata

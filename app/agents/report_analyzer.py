@@ -14,7 +14,7 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List
 
-from app.agents.shared.llm import llm_generate_json
+from app.services.llm_provider import llm_generate_json
 from app.mcp_server.prompts.system_prompts import AnalyzerRole, get_system_prompt
 from app.shared.utils import safe_dict_get
 from app.shared.utils.formatters import truncate

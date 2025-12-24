@@ -21,7 +21,7 @@ warnings.warn(
     stacklevel=2,
 )
 
-from app.agents.shared.llm import get_llm_manager
+from app.services.llm_provider import get_llm_manager
 
 # Re-export from new locations (for compatibility)
 from app.shared.security import validate_inn
