@@ -137,12 +137,14 @@ class TimeoutConfig:
     DADATA_READ: Final[float] = 30.0
     DADATA_WRITE: Final[float] = 10.0
 
+    # P0-1: Увеличены таймауты для многостраничных источников
+    # Casebook и InfoSphere требуют 5+ минут для обработки всех страниц
     INFOSPHERE_CONNECT: Final[float] = 5.0
-    INFOSPHERE_READ: Final[float] = 45.0
+    INFOSPHERE_READ: Final[float] = 360.0  # 6 минут (было 45s)
     INFOSPHERE_WRITE: Final[float] = 10.0
 
     CASEBOOK_CONNECT: Final[float] = 5.0
-    CASEBOOK_READ: Final[float] = 30.0
+    CASEBOOK_READ: Final[float] = 360.0  # 6 минут (было 30s)
     CASEBOOK_WRITE: Final[float] = 10.0
 
     PERPLEXITY_REQUEST: Final[float] = 60.0

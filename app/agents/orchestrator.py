@@ -90,18 +90,42 @@ async def orchestrator_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         try:
             logger.info(f"Orchestrator: fetching DaData for INN {inn}", component="orchestrator")
             dadata_result = await fetch_from_dadata(inn)
-            if dadata_result and "data" in dadata_result:
-                dadata_info = dadata_result.get("data", {})
-                # Используем официальное название из ЕГРЮЛ
-                full_name = dadata_info.get("name", {}).get("full_with_opf")
-                if full_name:
-                    canonical_name = full_name
-                    logger.info(
-                        f"Orchestrator: using canonical name from ЕГРЮЛ: {canonical_name}",
+            
+            # P0-5: Улучшенная обработка ответа DaData
+            if dadata_result and "error" not in dadata_result:
+                if "data" in dadata_result and dadata_result["data"]:
+                    dadata_info = dadata_result.get("data", {})
+                    full_name = dadata_info.get("name", {}).get("full_with_opf")
+                    if full_name:
+                        canonical_name = full_name
+                        logger.info(
+                            f"Orchestrator: using canonical name from ЕГРЮЛ: {canonical_name}",
+                            component="orchestrator",
+                        )
+                    else:
+                        logger.warning(
+                            f"Orchestrator: DaData returned data but no company name for INN {inn}",
+                            component="orchestrator",
+                        )
+                else:
+                    # P0-5: ИНН валиден, но данных нет
+                    logger.warning(
+                        f"Orchestrator: DaData returned no data for valid INN {inn}. "
+                        f"Company might be liquidated, not registered, or INN is incorrect.",
                         component="orchestrator",
                     )
+            else:
+                error_msg = dadata_result.get("error", "Unknown error")
+                logger.warning(
+                    f"Orchestrator: DaData request failed for INN {inn}: {error_msg}",
+                    component="orchestrator",
+                )
         except Exception as e:
-            logger.warning(f"Orchestrator: DaData fetch failed: {e}", component="orchestrator")
+            logger.error(
+                f"Orchestrator: DaData fetch exception for INN {inn}: {e}",
+                component="orchestrator",
+                exc_info=True,
+            )
 
     # P0: НОВОЕ - Генерируем search_intents через LLM
     search_queries = await _generate_search_intents_llm(

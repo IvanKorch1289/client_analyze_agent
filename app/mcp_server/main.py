@@ -300,6 +300,77 @@ async def asyncapi_resource() -> Dict[str, Any]:
     return await _build_asyncapi_spec()
 
 
+# =============================================================================
+# P0-3.5: BEST PRACTICES & API DOCUMENTATION (экспорт через MCP)
+# =============================================================================
+
+from app.mcp_server.resources.best_practices import (
+    ANALYSIS_BEST_PRACTICES,
+    API_USAGE_EXAMPLES,
+)
+
+
+@mcp.resource(
+    "app://best-practices",
+    title="Лучшие практики анализа контрагентов",
+    description="Методология и рекомендации по проведению due diligence анализа.",
+    mime_type="text/markdown",
+    tags={"guide", "best-practices"},
+)
+async def best_practices_resource() -> str:
+    """
+    P0-3.5: Централизованные best practices для анализа.
+    
+    Содержит:
+    - Обязательные проверки (ЕГРЮЛ, арбитраж, финансы)
+    - Оценка рисков (формулы, пороги)
+    - Рекомендации по уровням риска
+    - Типичные ошибки и anti-patterns
+    """
+    return ANALYSIS_BEST_PRACTICES
+
+
+@mcp.resource(
+    "app://api-usage-examples",
+    title="Примеры использования внешних API",
+    description="Примеры запросов к DaData, Casebook, InfoSphere, Perplexity, Tavily.",
+    mime_type="text/markdown",
+    tags={"guide", "api", "examples"},
+)
+async def api_examples_resource() -> str:
+    """
+    P0-3.5: Примеры использования всех внешних API.
+    
+    Содержит:
+    - Примеры запросов/ответов для каждого API
+    - Важные параметры (timeouts, pagination, filters)
+    - Обработка ошибок
+    """
+    return API_USAGE_EXAMPLES
+
+
+@mcp.resource(
+    "app://api-specs",
+    title="Спецификации внешних API",
+    description="Полная информация об API: endpoints, fields, examples.",
+    mime_type="application/json",
+    tags={"spec", "api"},
+)
+async def api_specs_resource() -> Dict[str, Any]:
+    """
+    P0-3.5: Централизованные спецификации всех внешних API.
+    
+    Используется агентами для понимания структуры данных.
+    """
+    from app.mcp_server.resources.reference_data import API_SOURCES
+    
+    return {
+        "version": "1.0",
+        "updated": "2025-12-24",
+        "apis": API_SOURCES,
+    }
+
+
 @mcp.prompt(
     name="prompt_analyze_company",
     title="Промпт: анализ контрагента",
@@ -333,6 +404,117 @@ def prompt_cache_invalidate(prefix: str = "search:", invalidate_all: bool = Fals
             f"prefix: {prefix}\n"
             f"invalidate_all: {invalidate_all}\n\n"
             "Используй tool `cache_invalidate` (auto) или `queue_cache_invalidate` (через очередь)."
+        )
+    ]
+
+
+# =============================================================================
+# P0-3.5: СИСТЕМНЫЕ ПРОМПТЫ АГЕНТОВ (экспорт через MCP)
+# =============================================================================
+
+from app.mcp_server.prompts.system_prompts import (
+    AnalyzerRole,
+    get_system_prompt,
+    get_prompt_metadata,
+)
+
+
+@mcp.prompt(
+    name="system_prompt_orchestrator",
+    title="Системный промпт: Оркестратор",
+    description="Промпт для агента-оркестратора (генерация поисковых запросов).",
+    tags={"system", "agent", "orchestrator"},
+)
+def system_prompt_orchestrator():
+    """Системный промпт для оркестратора анализа."""
+    content = get_system_prompt(AnalyzerRole.ORCHESTRATOR)
+    metadata = get_prompt_metadata(AnalyzerRole.ORCHESTRATOR)
+    
+    return [
+        Message(
+            f"РОЛЬ: Оркестратор анализа рисков\n"
+            f"ВЕРСИЯ: {metadata['version']}\n\n"
+            f"{content}"
+        )
+    ]
+
+
+@mcp.prompt(
+    name="system_prompt_report_analyzer",
+    title="Системный промпт: Анализатор отчётов",
+    description="Промпт для агента-анализатора (создание отчётов и оценка рисков).",
+    tags={"system", "agent", "analyzer"},
+)
+def system_prompt_report_analyzer():
+    """Системный промпт для анализатора отчётов."""
+    content = get_system_prompt(AnalyzerRole.REPORT_ANALYZER)
+    metadata = get_prompt_metadata(AnalyzerRole.REPORT_ANALYZER)
+    
+    return [
+        Message(
+            f"РОЛЬ: Эксперт по комплаенсу и оценке рисков\n"
+            f"ВЕРСИЯ: {metadata['version']}\n\n"
+            f"{content}"
+        )
+    ]
+
+
+@mcp.prompt(
+    name="system_prompt_registry_analyzer",
+    title="Системный промпт: Анализатор реестров",
+    description="Промпт для анализа реестровых данных (ЕГРЮЛ, Casebook, InfoSphere).",
+    tags={"system", "agent", "registry"},
+)
+def system_prompt_registry_analyzer():
+    """Системный промпт для анализатора реестровых данных."""
+    content = get_system_prompt(AnalyzerRole.REGISTRY_ANALYZER)
+    metadata = get_prompt_metadata(AnalyzerRole.REGISTRY_ANALYZER)
+    
+    return [
+        Message(
+            f"РОЛЬ: Эксперт по анализу официальных реестровых данных\n"
+            f"ВЕРСИЯ: {metadata['version']}\n\n"
+            f"{content}"
+        )
+    ]
+
+
+@mcp.prompt(
+    name="system_prompt_web_analyzer",
+    title="Системный промпт: Веб-аналитик",
+    description="Промпт для анализа интернет-информации (Perplexity, Tavily).",
+    tags={"system", "agent", "web"},
+)
+def system_prompt_web_analyzer():
+    """Системный промпт для веб-аналитика."""
+    content = get_system_prompt(AnalyzerRole.WEB_ANALYZER)
+    metadata = get_prompt_metadata(AnalyzerRole.WEB_ANALYZER)
+    
+    return [
+        Message(
+            f"РОЛЬ: Специалист по анализу веб-разведки и репутации\n"
+            f"ВЕРСИЯ: {metadata['version']}\n\n"
+            f"{content}"
+        )
+    ]
+
+
+@mcp.prompt(
+    name="system_prompt_risk_assessor",
+    title="Системный промпт: Оценщик рисков",
+    description="Промпт для финального расчёта рисков и рекомендаций.",
+    tags={"system", "agent", "risk"},
+)
+def system_prompt_risk_assessor():
+    """Системный промпт для оценщика рисков."""
+    content = get_system_prompt(AnalyzerRole.RISK_ASSESSOR)
+    metadata = get_prompt_metadata(AnalyzerRole.RISK_ASSESSOR)
+    
+    return [
+        Message(
+            f"РОЛЬ: Эксперт по оценке рисков контрагентов\n"
+            f"ВЕРСИЯ: {metadata['version']}\n\n"
+            f"{content}"
         )
     ]
 

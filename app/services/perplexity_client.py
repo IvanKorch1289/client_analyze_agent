@@ -156,18 +156,41 @@ class PerplexityClient:
                 )
 
             # Perplexity API через OpenAI-compatible endpoint
-            # Параметр search_recency_filter не поддерживается в текущей версии API
-            # Используем базовый вызов без фильтра актуальности
+            # P0-3: Включён search_recency_filter для актуальной информации
             llm = ChatOpenAI(
                 api_key=self.api_key,
                 model=use_model,
                 base_url=self.BASE_URL,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                # model_kwargs={"search_recency_filter": search_recency_filter},  # Временно отключено
+                model_kwargs={"search_recency_filter": search_recency_filter},  # ✅ ВКЛЮЧЕНО
             )
 
-            msg = await llm.ainvoke(lc_messages)
+            # P0-3: Пробуем с recency filter, fallback если не поддерживается
+            try:
+                msg = await llm.ainvoke(lc_messages)
+            except Exception as e:
+                error_str = str(e).lower()
+                # Если ошибка связана с неподдерживаемым параметром - пробуем без него
+                if "search_recency_filter" in error_str or "not supported" in error_str or "unknown" in error_str:
+                    logger.warning(
+                        f"Perplexity: search_recency_filter not supported, retrying without it. Error: {e}",
+                        component="perplexity",
+                    )
+                    # Retry без model_kwargs
+                    llm = ChatOpenAI(
+                        api_key=self.api_key,
+                        model=use_model,
+                        base_url=self.BASE_URL,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        # БЕЗ model_kwargs
+                    )
+                    msg = await llm.ainvoke(lc_messages)
+                else:
+                    # Другая ошибка - пробрасываем дальше
+                    raise
+            
             content = getattr(msg, "content", "") or ""
 
             citations: List[str] = []
