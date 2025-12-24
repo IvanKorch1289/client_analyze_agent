@@ -16,9 +16,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from app.api.compat import fail
 from app.api.rate_limit import limiter_for_client_ip
-from app.config.constants import RATE_LIMIT_ADMIN_PER_MINUTE, RATE_LIMIT_SEARCH_PER_MINUTE
+from app.config.constants import (
+    RATE_LIMIT_ADMIN_PER_MINUTE,
+    RATE_LIMIT_SEARCH_PER_MINUTE,
+)
 from app.storage.tarantool import TarantoolClient
 from app.utility.auth import require_admin
 from app.utility.export_helpers import (
@@ -40,7 +42,7 @@ limiter = limiter_for_client_ip()
 
 class ReportListResponse(BaseModel):
     """Response for list of reports."""
-    
+
     status: str = "success"
     reports: List[Dict[str, Any]]
     total: int
@@ -51,21 +53,21 @@ class ReportListResponse(BaseModel):
 
 class ReportDetailResponse(BaseModel):
     """Response for single report details."""
-    
+
     status: str = "success"
     report: Dict[str, Any]
 
 
 class ReportStatsResponse(BaseModel):
     """Response for reports statistics."""
-    
+
     status: str = "success"
     stats: Dict[str, Any]
 
 
 class BulkDeleteRequest(BaseModel):
     """Request for bulk delete operation."""
-    
+
     report_ids: List[str] = Field(..., min_items=1, max_items=100)
 
 
@@ -85,16 +87,16 @@ async def list_reports(
 ) -> ReportListResponse:
     """
     Получить список отчётов с фильтрацией и пагинацией.
-    
+
     Сортировка: по дате создания DESC (новые первые).
-    
+
     **Фильтры:**
     - inn: точное совпадение ИНН
     - risk_level: уровень риска (low, medium, high, critical)
     - client_name: частичное совпадение названия (case-insensitive)
     - date_from/date_to: временной диапазон
     - min_risk_score/max_risk_score: диапазон баллов риска
-    
+
     **Пагинация:**
     - limit: количество записей (1-500, default: 50)
     - offset: смещение (default: 0)
@@ -102,7 +104,7 @@ async def list_reports(
     try:
         client = await TarantoolClient.get_instance()
         reports_repo = client.get_reports_repository()
-        
+
         # Build filters
         filters = {}
         if inn:
@@ -119,7 +121,7 @@ async def list_reports(
             filters["min_risk_score"] = min_risk_score
         if max_risk_score is not None:
             filters["max_risk_score"] = max_risk_score
-        
+
         # Get reports
         if filters:
             # Advanced search with filters
@@ -127,15 +129,15 @@ async def list_reports(
         else:
             # Simple list
             reports = await reports_repo.list(limit=limit + 1, offset=offset)
-        
+
         # Check if there are more results
         has_more = len(reports) > limit
         if has_more:
             reports = reports[:limit]
-        
+
         # Get total count (approximation for performance)
         total = await reports_repo.count()
-        
+
         logger.structured(
             "debug",
             "reports_list",
@@ -145,7 +147,7 @@ async def list_reports(
             offset=offset,
             filters=filters,
         )
-        
+
         return ReportListResponse(
             status="success",
             reports=reports,
@@ -154,7 +156,7 @@ async def list_reports(
             offset=offset,
             has_more=has_more,
         )
-        
+
     except Exception as e:
         logger.error(f"List reports error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to list reports: {str(e)}") from e
@@ -162,40 +164,37 @@ async def list_reports(
 
 @reports_router.get("/{report_id}", response_model=ReportDetailResponse)
 @limiter.limit(f"{RATE_LIMIT_SEARCH_PER_MINUTE}/minute")
-async def get_report(
-    request: Request,
-    report_id: str
-) -> ReportDetailResponse:
+async def get_report(request: Request, report_id: str) -> ReportDetailResponse:
     """
     Получить полный отчёт по ID.
-    
+
     Args:
         report_id: Уникальный ID отчёта
-        
+
     Returns:
         Полные данные отчёта включая report_data
     """
     try:
         client = await TarantoolClient.get_instance()
         reports_repo = client.get_reports_repository()
-        
+
         report = await reports_repo.get(report_id)
-        
+
         if not report:
             raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
-        
+
         logger.structured(
             "debug",
             "report_get",
             component="reports_api",
             report_id=report_id,
         )
-        
+
         return ReportDetailResponse(
             status="success",
             report=report,
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -205,27 +204,23 @@ async def get_report(
 
 @reports_router.get("/inn/{inn}")
 @limiter.limit(f"{RATE_LIMIT_SEARCH_PER_MINUTE}/minute")
-async def get_reports_by_inn(
-    request: Request,
-    inn: str,
-    limit: int = Query(50, ge=1, le=500)
-) -> Dict[str, Any]:
+async def get_reports_by_inn(request: Request, inn: str, limit: int = Query(50, ge=1, le=500)) -> Dict[str, Any]:
     """
     Получить все отчёты по ИНН.
-    
+
     Args:
         inn: ИНН компании (10 или 12 цифр)
         limit: Максимальное количество результатов
-        
+
     Returns:
         Список отчётов для указанного ИНН
     """
     try:
         client = await TarantoolClient.get_instance()
         reports_repo = client.get_reports_repository()
-        
+
         reports = await reports_repo.get_reports_by_inn(inn, limit=limit)
-        
+
         logger.structured(
             "debug",
             "reports_by_inn",
@@ -233,14 +228,14 @@ async def get_reports_by_inn(
             inn=inn,
             count=len(reports),
         )
-        
+
         return {
             "status": "success",
             "inn": inn,
             "reports": reports,
             "count": len(reports),
         }
-        
+
     except Exception as e:
         logger.error(f"Get reports by INN error for {inn}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get reports: {str(e)}") from e
@@ -248,46 +243,42 @@ async def get_reports_by_inn(
 
 @reports_router.delete("/{report_id}")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
-async def delete_report(
-    request: Request,
-    report_id: str,
-    role: str = Depends(require_admin)
-) -> Dict[str, Any]:
+async def delete_report(request: Request, report_id: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """
     Удалить отчёт (admin only).
-    
+
     Args:
         report_id: ID отчёта для удаления
         role: Роль пользователя (проверяется автоматически)
-        
+
     Returns:
         Статус удаления
     """
     try:
         client = await TarantoolClient.get_instance()
         reports_repo = client.get_reports_repository()
-        
+
         # Check if exists
         report = await reports_repo.get(report_id)
         if not report:
             raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
-        
+
         # Delete
         success = await reports_repo.delete(report_id)
-        
+
         if not success:
             raise HTTPException(status_code=500, detail="Failed to delete report")
-        
+
         logger.info(
             f"Report deleted: {report_id}",
             component="reports_api",
         )
-        
+
         return {
             "status": "success",
             "message": f"Report {report_id} deleted successfully",
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -298,27 +289,25 @@ async def delete_report(
 @reports_router.post("/bulk-delete")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def bulk_delete_reports(
-    request: Request,
-    payload: BulkDeleteRequest,
-    role: str = Depends(require_admin)
+    request: Request, payload: BulkDeleteRequest, role: str = Depends(require_admin)
 ) -> Dict[str, Any]:
     """
     Массовое удаление отчётов (admin only).
-    
+
     Args:
         payload: Список report_ids для удаления (1-100 шт.)
         role: Роль пользователя (проверяется автоматически)
-        
+
     Returns:
         Статистика удаления: успешные и неудачные
     """
     try:
         client = await TarantoolClient.get_instance()
         reports_repo = client.get_reports_repository()
-        
+
         deleted = []
         failed = []
-        
+
         for report_id in payload.report_ids:
             try:
                 success = await reports_repo.delete(report_id)
@@ -328,12 +317,12 @@ async def bulk_delete_reports(
                     failed.append({"id": report_id, "reason": "delete_failed"})
             except Exception as e:
                 failed.append({"id": report_id, "reason": str(e)})
-        
+
         logger.info(
             f"Bulk delete: {len(deleted)} deleted, {len(failed)} failed",
             component="reports_api",
         )
-        
+
         return {
             "status": "success",
             "deleted": deleted,
@@ -342,7 +331,7 @@ async def bulk_delete_reports(
             "deleted_count": len(deleted),
             "failed_count": len(failed),
         }
-        
+
     except Exception as e:
         logger.error(f"Bulk delete error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to bulk delete: {str(e)}") from e
@@ -353,7 +342,7 @@ async def bulk_delete_reports(
 async def get_reports_stats(request: Request) -> ReportStatsResponse:
     """
     Получить статистику по отчётам.
-    
+
     Returns:
         Агрегированная статистика:
         - total: общее количество отчётов
@@ -366,21 +355,21 @@ async def get_reports_stats(request: Request) -> ReportStatsResponse:
     try:
         client = await TarantoolClient.get_instance()
         reports_repo = client.get_reports_repository()
-        
+
         stats = await reports_repo.get_stats()
-        
+
         logger.structured(
             "debug",
             "reports_stats",
             component="reports_api",
             total=stats.get("total", 0),
         )
-        
+
         return ReportStatsResponse(
             status="success",
             stats=stats,
         )
-        
+
     except Exception as e:
         logger.error(f"Get reports stats error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}") from e
@@ -390,28 +379,28 @@ async def get_reports_stats(request: Request) -> ReportStatsResponse:
 @limiter.limit(f"{RATE_LIMIT_SEARCH_PER_MINUTE}/minute")
 async def get_risk_timeline(
     request: Request,
-    days: int = Query(7, ge=1, le=90, description="Количество дней для анализа")
+    days: int = Query(7, ge=1, le=90, description="Количество дней для анализа"),
 ) -> Dict[str, Any]:
     """
     Получить временную линию рисков за N дней.
-    
+
     Возвращает данные для построения графиков:
     - Количество анализов по дням
     - Средний балл риска по дням
     - Распределение по уровням риска по дням
-    
+
     Args:
         days: Количество дней (1-90, default: 7)
-        
+
     Returns:
         Timeline: [{date, count, avg_risk, by_risk}, ...]
     """
     try:
         client = await TarantoolClient.get_instance()
         reports_repo = client.get_reports_repository()
-        
+
         timeline = await reports_repo.get_risk_timeline(days=days)
-        
+
         logger.structured(
             "debug",
             "risk_timeline",
@@ -419,13 +408,13 @@ async def get_risk_timeline(
             days=days,
             entries=len(timeline),
         )
-        
+
         return {
             "status": "success",
             "days": days,
             "timeline": timeline,
         }
-        
+
     except Exception as e:
         logger.error(f"Get risk timeline error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get timeline: {str(e)}") from e
@@ -436,34 +425,34 @@ async def get_risk_timeline(
 async def export_report(
     request: Request,
     report_id: str,
-    format: Literal["json", "csv"] = Query("json", description="Export format")
+    format: Literal["json", "csv"] = Query("json", description="Export format"),
 ):
     """
     Экспортировать отчёт в указанном формате.
-    
+
     Поддерживаемые форматы:
     - json: Полные данные отчёта в JSON
     - csv: Findings и risk factors в CSV
-    
+
     Args:
         report_id: ID отчёта
         format: Формат экспорта (json, csv)
-        
+
     Returns:
         Файл в выбранном формате
     """
     try:
         client = await TarantoolClient.get_instance()
         reports_repo = client.get_reports_repository()
-        
+
         report = await reports_repo.get(report_id)
-        
+
         if not report:
             raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
-        
+
         # Normalize report
         normalized = normalize_report_for_export(report)
-        
+
         if format == "json":
             content = report_to_json(normalized, pretty=True)
             media_type = "application/json"
@@ -474,7 +463,7 @@ async def export_report(
             filename = f"report_{report_id}.csv"
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported format: {format}")
-        
+
         logger.structured(
             "debug",
             "report_export",
@@ -482,15 +471,13 @@ async def export_report(
             report_id=report_id,
             format=format,
         )
-        
+
         return PlainTextResponse(
             content=content,
             media_type=media_type,
-            headers={
-                "Content-Disposition": f'attachment; filename="{filename}"'
-            }
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -503,40 +490,40 @@ async def export_report(
 async def bulk_export_reports(
     request: Request,
     payload: BulkDeleteRequest,  # Reuse same structure (list of report_ids)
-    format: Literal["csv"] = Query("csv", description="Export format")
+    format: Literal["csv"] = Query("csv", description="Export format"),
 ) -> PlainTextResponse:
     """
     Массовый экспорт отчётов в CSV.
-    
+
     Создаёт сводную таблицу со всеми отчётами.
-    
+
     Args:
         payload: Список report_ids для экспорта
         format: Формат (пока только csv)
-        
+
     Returns:
         CSV файл со сводкой отчётов
     """
     try:
         client = await TarantoolClient.get_instance()
         reports_repo = client.get_reports_repository()
-        
+
         reports = []
         for report_id in payload.report_ids:
             report = await reports_repo.get(report_id)
             if report:
                 reports.append(report)
-        
+
         if not reports:
             raise HTTPException(status_code=404, detail="No reports found")
-        
+
         if format == "csv":
             content = reports_summary_to_csv(reports)
             media_type = "text/csv"
             filename = f"reports_export_{len(reports)}_items.csv"
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported format: {format}")
-        
+
         logger.structured(
             "debug",
             "bulk_export",
@@ -544,15 +531,13 @@ async def bulk_export_reports(
             count=len(reports),
             format=format,
         )
-        
+
         return PlainTextResponse(
             content=content,
             media_type=media_type,
-            headers={
-                "Content-Disposition": f'attachment; filename="{filename}"'
-            }
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:

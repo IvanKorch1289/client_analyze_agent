@@ -32,12 +32,11 @@ if lib_dir not in sys.path:
     sys.path.insert(0, lib_dir)
 
 # Import our modules (ПОСЛЕ set_page_config!)
-from api_client import get_api_client, update_api_client
+from api_client import get_api_client
 from components import (
     load_custom_css,
     render_admin_settings,
     render_empty_state,
-    render_loading_spinner,
     render_sidebar_auth,
 )
 
@@ -48,7 +47,8 @@ load_custom_css()
 # CUSTOM STYLES
 # ==============================================================================
 
-st.markdown("""
+st.markdown(
+    """
 <style>
     /* Hide Streamlit branding */
     [data-testid="stToolbar"] {
@@ -106,17 +106,20 @@ st.markdown("""
         margin-bottom: 1rem;
     }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # ==============================================================================
 # STATE INITIALIZATION
 # ==============================================================================
 
+
 def init_session_state():
     """Initialize session state variables."""
     # Load admin token from environment if available
     env_admin_token = os.getenv("ADMIN_TOKEN", "").strip()
-    
+
     defaults = {
         "api_base_url": os.getenv("API_BASE_URL", "http://localhost:8000/api/v1"),
         "admin_token": env_admin_token,  # Load from .env
@@ -126,10 +129,11 @@ def init_session_state():
         "selected_report_id": None,
         "show_report_detail": False,
     }
-    
+
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
 
 init_session_state()
 
@@ -138,10 +142,10 @@ if st.session_state.get("admin_token") and not st.session_state.get("admin_check
     try:
         client = get_api_client()
         response = client.get("/utility/auth/role")
-        
+
         if response.get("is_admin"):
             st.session_state.is_admin = True
-        
+
         st.session_state.admin_checked = True
     except Exception:
         # Silently fail - user can login manually
@@ -154,7 +158,7 @@ if st.session_state.get("admin_token") and not st.session_state.get("admin_check
 with st.sidebar:
     # Render authentication
     render_sidebar_auth()
-    
+
     # Render admin settings (only if admin)
     render_admin_settings()
 
@@ -164,14 +168,16 @@ with st.sidebar:
 
 st.title("🎯 Система анализа контрагентов")
 
-st.markdown("""
+st.markdown(
+    """
 ### Добро пожаловать!
 
 Эта система помогает анализировать потенциальных клиентов и контрагентов с использованием:
 - 🤖 **AI-анализ** через Perplexity и другие источники
 - 📊 **Оценка рисков** с автоматическим формированием отчётов
 - 📈 **Аналитика** и статистика по проведённым проверкам
-""")
+"""
+)
 
 st.divider()
 
@@ -209,15 +215,15 @@ st.subheader("📋 Последние анализы")
 
 try:
     client = get_api_client()
-    
+
     with st.spinner("Загрузка..."):
         # Get recent reports
         reports_data = client.list_reports(limit=5, offset=0)
         reports = reports_data.get("reports", [])
-        
+
         if reports:
             from components import render_report_card
-            
+
             for idx, report in enumerate(reports):
                 render_report_card(report, key_prefix=f"home_{idx}")
                 st.divider()
@@ -225,7 +231,7 @@ try:
             render_empty_state(
                 icon="📭",
                 title="Пока нет анализов",
-                description="Начните с создания первого анализа контрагента"
+                description="Начните с создания первого анализа контрагента",
             )
 
 except Exception as e:
@@ -237,7 +243,8 @@ except Exception as e:
 # ==============================================================================
 
 with st.expander("ℹ️ Справка"):
-    st.markdown("""
+    st.markdown(
+        """
     ### Как пользоваться системой?
     
     **1. Анализ контрагента:**
@@ -269,7 +276,8 @@ with st.expander("ℹ️ Справка"):
     - Настройкам API
     - Удалению отчётов
     - Административной панели
-    """)
+    """
+    )
 
 # ==============================================================================
 # FOOTER
@@ -281,22 +289,24 @@ st.divider()
 if st.session_state.get("is_admin", False):
     # Admin footer with more info
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         st.caption("📦 Версия: 1.0.0")
-    
+
     with col2:
         # Link to backend API docs (only for admins)
-        api_base_url = st.session_state.get("api_base_url", "http://localhost:8000/api/v1")
+        api_base_url = st.session_state.get(
+            "api_base_url", "http://localhost:8000/api/v1"
+        )
         docs_url = f"{api_base_url}/docs"
         st.markdown(f"🔗 [Документация API]({docs_url})")
-    
+
     with col3:
         # Show API status indicator
         try:
             client = get_api_client()
             health = client.health_check()
-            
+
             if health.get("status") == "healthy":
                 st.caption("✅ API: Онлайн")
             else:
@@ -307,16 +317,16 @@ if st.session_state.get("is_admin", False):
 else:
     # Simple footer for regular users
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.caption("📦 Версия: 1.0.0")
-    
+
     with col2:
         # Show API status indicator (without link)
         try:
             client = get_api_client()
             health = client.health_check()
-            
+
             if health.get("status") == "healthy":
                 st.caption("✅ Система работает")
             else:

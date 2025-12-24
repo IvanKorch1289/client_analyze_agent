@@ -22,6 +22,7 @@ def __getattr__(name: str):
         return _clean_xml_dict
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
+
 __all__ = [
     "AppLogger",
     "logger",

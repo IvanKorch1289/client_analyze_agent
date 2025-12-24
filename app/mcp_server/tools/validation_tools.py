@@ -1,0 +1,181 @@
+"""
+Validation and cache management tools.
+"""
+
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, Field
+
+from app.shared.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+# ============================================================================
+# Request Models
+# ============================================================================
+
+
+class ValidateInputRequest(BaseModel):
+    """Request to validate user input."""
+
+    text: str = Field(..., max_length=10000, description="Text to validate")
+    strict: bool = Field(
+        default=True,
+        description="Strict mode (raise error on suspicious patterns)",
+    )
+
+
+class InvalidateCacheRequest(BaseModel):
+    """Request to invalidate cache."""
+
+    prefix: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Cache prefix (or None for all)",
+    )
+    invalidate_all: bool = Field(
+        default=False,
+        description="Invalidate all cache entries (overrides prefix)",
+    )
+    prefer_queue: Optional[bool] = Field(
+        default=None,
+        description="Force queue usage (True) or direct (False). Defaults to queue setting if None.",
+    )
+
+
+# ============================================================================
+# Tool Functions
+# ============================================================================
+
+
+async def validate_input_tool(request: ValidateInputRequest) -> Dict[str, Any]:
+    """
+    Validate user input for security.
+
+    Checks for prompt injection, XSS, and other malicious patterns.
+
+    Args:
+        request: Validated request
+
+    Returns:
+        Validation result with sanitized text
+
+    Raises:
+        SecurityError: If strict=True and suspicious patterns found
+
+    Examples:
+        >>> result = await validate_input_tool(
+        ...     ValidateInputRequest(text="Analyze company ABC", strict=True)
+        ... )
+        >>> result
+        {
+            'is_valid': True,
+            'sanitized_text': 'Analyze company ABC',
+            'warnings': []
+        }
+    """
+    logger.log_action(
+        "validate_input_start",
+        text_length=len(request.text),
+        strict=request.strict,
+    )
+
+    try:
+        from app.shared.security import sanitize_for_llm
+
+        sanitized = sanitize_for_llm(
+            request.text,
+            max_length=10000,
+            strict=request.strict,
+        )
+
+        logger.log_action(
+            "validate_input_success",
+            original_length=len(request.text),
+            sanitized_length=len(sanitized),
+        )
+
+        return {
+            "is_valid": True,
+            "sanitized_text": sanitized,
+            "original_length": len(request.text),
+            "sanitized_length": len(sanitized),
+            "warnings": [],
+        }
+
+    except Exception as e:
+        logger.error("validate_input_failed", exc=e)
+
+        return {
+            "is_valid": False,
+            "sanitized_text": "",
+            "original_length": len(request.text),
+            "sanitized_length": 0,
+            "warnings": [str(e)],
+        }
+
+
+async def invalidate_cache_tool(request: InvalidateCacheRequest) -> Dict[str, Any]:
+    """
+    Invalidate cache entries.
+
+    Can invalidate specific prefix or all cache entries.
+
+    Args:
+        request: Validated request
+
+    Returns:
+        Invalidation result with count
+
+    Raises:
+        Exception: If cache operation fails
+
+    Examples:
+        >>> result = await invalidate_cache_tool(
+        ...     InvalidateCacheRequest(prefix="dadata:")
+        ... )
+        >>> result
+        {'status': 'success', 'invalidated_count': 15}
+    """
+    logger.log_action(
+        "invalidate_cache_start",
+        prefix=request.prefix,
+        invalidate_all=request.invalidate_all,
+        prefer_queue=request.prefer_queue,
+    )
+
+    try:
+        from app.services.app_actions import dispatch_cache_invalidate
+
+        result = await dispatch_cache_invalidate(
+            prefix=request.prefix,
+            invalidate_all=request.invalidate_all,
+            prefer_queue=request.prefer_queue,
+        )
+
+        logger.log_action(
+            "invalidate_cache_success",
+            prefix=request.prefix,
+            invalidate_all=request.invalidate_all,
+            invalidated_count=result.get("invalidated_count", 0),
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(
+            "invalidate_cache_failed",
+            exc=e,
+            prefix=request.prefix,
+            invalidate_all=request.invalidate_all,
+        )
+        raise
+
+
+__all__ = [
+    "ValidateInputRequest",
+    "InvalidateCacheRequest",
+    "validate_input_tool",
+    "invalidate_cache_tool",
+]

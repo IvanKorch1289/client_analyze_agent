@@ -40,7 +40,7 @@ def _error_payload(
             "code": code,
             "message": message,
             "request_id": request_id,
-        }
+        },
     }
     if details is not None:
         payload["error"]["details"] = details
@@ -71,15 +71,17 @@ def install_error_handlers(app: FastAPI) -> None:
                 code=code,
                 message=message,
                 request_id=rid,
-                details=details if details is not None else ({"detail": exc.detail} if not isinstance(exc.detail, str) else None),
+                details=(
+                    details
+                    if details is not None
+                    else ({"detail": exc.detail} if not isinstance(exc.detail, str) else None)
+                ),
             ),
             headers={"X-Request-ID": rid},
         )
 
     @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(
-        request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         rid = _ensure_request_id()
         return JSONResponse(
             status_code=422,
@@ -93,9 +95,7 @@ def install_error_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RateLimitExceeded)
-    async def rate_limit_exception_handler(
-        request: Request, exc: RateLimitExceeded
-    ) -> JSONResponse:
+    async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
         rid = _ensure_request_id()
         # Don't expose internal limiter state; keep a stable message.
         return JSONResponse(
@@ -109,9 +109,7 @@ def install_error_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def unhandled_exception_handler(
-        request: Request, exc: Exception
-    ) -> JSONResponse:
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         rid = _ensure_request_id()
         logger.log_exception(
             exc,
@@ -130,4 +128,3 @@ def install_error_handlers(app: FastAPI) -> None:
             ),
             headers={"X-Request-ID": rid},
         )
-

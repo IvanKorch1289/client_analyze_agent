@@ -103,4 +103,3 @@ async def execute_client_analysis(
         saved_report=True,
     )
     return result
-

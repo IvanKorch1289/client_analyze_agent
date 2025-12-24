@@ -24,12 +24,10 @@ limiter = Limiter(key_func=get_client_ip)
 from app.api.routes.utility_parts import asyncapi as _asyncapi  # noqa: F401
 from app.api.routes.utility_parts import auth as _auth  # noqa: F401
 from app.api.routes.utility_parts import cache as _cache  # noqa: F401
-from app.api.routes.utility_parts import circuit_metrics as _circuit_metrics  # noqa: F401
 from app.api.routes.utility_parts import config as _config  # noqa: F401
 from app.api.routes.utility_parts import health as _health  # noqa: F401
 from app.api.routes.utility_parts import reports as _reports  # noqa: F401
 from app.api.routes.utility_parts import services as _services  # noqa: F401
 from app.api.routes.utility_parts import telemetry as _telemetry  # noqa: F401
-
 
 __all__ = ["utility_router"]

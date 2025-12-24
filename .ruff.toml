@@ -1,0 +1,38 @@
+# Ruff configuration for client_analyze_agent
+
+# Длина строки (должна быть в корне, не в [lint])
+line-length = 120
+
+# Исключаем legacy файлы из проверки
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "*.pyc",
+    ".pytest_cache",
+    ".ruff_cache",
+    "app/frontend/_legacy_pages",  # Старые неиспользуемые страницы
+    "app/frontend/lib/components.py",  # Legacy компонент
+]
+
+[lint]
+# Игнорируемые правила (обоснованные исключения)
+ignore = [
+    "E402",  # Module level import not at top - норма для Streamlit (нужен set_page_config)
+    "B008",  # Do not perform function call in argument defaults - норма для FastAPI Query/Depends
+]
+
+[lint.per-file-ignores]
+# Streamlit файлы - разрешаем импорты после set_page_config
+"app/frontend/app.py" = ["E402"]
+"app/frontend/_legacy_pages/*.py" = ["E402", "E722"]
+
+# API routes - разрешаем Query в defaults
+"app/api/routes/*.py" = ["B008"]
+
+# Main - разрешаем поздние импорты для conditional initialization
+"app/main.py" = ["E402"]
+
+# Storage - разрешаем поздние импорты для circular dependency resolution
+"app/storage/repositories/__init__.py" = ["E402"]
+

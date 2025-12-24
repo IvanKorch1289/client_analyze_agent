@@ -49,7 +49,12 @@ def status_not_configured(*, error: str, integration: Optional[str] = None, **ex
     ).to_dict()
 
 
-def status_ready(*, latency_ms: Optional[float] = None, integration: Optional[str] = None, **extra: Any) -> Dict[str, Any]:
+def status_ready(
+    *,
+    latency_ms: Optional[float] = None,
+    integration: Optional[str] = None,
+    **extra: Any,
+) -> Dict[str, Any]:
     return ServiceStatus(
         configured=True,
         available=True,
@@ -77,4 +82,3 @@ def status_error(
         integration=integration,
         extra=extra or None,
     ).to_dict()
-

@@ -24,4 +24,3 @@ def ok(*, data: Any = None, message: Optional[str] = None, **legacy_fields: Any)
         payload["message"] = message
     payload["data"] = data
     return payload
-

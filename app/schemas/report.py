@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-
 RiskLevel = Literal["low", "medium", "high", "critical", "unknown"]
 SentimentLabel = Literal["positive", "neutral", "negative", "unknown"]
 
@@ -30,6 +29,21 @@ class Finding(BaseModel):
     key_points: str = ""
 
 
+class ReportFeedback(BaseModel):
+    """Фидбек пользователя по отчёту для повторного анализа."""
+
+    user_comment: str = Field(..., description="Комментарий пользователя об ошибках")
+    issues: List[
+        Literal[
+            "financials_wrong",
+            "status_incorrect",
+            "court_cases_missing",
+            "reputation_unclear",
+        ]
+    ] = Field(default_factory=list, description="Категории проблем")
+    additional_context: str = Field(default="", description="Дополнительный контекст")
+
+
 class ClientAnalysisReport(BaseModel):
     """
     Канонический формат отчёта по клиенту.
@@ -49,3 +63,7 @@ class ClientAnalysisReport(BaseModel):
     citations: List[str] = Field(default_factory=list)
     recommendations: List[str] = Field(default_factory=list)
 
+    # Feedback support
+    version: int = Field(default=1, description="Версия отчёта (1, 2, 3...)")
+    original_report_id: Optional[str] = Field(default=None, description="ID оригинального отчёта (для v2+)")
+    feedback_applied: Optional[str] = Field(default=None, description="Применённый фидбек")

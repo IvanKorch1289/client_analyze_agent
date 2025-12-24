@@ -17,17 +17,13 @@ def ensure_reports_dir():
     """Создаёт директорию для отчётов если её нет."""
     if not os.path.exists(REPORTS_DIR):
         os.makedirs(REPORTS_DIR)
-        logger.info(
-            f"Created reports directory: {REPORTS_DIR}", component="file_writer"
-        )
+        logger.info(f"Created reports directory: {REPORTS_DIR}", component="file_writer")
 
 
 def generate_filename(client_name: str, inn: str, session_id: str) -> str:
     """Генерирует имя файла для отчёта."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_name = "".join(c for c in client_name if c.isalnum() or c in " _-")[
-        :30
-    ].strip()
+    safe_name = "".join(c for c in client_name if c.isalnum() or c in " _-")[:30].strip()
     safe_name = safe_name.replace(" ", "_") or "unknown"
 
     if inn:
@@ -115,9 +111,7 @@ async def file_writer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     return {**state, "saved_files": saved_files, "current_step": "completed"}
 
 
-def generate_markdown_report(
-    report: Dict, summary: str, client_name: str, inn: str
-) -> str:
+def generate_markdown_report(report: Dict, summary: str, client_name: str, inn: str) -> str:
     """Генерирует markdown-отчёт."""
     lines = []
 
@@ -137,9 +131,7 @@ def generate_markdown_report(
         level = risk.get("level", "medium")
         emoji = level_emoji.get(level, "⚪")
 
-        lines.append(
-            f"**Уровень риска:** {emoji} {level.upper()} ({risk.get('score', 0)}/100)"
-        )
+        lines.append(f"**Уровень риска:** {emoji} {level.upper()} ({risk.get('score', 0)}/100)")
         lines.append("")
 
         factors = risk.get("factors", [])
@@ -170,9 +162,7 @@ def generate_markdown_report(
         for finding in findings:
             category = finding.get("category", "Общая информация")
             sentiment = finding.get("sentiment", "neutral")
-            sentiment_icon = {"positive": "✅", "negative": "⚠️", "neutral": "ℹ️"}.get(
-                sentiment, "ℹ️"
-            )
+            sentiment_icon = {"positive": "✅", "negative": "⚠️", "neutral": "ℹ️"}.get(sentiment, "ℹ️")
 
             lines.append(f"### {sentiment_icon} {category}")
             if finding.get("key_points"):

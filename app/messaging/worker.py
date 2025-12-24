@@ -11,7 +11,6 @@ from faststream import FastStream
 
 from app.messaging.broker import broker
 
-
 app = FastStream(broker)
 
 
@@ -22,4 +21,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

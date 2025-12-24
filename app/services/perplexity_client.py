@@ -48,9 +48,7 @@ class PerplexityClient:
         search_recency_filter: str,
     ) -> str:
         key_str = f"{messages}:{model}:{temperature}:{max_tokens}:{search_recency_filter}"
-        return (
-            f"perplexity:{hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()}"
-        )
+        return f"perplexity:{hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()}"
 
     def _cache_get(self, cache_key: str) -> Optional[Dict[str, Any]]:
         cached = self._cache.get(cache_key)
@@ -128,7 +126,10 @@ class PerplexityClient:
                     if l2:
                         # L2 может хранить уже "cached": True — оставляем как есть
                         self._cache_set(cache_key, l2)
-                        logger.info("Perplexity L2 cache hit (Tarantool)", component="perplexity")
+                        logger.info(
+                            "Perplexity L2 cache hit (Tarantool)",
+                            component="perplexity",
+                        )
                         return l2
                 except Exception:
                     # кэш недоступен — продолжаем без L2

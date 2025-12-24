@@ -15,8 +15,9 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from app.agents.shared.llm import llm_generate_json
-from app.agents.shared.prompts import ANALYZER_SYSTEM_PROMPT
-from app.agents.shared.utils import safe_dict_get, truncate
+from app.mcp_server.prompts.system_prompts import AnalyzerRole, get_system_prompt
+from app.shared.utils import safe_dict_get
+from app.shared.utils.formatters import truncate
 from app.schemas.report import ClientAnalysisReport
 from app.utility.logging_client import logger
 
@@ -32,9 +33,7 @@ def generate_summary(search_results: List[Dict[str, Any]], client_name: str) -> 
         return f"Все поисковые запросы завершились с ошибкой для клиента {client_name}."
 
     summary_parts = [f"## Анализ клиента: {client_name}\n"]
-    summary_parts.append(
-        f"*Дата анализа: {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n"
-    )
+    summary_parts.append(f"*Дата анализа: {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n")
 
     for result in successful:
         intent_id = result.get("intent_id", "")
@@ -42,9 +41,7 @@ def generate_summary(search_results: List[Dict[str, Any]], client_name: str) -> 
         content = result.get("content", "")
         sentiment = result.get("sentiment", {})
 
-        sentiment_icon = {"positive": "+", "negative": "-", "neutral": "~"}.get(
-            sentiment.get("label", "neutral"), "~"
-        )
+        sentiment_icon = {"positive": "+", "negative": "-", "neutral": "~"}.get(sentiment.get("label", "neutral"), "~")
 
         summary_parts.append(f"\n### {description} [{sentiment_icon}]\n")
 
@@ -101,7 +98,7 @@ def analyze_source_data(source_data: Dict[str, Any]) -> Dict[str, Any]:
 async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     P0 REFACTORED: Агент-анализатор через LLM с системным промптом.
-    
+
     ИЗМЕНЕНИЯ:
     - Убран ручной calculate_risk_score()
     - Добавлен LLM анализ с документацией API
@@ -123,13 +120,11 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     client_name = state.get("client_name", "Неизвестный клиент")
     inn = state.get("inn", "")
 
-    logger.info(
-        f"Report Analyzer: создание отчёта для '{client_name}'", component="analyzer"
-    )
+    logger.info(f"Report Analyzer: создание отчёта для '{client_name}'", component="analyzer")
 
     # P0: НОВОЕ - Подготовка данных для LLM
     source_summary = _prepare_source_data_for_llm(source_data, search_results)
-    
+
     # P0: НОВОЕ - Генерация отчёта через LLM
     user_message = f"""Проанализируй данные о компании и создай отчёт.
 
@@ -142,20 +137,20 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
 Создай JSON отчёт с оценкой рисков по формату из системного промпта."""
 
     llm_report = await llm_generate_json(
-        system_prompt=ANALYZER_SYSTEM_PROMPT,
+        system_prompt=get_system_prompt(AnalyzerRole.REPORT_ANALYZER),
         user_message=user_message,
         temperature=0.2,
         max_tokens=4000,
         fallback_on_error=None,  # Будем использовать старую логику при ошибке
     )
-    
+
     # P0: Проверка результата LLM
     if llm_report and "risk_assessment" in llm_report and not llm_report.get("error"):
         # LLM успешно сгенерировал отчёт
         logger.info("Report Analyzer: using LLM-generated report", component="analyzer")
-        
+
         risk_assessment = llm_report.get("risk_assessment", {})
-        
+
         # Добавляем метаданные
         report = {
             "metadata": {
@@ -164,7 +159,7 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 "analysis_date": datetime.now().isoformat(),
                 "data_sources_count": len(search_results) + len([v for v in source_data.values() if v]),
                 "successful_sources": sum(1 for r in search_results if r.get("success"))
-                    + sum(1 for v in source_data.values() if v and v.get("success")),
+                + sum(1 for v in source_data.values() if v and v.get("success")),
                 "llm_generated": True,
             },
             "risk_assessment": risk_assessment,
@@ -175,16 +170,14 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
             "legal_cases_count": _count_legal_cases(source_data),
             "citations": _extract_citations(search_results),
         }
-        
+
     else:
         # Fallback: используем старую логику если LLM недоступен
         logger.warning(
             f"Report Analyzer: LLM failed, using fallback logic. Error: {llm_report.get('error')}",
-            component="analyzer"
+            component="analyzer",
         )
-        report = await _generate_report_fallback(
-            search_results, source_data, client_name, inn
-        )
+        report = await _generate_report_fallback(search_results, source_data, client_name, inn)
 
     # Нормализуем/валидируем отчёт по канонической схеме
     try:
@@ -244,15 +237,16 @@ def generate_recommendations(risk: Dict[str, Any]) -> List[str]:
 # P0: NEW HELPER FUNCTIONS FOR LLM-BASED ANALYSIS
 # =============================================================================
 
+
 def _prepare_source_data_for_llm(source_data: Dict[str, Any], search_results: List[Dict]) -> str:
     """
     P0 ENHANCED: Подготовка данных для LLM анализа с полными текстами страниц.
-    
+
     Форматирует source_data и search_results в читаемый текст для промпта.
     Включает полные тексты из TOP-5 Tavily ссылок для глубокого анализа.
     """
     parts = []
-    
+
     # DaData
     if dadata := source_data.get("dadata"):
         if dadata.get("success") and (data := dadata.get("data")):
@@ -262,7 +256,7 @@ def _prepare_source_data_for_llm(source_data: Dict[str, Any], search_results: Li
             parts.append(f"Дата регистрации: {safe_dict_get(data, 'state', 'registration_date', default='N/A')}")
             parts.append(f"Адрес: {safe_dict_get(data, 'address', 'value', default='N/A')}")
             parts.append("")
-    
+
     # Casebook
     if casebook := source_data.get("casebook"):
         if casebook.get("success") and (data := casebook.get("data")):
@@ -275,39 +269,39 @@ def _prepare_source_data_for_llm(source_data: Dict[str, Any], search_results: Li
             else:
                 parts.append("Судебные дела не найдены")
             parts.append("")
-    
+
     # Infosphere
     if infosphere := source_data.get("infosphere"):
         if infosphere.get("success") and (data := infosphere.get("data")):
             parts.append("=== ИНФОСФЕРА (Финансы) ===")
             parts.append(truncate(json.dumps(data, ensure_ascii=False), 500))
             parts.append("")
-    
+
     # Search results (Perplexity + Tavily snippets)
     perplexity_results = [r for r in search_results if r.get("source") == "perplexity" and r.get("success")]
     tavily_results = [r for r in search_results if r.get("source") == "tavily" and r.get("success")]
-    
+
     if perplexity_results:
         parts.append("=== PERPLEXITY (Веб-поиск за год, 20+ источников) ===")
         for r in perplexity_results[:3]:  # Первые 3
             parts.append(f"Запрос: {r.get('intent_id', 'N/A')}")
             parts.append(truncate(r.get("content", ""), 800))  # Увеличено с 500
             parts.append("")
-    
+
     if tavily_results:
         parts.append("=== TAVILY (Структурированный поиск, 20 результатов) ===")
         for r in tavily_results[:3]:  # Первые 3
             parts.append(f"Запрос: {r.get('intent_id', 'N/A')}")
             parts.append(f"Ответ: {truncate(r.get('answer', ''), 500)}")
             parts.append("")
-    
+
     # P0: НОВОЕ - Полные тексты страниц из Tavily (критично для глубокого анализа)
     tavily_full_texts = source_data.get("tavily_full_texts", [])
     if tavily_full_texts:
         parts.append("=== ПОЛНЫЕ ТЕКСТЫ СТРАНИЦ (TOP-5 Tavily) ===")
         parts.append(f"Скрейплено страниц: {len(tavily_full_texts)}")
         parts.append("")
-        
+
         for idx, page in enumerate(tavily_full_texts, 1):
             if page.get("full_content"):
                 parts.append(f"--- Страница {idx}: {page.get('title', 'N/A')} ---")
@@ -316,11 +310,11 @@ def _prepare_source_data_for_llm(source_data: Dict[str, Any], search_results: Li
                 # Включаем полный текст (до 10k символов на страницу)
                 parts.append(page.get("full_content", ""))
                 parts.append("")
-        
+
         total_chars = sum(len(p.get("full_content", "")) for p in tavily_full_texts)
         parts.append(f"ИТОГО: {len(tavily_full_texts)} страниц, {total_chars} символов полного текста")
         parts.append("")
-    
+
     return "\n".join(parts) if parts else "Нет данных из источников"
 
 
@@ -351,34 +345,38 @@ async def _generate_report_fallback(
 ) -> Dict[str, Any]:
     """
     Fallback: генерация отчёта по старой логике.
-    
+
     Используется если LLM недоступен или вернул ошибку.
     """
     source_analysis = analyze_source_data(source_data) if source_data else {}
-    
+
     # Используем старый ручной расчёт (временно, пока не перешли на LLM)
     risk_assessment = _calculate_risk_fallback(search_results, source_analysis)
-    
+
     summary = generate_summary(search_results, client_name)
-    
+
     findings = []
     if source_analysis.get("company_info"):
-        findings.append({
-            "category": "Информация о компании (DaData)",
-            "sentiment": "neutral",
-            "key_points": str(source_analysis["company_info"])[:300],
-        })
-    
+        findings.append(
+            {
+                "category": "Информация о компании (DaData)",
+                "sentiment": "neutral",
+                "key_points": str(source_analysis["company_info"])[:300],
+            }
+        )
+
     for result in search_results:
         if result.get("success"):
-            findings.append({
-                "category": result.get("description", result.get("intent_id")),
-                "sentiment": result.get("sentiment", {}).get("label", "neutral"),
-                "key_points": truncate(result.get("content", ""), 300),
-            })
-    
+            findings.append(
+                {
+                    "category": result.get("description", result.get("intent_id")),
+                    "sentiment": result.get("sentiment", {}).get("label", "neutral"),
+                    "key_points": truncate(result.get("content", ""), 300),
+                }
+            )
+
     successful_sources = sum(1 for v in source_data.values() if v and v.get("success"))
-    
+
     return {
         "metadata": {
             "client_name": client_name,
@@ -402,25 +400,25 @@ def _calculate_risk_fallback(search_results: List[Dict], source_analysis: Dict) 
     """Fallback: ручной расчёт риска (старая логика)."""
     if not search_results:
         return {"score": 50, "level": "medium", "factors": ["Нет данных для анализа"]}
-    
+
     factors = []
     risk_points = 50
-    
+
     successful_results = [r for r in search_results if r.get("success")]
-    
+
     if not successful_results:
         return {
             "score": 50,
             "level": "medium",
             "factors": ["Не удалось получить данные из источников"],
         }
-    
+
     # Анализ sentiment
     for result in successful_results:
         sentiment = result.get("sentiment", {})
         label = sentiment.get("label", "neutral")
         intent_id = result.get("intent_id", "")
-        
+
         if intent_id == "lawsuits" and label == "negative":
             risk_points += 15
             factors.append("Обнаружены судебные разбирательства")
@@ -430,14 +428,14 @@ def _calculate_risk_fallback(search_results: List[Dict], source_analysis: Dict) 
         elif intent_id == "reputation" and label == "negative":
             risk_points += 10
             factors.append("Негативные отзывы")
-    
+
     # Добавляем сигналы из source_analysis
     for signal in source_analysis.get("risk_signals", []):
         factors.append(signal)
         risk_points = min(100, risk_points + 10)
-    
+
     risk_points = max(0, min(100, risk_points))
-    
+
     if risk_points < 25:
         level = "low"
     elif risk_points < 50:
@@ -446,8 +444,8 @@ def _calculate_risk_fallback(search_results: List[Dict], source_analysis: Dict) 
         level = "high"
     else:
         level = "critical"
-    
+
     if not factors:
         factors.append("Стандартный уровень риска")
-    
+
     return {"score": risk_points, "level": level, "factors": factors[:10]}

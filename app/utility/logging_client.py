@@ -16,7 +16,13 @@ from rich.logging import RichHandler
 from rich.table import Table
 from rich.text import Text
 
-from app.config.constants import LOG_MAX_SIZE_MB, LOG_ROTATION_DAYS, LOGS_DIR as _LOGS_DIR
+from app.config.constants import (
+    LOG_MAX_SIZE_MB,
+    LOG_ROTATION_DAYS,
+)
+from app.config.constants import (
+    LOGS_DIR as _LOGS_DIR,
+)
 
 LOGS_DIR = Path(_LOGS_DIR)
 LOGS_DIR.mkdir(exist_ok=True)
@@ -25,9 +31,7 @@ app_logger = logging.getLogger("mcp-server")
 app_logger.setLevel(logging.DEBUG)
 app_logger.handlers.clear()
 
-request_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "request_id", default=None
-)
+request_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("request_id", default=None)
 
 
 def generate_request_id() -> str:
@@ -102,9 +106,7 @@ class AppLogger:
             maxBytes=max_bytes,
             backupCount=backup_count,
         )
-        file_formatter = logging.Formatter(
-            "[%(asctime)s] %(levelname)s | %(name)s | %(message)s", datefmt="%H:%M:%S"
-        )
+        file_formatter = logging.Formatter("[%(asctime)s] %(levelname)s | %(name)s | %(message)s", datefmt="%H:%M:%S")
         file_handler.setFormatter(file_formatter)
         app_logger.addHandler(file_handler)
 
@@ -125,8 +127,7 @@ class AppLogger:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         current_file = LOGS_DIR / f"{today}.log"
         if not any(
-            isinstance(h, logging.FileHandler) and Path(h.baseFilename) == current_file
-            for h in app_logger.handlers
+            isinstance(h, logging.FileHandler) and Path(h.baseFilename) == current_file for h in app_logger.handlers
         ):
             self._renew_file_handler()
 
@@ -167,11 +168,7 @@ class AppLogger:
         self._console.print(table)
 
     def _format_headers(self, headers: httpx.Headers) -> str:
-        return "\n".join(
-            f"{k}: {v}"
-            for k, v in headers.items()
-            if k.lower() not in ["authorization", "cookie"]
-        )
+        return "\n".join(f"{k}: {v}" for k, v in headers.items() if k.lower() not in ["authorization", "cookie"])
 
     def _truncate(self, text: str, max_len: int) -> str:
         if len(text) <= max_len:

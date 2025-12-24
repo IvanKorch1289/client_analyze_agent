@@ -21,7 +21,6 @@ from fastmcp.prompts.prompt import Message
 
 from app.services.app_actions import dispatch_cache_invalidate, dispatch_client_analysis
 
-
 MCP_HOST = os.getenv("MCP_HOST", "0.0.0.0")
 MCP_PORT = int(os.getenv("MCP_PORT", "8011"))
 MCP_PATH = os.getenv("MCP_PATH", "/mcp")
@@ -40,6 +39,7 @@ mcp = FastMCP(
     port=MCP_PORT,
     sse_path=MCP_PATH,
 )
+
 
 def _resolve_under_root(relative_path: str) -> Path:
     """
@@ -146,7 +146,10 @@ async def fs_read_text(path: str, max_bytes: Optional[int] = None) -> Dict[str, 
     limit = int(max_bytes) if max_bytes is not None else MCP_MAX_FILE_BYTES
     size = p.stat().st_size
     if size > limit:
-        return {"status": "error", "message": f"file too large: {size} bytes (limit {limit})"}
+        return {
+            "status": "error",
+            "message": f"file too large: {size} bytes (limit {limit})",
+        }
 
     content = p.read_text(encoding="utf-8", errors="replace")
     return {"status": "success", "path": str(p), "size_bytes": size, "content": content}
@@ -169,7 +172,10 @@ async def fs_write_text(
 
     data = content.encode("utf-8", errors="replace")
     if len(data) > MCP_MAX_FILE_BYTES:
-        return {"status": "error", "message": f"content too large (limit {MCP_MAX_FILE_BYTES})"}
+        return {
+            "status": "error",
+            "message": f"content too large (limit {MCP_MAX_FILE_BYTES})",
+        }
 
     if create_dirs:
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -200,7 +206,10 @@ async def fs_replace_text(
     replaced = text.replace(old, new, int(count))
     data = replaced.encode("utf-8", errors="replace")
     if len(data) > MCP_MAX_FILE_BYTES:
-        return {"status": "error", "message": f"result too large (limit {MCP_MAX_FILE_BYTES})"}
+        return {
+            "status": "error",
+            "message": f"result too large (limit {MCP_MAX_FILE_BYTES})",
+        }
 
     p.write_text(replaced, encoding="utf-8")
     return {"status": "success", "path": str(p), "replaced": True}
@@ -248,18 +257,22 @@ async def fs_delete(path: str) -> Dict[str, Any]:
     return {"status": "success", "deleted": True, "path": str(p)}
 
 
-@mcp.tool(
-    name="get_asyncapi_spec",
-    title="Получить AsyncAPI спецификацию",
-    description="Возвращает AsyncAPI JSON для RabbitMQ/FastStream.",
-)
-async def get_asyncapi_spec() -> Dict[str, Any]:
+async def _build_asyncapi_spec() -> Dict[str, Any]:
     from faststream.specification import AsyncAPI
 
     from app.messaging.broker import broker
 
     spec = AsyncAPI(broker, title="Client Analysis Messaging", version="1.0.0").to_specification()
     return json.loads(spec.to_json())
+
+
+@mcp.tool(
+    name="get_asyncapi_spec",
+    title="Получить AsyncAPI спецификацию",
+    description="Возвращает AsyncAPI JSON для RabbitMQ/FastStream.",
+)
+async def get_asyncapi_spec() -> Dict[str, Any]:
+    return await _build_asyncapi_spec()
 
 
 @mcp.resource(
@@ -284,7 +297,7 @@ async def openapi_resource() -> Dict[str, Any]:
     tags={"spec"},
 )
 async def asyncapi_resource() -> Dict[str, Any]:
-    return await get_asyncapi_spec()
+    return await _build_asyncapi_spec()
 
 
 @mcp.prompt(
@@ -331,4 +344,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

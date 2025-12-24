@@ -96,9 +96,7 @@ async def list_reports(http_request: Request) -> Dict[str, Any]:
                     "filename": filename,
                     "size_bytes": os.path.getsize(filepath),
                     "created": os.path.getctime(filepath),
-                    "download_url": _relative_path_for(
-                        http_request, route_name="download_report", filename=filename
-                    ),
+                    "download_url": _relative_path_for(http_request, route_name="download_report", filename=filename),
                 }
             )
 
@@ -123,4 +121,3 @@ async def delete_report(request: Request, filename: str, role: str = Depends(req
         if is_versioned_request(request):
             raise
         return {"status": "error", "message": str(e)}
-

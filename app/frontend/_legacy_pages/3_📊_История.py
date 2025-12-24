@@ -4,13 +4,12 @@
 Показывает все проведённые анализы с фильтрацией и поиском.
 """
 
-import streamlit as st
-
 # Для pages/ НЕ нужен set_page_config - Streamlit сам управляет
-
 import os
 import sys
 from datetime import datetime, timedelta
+
+import streamlit as st
 
 # Add lib to path - ABSOLUTE path to avoid issues
 current_file = os.path.abspath(__file__)
@@ -37,9 +36,11 @@ with st.sidebar:
 # Main content
 st.title("📊 История анализов")
 
-st.markdown("""
+st.markdown(
+    """
 Все проведённые анализы контрагентов. Используйте фильтры для быстрого поиска.
-""")
+"""
+)
 
 st.divider()
 
@@ -49,16 +50,16 @@ st.divider()
 
 with st.container():
     st.subheader("🔍 Фильтры")
-    
+
     col1, col2, col3, col4 = st.columns(4)
-    
+
     with col1:
         search_query = st.text_input(
             "Поиск",
             placeholder="Название или ИНН",
-            help="Поиск по названию компании или ИНН"
+            help="Поиск по названию компании или ИНН",
         )
-    
+
     with col2:
         risk_filter = st.selectbox(
             "Уровень риска",
@@ -69,9 +70,9 @@ with st.container():
                 "medium": "🟡 Средний",
                 "high": "🟠 Высокий",
                 "critical": "🔴 Критический",
-            }.get(x, x)
+            }.get(x, x),
         )
-    
+
     with col3:
         date_filter = st.selectbox(
             "Период",
@@ -81,15 +82,11 @@ with st.container():
                 "today": "Сегодня",
                 "week": "Неделя",
                 "month": "Месяц",
-            }.get(x, x)
+            }.get(x, x),
         )
-    
+
     with col4:
-        limit = st.select_slider(
-            "На страницу",
-            options=[10, 25, 50, 100],
-            value=50
-        )
+        limit = st.select_slider("На страницу", options=[10, 25, 50, 100], value=50)
 
 st.divider()
 
@@ -131,57 +128,61 @@ if date_from:
 try:
     with st.spinner("Загрузка..."):
         response = client.list_reports(**filters)
-        
+
         reports = response.get("reports", [])
         total = response.get("total", 0)
         has_more = response.get("has_more", False)
-    
+
     # ==============================================================================
     # DISPLAY RESULTS
     # ==============================================================================
-    
+
     if reports:
         # Stats
         st.caption(f"Найдено: **{total}** анализов")
-        
+
         st.divider()
-        
+
         # Reports list
         for idx, report in enumerate(reports):
             render_report_card(report, key_prefix=f"history_{idx}")
-            
+
             if idx < len(reports) - 1:
                 st.divider()
-        
+
         # Pagination
         st.divider()
-        
+
         col1, col2, col3 = st.columns([1, 2, 1])
-        
+
         with col1:
             if st.session_state.get("history_offset", 0) > 0:
                 if st.button("⬅️ Предыдущая", use_container_width=True):
-                    st.session_state.history_offset = max(0, st.session_state.get("history_offset", 0) - limit)
+                    st.session_state.history_offset = max(
+                        0, st.session_state.get("history_offset", 0) - limit
+                    )
                     st.rerun()
-        
+
         with col2:
             current_page = (st.session_state.get("history_offset", 0) // limit) + 1
             total_pages = (total + limit - 1) // limit
             st.caption(f"Страница {current_page} из {total_pages}")
-        
+
         with col3:
             if has_more:
                 if st.button("Следующая ➡️", use_container_width=True):
-                    st.session_state.history_offset = st.session_state.get("history_offset", 0) + limit
+                    st.session_state.history_offset = (
+                        st.session_state.get("history_offset", 0) + limit
+                    )
                     st.rerun()
-    
+
     else:
         render_empty_state(
             icon="📭",
             title="Анализы не найдены",
-            description="Попробуйте изменить фильтры или создайте новый анализ"
+            description="Попробуйте изменить фильтры или создайте новый анализ",
         )
-        
+
         if st.button("🎯 Создать анализ", use_container_width=True, type="primary"):
             st.switch_page("pages/1_🎯_Анализ.py")
 
@@ -195,35 +196,39 @@ except Exception as e:
 
 if st.session_state.get("is_admin", False) and reports:
     st.divider()
-    
+
     with st.expander("⚙️ Массовые операции (Admin)"):
         st.warning("🚨 Действия необратимы!")
-        
+
         # Select all checkbox
         select_all = st.checkbox("Выбрать все на странице")
-        
+
         if select_all:
             st.info(f"Выбрано: {len(reports)} отчётов")
-            
+
             col1, col2 = st.columns(2)
-            
+
             with col1:
                 if st.button("📥 Экспортировать выбранные", use_container_width=True):
                     st.info("Экспорт в разработке...")
-            
+
             with col2:
-                if st.button("🗑️ Удалить выбранные", use_container_width=True, type="secondary"):
+                if st.button(
+                    "🗑️ Удалить выбранные", use_container_width=True, type="secondary"
+                ):
                     confirm = st.checkbox("Подтверждаю удаление")
-                    
+
                     if confirm:
                         try:
                             report_ids = [r["report_id"] for r in reports]
-                            result = client.post("/reports/bulk-delete", json={"report_ids": report_ids})
-                            
+                            result = client.post(
+                                "/reports/bulk-delete", json={"report_ids": report_ids}
+                            )
+
                             deleted = result.get("deleted_count", 0)
                             st.success(f"✅ Удалено: {deleted} отчётов")
                             st.rerun()
-                        
+
                         except Exception as e:
                             st.error(f"❌ Ошибка удаления: {e}")
 
@@ -232,7 +237,8 @@ if st.session_state.get("is_admin", False) and reports:
 # ==============================================================================
 
 with st.expander("ℹ️ Справка"):
-    st.markdown("""
+    st.markdown(
+        """
     ### Как пользоваться историей?
     
     **Поиск:**
@@ -260,4 +266,5 @@ with st.expander("ℹ️ Справка"):
     Массовые операции позволяют:
     - Экспортировать несколько отчётов сразу
     - Удалить группу отчётов
-    """)
+    """
+    )

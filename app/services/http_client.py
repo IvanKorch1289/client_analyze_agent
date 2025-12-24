@@ -19,6 +19,7 @@ from app.utility.logging_client import logger
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
+
 def _bool_env(name: str, default: bool = False) -> bool:
     """Простой парсер bool из переменных окружения."""
     val = (os.getenv(name) or "").strip().lower()
@@ -157,10 +158,7 @@ class CircuitBreaker:
                     f"Circuit breaker '{self.name}' opened (failure in half-open state)",
                     component="circuit_breaker",
                 )
-            elif (
-                self._state == CircuitState.CLOSED
-                and self._failure_count >= self.config.failure_threshold
-            ):
+            elif self._state == CircuitState.CLOSED and self._failure_count >= self.config.failure_threshold:
                 self._state = CircuitState.OPEN
                 logger.warning(
                     f"Circuit breaker '{self.name}' opened after {self._failure_count} failures",
@@ -213,26 +211,25 @@ class AsyncHttpClient:
     def __new__(cls):
         # Блокируем прямое создание экземпляров
         raise RuntimeError(
-            f"Нельзя создавать экземпляр {cls.__name__} напрямую. "
-            f"Используйте {cls.__name__}.get_instance()"
+            f"Нельзя создавать экземпляр {cls.__name__} напрямую. Используйте {cls.__name__}.get_instance()"
         )
 
     @classmethod
     async def get_instance(cls) -> "AsyncHttpClient":
         """
         Thread-safe singleton pattern с async/await.
-        
+
         Returns:
             AsyncHttpClient: Единственный экземпляр клиента
         """
         # Быстрая проверка без блокировки
         if cls._instance is not None and cls._initialized:
             return cls._instance
-        
+
         # Создаем lock если еще нет
         if cls._lock is None:
             cls._lock = asyncio.Lock()
-        
+
         # Двойная проверка с блокировкой
         async with cls._lock:
             if cls._instance is None:
@@ -240,18 +237,16 @@ class AsyncHttpClient:
                 instance = object.__new__(cls)
                 instance.__init_once()
                 await instance._initialize()
-                
+
                 # Атомарно устанавливаем instance и флаг
                 cls._initialized = True
                 cls._instance = instance
-                
+
         return cls._instance
 
     def __init__(self):
         # Этот метод никогда не должен вызываться
-        raise RuntimeError(
-            f"Используйте {self.__class__.__name__}.get_instance() вместо __init__()"
-        )
+        raise RuntimeError(f"Используйте {self.__class__.__name__}.get_instance() вместо __init__()")
 
     def __init_once(self):
         """Инициализация атрибутов экземпляра (вызывается один раз)."""
@@ -269,31 +264,23 @@ class AsyncHttpClient:
             "dadata": {
                 "timeout": TimeoutConfig(connect=5.0, read=30.0, write=10.0, pool=5.0),
                 "retry": RetryConfig(max_attempts=2, min_wait=0.5, max_wait=5.0),
-                "circuit_breaker": CircuitBreakerConfig(
-                    failure_threshold=3, success_threshold=1, timeout=30.0
-                ),
+                "circuit_breaker": CircuitBreakerConfig(failure_threshold=3, success_threshold=1, timeout=30.0),
             },
             "infosphere": {
                 "timeout": TimeoutConfig(connect=5.0, read=45.0, write=10.0, pool=5.0),
                 "retry": RetryConfig(max_attempts=2, min_wait=0.5, max_wait=5.0),
-                "circuit_breaker": CircuitBreakerConfig(
-                    failure_threshold=3, success_threshold=1, timeout=30.0
-                ),
+                "circuit_breaker": CircuitBreakerConfig(failure_threshold=3, success_threshold=1, timeout=30.0),
             },
             "casebook": {
                 "timeout": TimeoutConfig(connect=5.0, read=30.0, write=10.0, pool=5.0),
                 "retry": RetryConfig(max_attempts=2, min_wait=0.5, max_wait=5.0),
-                "circuit_breaker": CircuitBreakerConfig(
-                    failure_threshold=3, success_threshold=1, timeout=30.0
-                ),
+                "circuit_breaker": CircuitBreakerConfig(failure_threshold=3, success_threshold=1, timeout=30.0),
             },
             # LLM gateway (OpenRouter)
             "openrouter": {
                 "timeout": TimeoutConfig(connect=5.0, read=60.0, write=10.0, pool=5.0),
                 "retry": RetryConfig(max_attempts=2, min_wait=0.5, max_wait=5.0),
-                "circuit_breaker": CircuitBreakerConfig(
-                    failure_threshold=3, success_threshold=1, timeout=30.0
-                ),
+                "circuit_breaker": CircuitBreakerConfig(failure_threshold=3, success_threshold=1, timeout=30.0),
             },
         }
 
@@ -331,9 +318,7 @@ class AsyncHttpClient:
 
     def _get_circuit_breaker(self, service: str) -> CircuitBreaker:
         if service not in self._circuit_breakers:
-            config = self._service_configs.get(service, {}).get(
-                "circuit_breaker", CircuitBreakerConfig()
-            )
+            config = self._service_configs.get(service, {}).get("circuit_breaker", CircuitBreakerConfig())
             self._circuit_breakers[service] = CircuitBreaker(service, config)
         return self._circuit_breakers[service]
 
@@ -395,9 +380,7 @@ class AsyncHttpClient:
                     max=retry.max_wait,
                     exp_base=retry.exponential_base,
                 ),
-                retry=retry_if_exception_type(
-                    (httpx.RequestError, httpx.TimeoutException, httpx.HTTPStatusError)
-                ),
+                retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException, httpx.HTTPStatusError)),
                 reraise=True,
             ):
                 with attempt:
@@ -423,9 +406,7 @@ class AsyncHttpClient:
                             component="http_client",
                         )
                         await asyncio.sleep(wait_time)
-                        raise httpx.HTTPStatusError(
-                            "Rate limited", request=response.request, response=response
-                        )
+                        raise httpx.HTTPStatusError("Rate limited", request=response.request, response=response)
 
                     if 500 <= response.status_code < 600:
                         raise httpx.HTTPStatusError(
@@ -571,9 +552,7 @@ class AsyncHttpClient:
 
         return all_data
 
-    def get_circuit_breaker_status(
-        self, service: Optional[str] = None
-    ) -> Dict[str, Any]:
+    def get_circuit_breaker_status(self, service: Optional[str] = None) -> Dict[str, Any]:
         if service:
             if service in self._circuit_breakers:
                 return self._circuit_breakers[service].get_status()

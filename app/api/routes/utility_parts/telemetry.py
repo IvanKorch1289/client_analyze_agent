@@ -134,4 +134,3 @@ async def clear_logs(request: Request, role: str = Depends(require_admin)) -> Di
 
     log_store.clear()
     return {"status": "success", "message": "Logs cleared"}
-

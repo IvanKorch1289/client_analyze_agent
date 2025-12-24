@@ -63,9 +63,7 @@ class TavilyClient:
             ",".join(sorted(exclude_domains or [])),
         ]
         key_str = ":".join(key_parts)
-        return (
-            f"tavily:{hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()}"
-        )
+        return f"tavily:{hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()}"
 
     async def search(
         self,
@@ -108,7 +106,10 @@ class TavilyClient:
                     l2 = await repo.get(cache_key)
                     if l2:
                         self._cache[cache_key] = l2
-                        logger.info(f"Tavily cache hit (L2/Tarantool) for query: {query[:50]}", component="tavily")
+                        logger.info(
+                            f"Tavily cache hit (L2/Tarantool) for query: {query[:50]}",
+                            component="tavily",
+                        )
                         return l2
                 except Exception:
                     pass
@@ -147,6 +148,7 @@ class TavilyClient:
             answer = ""
             if isinstance(results, str):
                 import json
+
                 try:
                     results = json.loads(results)
                 except json.JSONDecodeError:
@@ -164,15 +166,23 @@ class TavilyClient:
                 for item in results:
                     if isinstance(item, dict):
                         content = item.get("content", "")
-                        formatted_results.append({
-                            "title": item.get("title", ""),
-                            "url": item.get("url", ""),
-                            "content": content,
-                            "snippet": content[:500] if content else "",
-                            "score": item.get("score", 0),
-                        })
+                        formatted_results.append(
+                            {
+                                "title": item.get("title", ""),
+                                "url": item.get("url", ""),
+                                "content": content,
+                                "snippet": content[:500] if content else "",
+                                "score": item.get("score", 0),
+                            }
+                        )
                     else:
-                        formatted_results.append({"content": str(item), "url": "", "snippet": str(item)[:500]})
+                        formatted_results.append(
+                            {
+                                "content": str(item),
+                                "url": "",
+                                "snippet": str(item)[:500],
+                            }
+                        )
 
             logger.info(
                 f"Tavily LangChain search completed: {len(formatted_results)} results",
@@ -222,7 +232,7 @@ class TavilyClient:
             inflight = self._inflight.pop(cache_key, None) if use_cache else None
             if inflight is not None and not inflight.done():
                 inflight.set_result({"success": False, "error": error_msg})
-            
+
             if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
                 return {
                     "success": False,
@@ -233,7 +243,7 @@ class TavilyClient:
                 return {"success": False, "error": "Invalid Tavily API key"}
             elif "429" in error_msg or "rate limit" in error_msg.lower():
                 return {"success": False, "error": "Tavily rate limit exceeded"}
-            
+
             return {"success": False, "error": error_msg or "Неизвестная ошибка"}
 
     async def search_with_fallback(
@@ -307,9 +317,7 @@ class TavilyClient:
                 timeout=timeout_s,
             )
             latency_ms = (time.perf_counter() - t0) * 1000
-            ok = bool(result.get("success")) and (
-                bool(result.get("answer")) or bool(result.get("results"))
-            )
+            ok = bool(result.get("success")) and (bool(result.get("answer")) or bool(result.get("results")))
             return {
                 "configured": True,
                 "available": ok,

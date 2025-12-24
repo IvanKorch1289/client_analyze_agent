@@ -18,7 +18,6 @@ from pydantic_settings import BaseSettings
 from app.config.config_loader import ConfigLoader
 from app.utility.logging_client import logger
 
-
 _reload_lock = threading.Lock()
 _state_lock = threading.Lock()
 _last_reload_ts: float | None = None
@@ -99,4 +98,3 @@ def get_reload_state() -> dict:
             "last_reload_reason": _last_reload_reason,
             "last_refreshed_instances": _last_refreshed_instances,
         }
-
