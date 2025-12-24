@@ -25,7 +25,6 @@ Preferred communication style: Simple, everyday language.
 | Backend | FastAPI | REST API on port 8000 |
 | Orchestration | LangGraph (StateGraph) | Agent workflow coordination |
 | LLM Integration | LangChain + Multi-provider | OpenRouter → HuggingFace → GigaChat → YandexGPT fallback |
-| Data Protection | LLMGuardService | PII anonymization/de-anonymization |
 | Caching | Tarantool (in-memory fallback) | TTL-based caching |
 | Messaging | FastStream + RabbitMQ | Async task processing |
 | MCP Server | FastMCP | IDE integration on port 8011 |
@@ -71,7 +70,6 @@ app/
 │   └── responses.py # All API response models
 ├── services/        # External API clients and business logic
 │   ├── llm_provider.py  # Unified LLM access (llm_generate_json, llm_generate_text)
-│   ├── llm_guard.py     # PII anonymization/de-anonymization service
 │   ├── perplexity_client.py  # Perplexity AI search
 │   ├── tavily_client.py      # Tavily web search
 │   └── scheduler_service.py  # APScheduler integration
