@@ -106,7 +106,7 @@ def render(api: ApiClient) -> None:
         elif not inn_valid:
             st.error(f"❌ {inn_err}")
         else:
-            payload = {
+            payload: dict = {
                 "client_name": sch_client_name.strip(),
                 "inn": sch_inn.strip(),
                 "additional_notes": (sch_notes or "").strip(),
@@ -159,7 +159,7 @@ def render(api: ApiClient) -> None:
         refresh = st.button("Обновить историю", type="primary")
 
     if refresh or "reports_cache" not in st.session_state:
-        params = {"limit": int(limit), "offset": 0}
+        params: dict = {"limit": int(limit), "offset": 0}
         if risk_filter != "Все":
             params["risk_level"] = risk_filter
         with st.spinner("Загружаю список отчётов..."):
@@ -343,3 +343,60 @@ def render(api: ApiClient) -> None:
 
         with st.expander("📋 Полные данные отчёта (JSON)", expanded=False):
             st.json(opened)
+
+        st.divider()
+
+        with st.expander("📝 Обратная связь", expanded=False):
+            st.markdown("**Оцените качество анализа:**")
+            feedback_rating = st.radio(
+                "Оценка",
+                options=["accurate", "partially_accurate", "inaccurate"],
+                format_func=lambda x: {
+                    "accurate": "✅ Точный",
+                    "partially_accurate": "⚠️ Частично точный",
+                    "inaccurate": "❌ Неточный",
+                }[x],
+                horizontal=True,
+                key=f"feedback_rating_{selected_report_id}",
+            )
+            feedback_comment = st.text_area(
+                "Комментарий (опционально)",
+                placeholder="Опишите что было неточно или что можно улучшить...",
+                key=f"feedback_comment_{selected_report_id}",
+            )
+            if st.button("Отправить отзыв", key=f"submit_feedback_{selected_report_id}"):
+                feedback_data = {
+                    "report_id": selected_report_id,
+                    "rating": feedback_rating,
+                    "comment": feedback_comment.strip() if feedback_comment else None,
+                }
+                st.session_state[f"feedback_{selected_report_id}"] = feedback_data
+                st.success("✅ Спасибо за отзыв! Он поможет улучшить анализ.")
+
+        with st.expander("🔄 Переанализировать", expanded=False):
+            st.markdown("**Запустить повторный анализ с дополнительным контекстом:**")
+            reanalyze_notes = st.text_area(
+                "Дополнительные указания",
+                placeholder="Укажите что проверить дополнительно или на что обратить внимание...",
+                key=f"reanalyze_notes_{selected_report_id}",
+            )
+            if st.button("Запустить переанализ", type="primary", key=f"reanalyze_{selected_report_id}"):
+                original_client = opened.get("client_name", "")
+                original_inn = opened.get("inn", "")
+                original_notes = (opened.get("report_data") or {}).get("metadata", {}).get("additional_notes", "")
+                
+                combined_notes = original_notes
+                if reanalyze_notes.strip():
+                    combined_notes = f"{original_notes}\n\n[ПЕРЕАНАЛИЗ]: {reanalyze_notes.strip()}"
+                
+                reanalyze_payload = {
+                    "client_name": original_client,
+                    "inn": original_inn,
+                    "additional_notes": combined_notes,
+                }
+                with st.spinner("Запускаю переанализ..."):
+                    reanalyze_result = api.post("/agent/analyze-client", json=reanalyze_payload)
+                if reanalyze_result is not None:
+                    st.session_state["last_analysis_result"] = reanalyze_result
+                    st.success("✅ Переанализ завершён! Результат доступен в секции 'Запустить анализ сейчас'.")
+                    st.rerun()
