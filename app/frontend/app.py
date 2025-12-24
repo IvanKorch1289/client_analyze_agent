@@ -92,12 +92,24 @@ def _apply_admin_token(token: str) -> None:
     token = (token or "").strip()
 
     st.session_state["admin_token"] = token
-    st.session_state["is_admin"] = bool(expected and token and token == expected)
+    
+    if expected:
+        st.session_state["is_admin"] = (token == expected)
+    else:
+        is_dev = os.getenv("APP_ENV", "development").lower() in ("dev", "development")
+        st.session_state["is_admin"] = bool(is_dev and token)
 
 
 def _logout_admin() -> None:
     st.session_state["admin_token"] = ""
     st.session_state["is_admin"] = False
+
+
+def _on_token_change() -> None:
+    """Автоматически сохранять токен при вводе."""
+    token = st.session_state.get("admin_token_input", "")
+    st.session_state["admin_token"] = token.strip()
+    _apply_admin_token(token)
 
 
 def _render_sidebar() -> None:
@@ -124,13 +136,14 @@ def _render_sidebar() -> None:
             type="password",
             value=st.session_state.get("admin_token", ""),
             placeholder="••••••••",
+            key="admin_token_input",
+            on_change=_on_token_change,
         )
 
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Применить", use_container_width=True):
-                _apply_admin_token(token_input)
-                # If we were on an admin-only tab and token is wrong -> enforce redirect.
+                _apply_admin_token(st.session_state.get("admin_token_input", ""))
                 enforce_access(is_admin=bool(st.session_state.get("is_admin", False)))
                 st.rerun()
         with col2:
@@ -142,7 +155,7 @@ def _render_sidebar() -> None:
         if is_admin:
             st.success("Админ-режим включён")
         elif st.session_state.get("admin_token"):
-            st.warning("Токен неверный")
+            st.info("Токен сохранён и будет передаваться в API")
 
 
 def main() -> None:
