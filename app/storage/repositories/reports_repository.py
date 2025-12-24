@@ -28,6 +28,8 @@ class ReportsRepository(BaseRepository[Dict[str, Any]]):
     истечением через 30 дней.
     """
 
+    _fallback_warned = False
+
     def __init__(self, tarantool_client):
         super().__init__(tarantool_client)
         self.space_name = "reports"
@@ -231,12 +233,13 @@ class ReportsRepository(BaseRepository[Dict[str, Any]]):
             )
             return result if result else []
         except RuntimeError as e:
-            # Tarantool fallback mode - Lua functions not available
             if "in-memory fallback" in str(e):
-                logger.warning(
-                    "Tarantool in fallback mode, Lua functions unavailable",
-                    component="reports_repo",
-                )
+                if not ReportsRepository._fallback_warned:
+                    ReportsRepository._fallback_warned = True
+                    logger.warning(
+                        "Tarantool in fallback mode, Lua functions unavailable",
+                        component="reports_repo",
+                    )
                 return []
             raise
         except Exception as e:

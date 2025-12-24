@@ -56,16 +56,31 @@ User Input → Orchestrator Agent → Data Collector (parallel sources)
 ```
 app/
 ├── agents/          # LangGraph agents (orchestrator, data_collector, report_analyzer)
-├── api/             # FastAPI routes and error handlers
+├── api/             # FastAPI v1 routes and error handlers
+│   ├── routes/      # Individual route files (agent, data, reports, scheduler, utility, analytics)
+│   └── v1.py        # API v1 sub-app composition
 ├── config/          # Pydantic settings, constants, hot-reload
 ├── frontend/        # Streamlit UI with tab-based navigation
 ├── mcp_server/      # FastMCP server for external integrations
 ├── messaging/       # RabbitMQ broker, publisher, worker
-├── schemas/         # Pydantic models for API and reports
-├── services/        # External API clients (DaData, Perplexity, etc.)
+├── schemas/         # Centralized Pydantic models
+│   ├── api.py       # Health/status response models
+│   ├── report.py    # ClientAnalysisReport and related models
+│   ├── requests.py  # All API request models
+│   └── responses.py # All API response models
+├── services/        # External API clients and business logic
+│   ├── llm_provider.py  # Unified LLM access (llm_generate_json, llm_generate_text)
+│   ├── perplexity_client.py  # Perplexity AI search
+│   ├── tavily_client.py      # Tavily web search
+│   └── scheduler_service.py  # APScheduler integration
 ├── shared/          # Common utilities, security, exceptions
+│   ├── toolkit/     # Consolidated utility functions (logging, metrics, cache, export)
+│   ├── security.py  # INN validation, token auth
+│   └── exceptions.py # Custom exception classes
 ├── storage/         # Tarantool client and repositories
-└── utility/         # Logging, metrics, decorators
+│   ├── tarantool.py # Client with in-memory fallback
+│   └── repositories/ # Data access layer
+└── utility/         # Re-exports for backward compatibility
 ```
 
 ## External Dependencies
