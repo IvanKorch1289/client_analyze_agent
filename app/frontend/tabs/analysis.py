@@ -12,6 +12,11 @@ from app.frontend.lib.ui import (
 from app.frontend.lib.validators import validate_client_name, validate_inn
 
 
+def _get_token() -> str:
+    """Получить admin token из session_state."""
+    return st.session_state.get("admin_token", "") or ""
+
+
 def render(api: ApiClient) -> None:
     st.header("Анализ клиента")
 
@@ -40,7 +45,7 @@ def render(api: ApiClient) -> None:
                 "additional_notes": (additional_notes or "").strip(),
             }
             with st.spinner("Запускаю анализ..."):
-                result = api.post("/agent/analyze-client", json=payload)
+                result = api.post("/agent/analyze-client", json=payload, admin_token=_get_token())
             if result is not None:
                 st.session_state["last_analysis_result"] = result
 
@@ -134,7 +139,7 @@ def render(api: ApiClient) -> None:
                 payload["run_date"] = run_date_iso
 
             with st.spinner("Планирую задачу..."):
-                resp = api.post("/scheduler/schedule-analysis", json=payload)
+                resp = api.post("/scheduler/schedule-analysis", json=payload, admin_token=_get_token())
             if resp is not None:
                 st.success("✅ Запланировано")
                 st.write(f"**ID задачи:** `{resp.get('task_id')}`")
@@ -147,7 +152,7 @@ def render(api: ApiClient) -> None:
     # Статистика
     if st.button("📊 Загрузить статистику", type="secondary"):
         with st.spinner("Загружаю статистику..."):
-            stats_data = api.get("/reports/stats/summary")
+            stats_data = api.get("/reports/stats/summary", admin_token=_get_token())
         if stats_data is not None:
             st.session_state["reports_stats"] = stats_data
 
@@ -178,7 +183,7 @@ def render(api: ApiClient) -> None:
         if risk_filter != "Все":
             params["risk_level"] = risk_filter
         with st.spinner("Загружаю список отчётов..."):
-            payload = api.get("/reports", params=params)
+            payload = api.get("/reports", params=params, admin_token=_get_token())
         if payload is not None:
             st.session_state["reports_cache"] = payload
 
@@ -228,7 +233,7 @@ def render(api: ApiClient) -> None:
 
     if open_btn:
         with st.spinner("Загружаю отчёт..."):
-            detail = api.get(f"/reports/{selected_report_id}")
+            detail = api.get(f"/reports/{selected_report_id}", admin_token=_get_token())
         if detail is not None:
             st.session_state["opened_report"] = detail.get("report") if isinstance(detail, dict) else detail
 
@@ -239,7 +244,7 @@ def render(api: ApiClient) -> None:
                 not st.session_state.get("opened_report")
                 or st.session_state["opened_report"].get("report_id") != selected_report_id
             ):
-                detail = api.get(f"/reports/{selected_report_id}")
+                detail = api.get(f"/reports/{selected_report_id}", admin_token=_get_token())
                 if detail is not None:
                     report_full = detail.get("report") if isinstance(detail, dict) else detail
                 else:
@@ -257,7 +262,7 @@ def render(api: ApiClient) -> None:
                     "session_id": report_full.get("report_id", "") or None,
                     "report_data": report_data,
                 }
-                pdf_resp = api.post("/utility/reports/pdf", json=pdf_payload)
+                pdf_resp = api.post("/utility/reports/pdf", json=pdf_payload, admin_token=_get_token())
                 if isinstance(pdf_resp, dict) and pdf_resp.get("status") == "success":
                     download_url = pdf_resp.get("download_url") or ""
                     if download_url:
@@ -340,7 +345,7 @@ def render(api: ApiClient) -> None:
                 "report_data": report_data,
             }
             with st.spinner("Генерирую PDF отчёт..."):
-                pdf_resp = api.post("/utility/reports/pdf", json=pdf_payload)
+                pdf_resp = api.post("/utility/reports/pdf", json=pdf_payload, admin_token=_get_token())
             if isinstance(pdf_resp, dict) and pdf_resp.get("status") == "success":
                 download_url = pdf_resp.get("download_url") or ""
                 if download_url:
@@ -361,7 +366,7 @@ def render(api: ApiClient) -> None:
 
         st.divider()
 
-        with st.expander("📝 Фидбек и переанализ", expanded=False):
+        with st.expander("📝 Фидбек и переанализ (если отчёт неверный)", expanded=True):
             st.markdown("**Если отчёт некорректен или LLM пропустила данные — отправьте фидбек:**")
             st.caption("Система перезапустит анализ с учётом ваших замечаний")
             
@@ -429,7 +434,7 @@ def render(api: ApiClient) -> None:
                     }
                     
                     with st.spinner("Отправляю фидбек и запускаю переанализ..." if rerun_checkbox else "Сохраняю фидбек..."):
-                        feedback_result = api.post("/agent/feedback", json=feedback_payload)
+                        feedback_result = api.post("/agent/feedback", json=feedback_payload, admin_token=_get_token())
                     
                     if feedback_result is not None:
                         status = feedback_result.get("status", "")
