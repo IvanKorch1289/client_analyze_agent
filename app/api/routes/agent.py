@@ -21,6 +21,28 @@ from app.utility.logging_client import logger
 
 agent_router = APIRouter(prefix="/agent", tags=["Агент"])
 
+
+# P2: Task registry для отслеживания и отмены задач анализа
+_running_tasks: Dict[str, asyncio.Task] = {}
+
+
+def _register_task(session_id: str, task: asyncio.Task) -> None:
+    """Регистрация задачи анализа."""
+    _running_tasks[session_id] = task
+    logger.debug(f"Task registered: {session_id}", component="agent_api")
+
+
+def _unregister_task(session_id: str) -> None:
+    """Удаление задачи из реестра."""
+    if session_id in _running_tasks:
+        del _running_tasks[session_id]
+        logger.debug(f"Task unregistered: {session_id}", component="agent_api")
+
+
+def _get_running_task(session_id: str) -> Optional[asyncio.Task]:
+    """Получить запущенную задачу по session_id."""
+    return _running_tasks.get(session_id)
+
 # Rate limiter для агентских эндпоинтов
 limiter = create_limiter(get_remote_address)
 
@@ -172,10 +194,17 @@ async def _stream_client_analysis(client_name: str, inn: str, additional_notes: 
             "session_id": session_id,
             "client_name": client_name,
             "message": "Начинаем анализ клиента...",
+            "cancellable": True,  # P2: Сообщаем клиенту, что анализ можно отменить
         },
     )
 
     generator = None
+    current_task = asyncio.current_task()
+    
+    # P2: Регистрируем текущую задачу для возможности отмены
+    if current_task:
+        _register_task(session_id, current_task)
+    
     try:
         generator = run_client_analysis_streaming(
             client_name=client_name,
@@ -190,13 +219,16 @@ async def _stream_client_analysis(client_name: str, inn: str, additional_notes: 
         yield format_sse("complete", {"session_id": session_id, "status": "completed"})
 
     except asyncio.CancelledError:
-        logger.info(f"Client disconnected from stream: {session_id}")
+        logger.info(f"Analysis cancelled via API: {session_id}", component="agent_api")
+        yield format_sse("cancelled", {"session_id": session_id, "message": "Анализ отменён"})
         if generator:
             await generator.aclose()
     except Exception as e:
         logger.error(f"Streaming error: {e}", exc_info=True)
         yield format_sse("error", {"error": str(e), "session_id": session_id})
     finally:
+        # P2: Удаляем задачу из реестра при завершении
+        _unregister_task(session_id)
         if generator:
             try:
                 await generator.aclose()
@@ -246,3 +278,82 @@ async def list_threads(request: Request) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Ошибка получения тредов: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Ошибка получения списка тредов") from e
+
+
+# P2: Cancellation support для долгих анализов
+@agent_router.delete("/analyze/{session_id}")
+async def cancel_analysis(request: Request, session_id: str) -> Dict[str, Any]:
+    """
+    Отменить запущенный анализ по session_id.
+    
+    P2: Реализация поддержки отмены долгих задач анализа.
+    
+    Returns:
+        Статус отмены задачи
+    """
+    task = _get_running_task(session_id)
+    
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Анализ с session_id '{session_id}' не найден или уже завершён"
+        )
+    
+    if task.done():
+        _unregister_task(session_id)
+        return {
+            "status": "already_completed",
+            "session_id": session_id,
+            "message": "Анализ уже завершён"
+        }
+    
+    task.cancel()
+    
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
+    except asyncio.CancelledError:
+        pass
+    except asyncio.TimeoutError:
+        logger.warning(f"Task {session_id} cancellation timed out", component="agent_api")
+    except Exception as e:
+        logger.error(f"Error during task cancellation: {e}", component="agent_api")
+    finally:
+        _unregister_task(session_id)
+    
+    logger.info(f"Analysis cancelled: {session_id}", component="agent_api")
+    
+    return {
+        "status": "cancelled",
+        "session_id": session_id,
+        "message": "Анализ успешно отменён"
+    }
+
+
+@agent_router.get("/analyze/running")
+async def list_running_analyses(request: Request) -> Dict[str, Any]:
+    """
+    Получить список запущенных анализов.
+    
+    P2: Мониторинг активных задач для возможности их отмены.
+    
+    Returns:
+        Список активных анализов с их session_id
+    """
+    running = []
+    completed = []
+    
+    for session_id, task in list(_running_tasks.items()):
+        if task.done():
+            completed.append(session_id)
+            _unregister_task(session_id)
+        else:
+            running.append({
+                "session_id": session_id,
+                "status": "running",
+            })
+    
+    return {
+        "running_count": len(running),
+        "running_analyses": running,
+        "cleaned_up": len(completed),
+    }

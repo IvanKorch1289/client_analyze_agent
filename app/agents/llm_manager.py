@@ -12,9 +12,7 @@ Fallback последовательность:
 import asyncio
 import threading
 from enum import Enum
-from typing import Any, Dict, Optional
-
-from langchain_core.language_models.llms import LLM
+from typing import Any, Dict, Optional, Union
 
 from app.config import settings
 from app.utility.logging_client import logger
@@ -85,9 +83,9 @@ class LLMManager:
         """Инициализация LLM Manager."""
         # Lazy-init провайдеров. Импорты тяжёлых зависимостей делаем внутри геттеров,
         # чтобы ускорить холодный старт и не тянуть лишнее, если провайдер не используется.
-        self._openrouter_llm: Optional[LLM] = None
-        self._huggingface_llm: Optional[LLM] = None
-        self._gigachat_llm: Optional[LLM] = None
+        self._openrouter_llm: Any = None
+        self._huggingface_llm: Any = None
+        self._gigachat_llm: Any = None
 
         self._provider_status: Dict[LLMProvider, bool] = {
             LLMProvider.OPENROUTER: True,
@@ -103,7 +101,7 @@ class LLMManager:
 
         logger.info("LLMManager initialized", component="llm_manager")
 
-    def _get_openrouter_llm(self) -> LLM:
+    def _get_openrouter_llm(self) -> Any:
         """
         Получить OpenRouter LLM (primary).
 
@@ -137,7 +135,7 @@ class LLMManager:
 
         return self._openrouter_llm
 
-    def _get_huggingface_llm(self) -> LLM:
+    def _get_huggingface_llm(self) -> Any:
         """
         Получить HuggingFace LLM (fallback #1).
 
@@ -166,7 +164,7 @@ class LLMManager:
 
         return self._huggingface_llm
 
-    def _get_gigachat_llm(self) -> LLM:
+    def _get_gigachat_llm(self) -> Any:
         """
         Получить GigaChat LLM (fallback #2).
 
@@ -195,7 +193,7 @@ class LLMManager:
 
         return self._gigachat_llm
 
-    def _get_llm_by_provider(self, provider: LLMProvider) -> LLM:
+    def _get_llm_by_provider(self, provider: LLMProvider) -> Any:
         """
         Получить LLM по имени провайдера.
 
@@ -419,7 +417,7 @@ class LLMManager:
         Returns:
             Dict[str, bool]: Статус каждого провайдера
         """
-        return self._provider_status.copy()
+        return {p.value: v for p, v in self._provider_status.items()}
 
     def reset_provider_status(self, provider: Optional[LLMProvider] = None):
         """
