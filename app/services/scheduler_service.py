@@ -273,6 +273,151 @@ class SchedulerService:
                 }
             )
 
+    async def schedule_data_fetch(
+        self,
+        inn: str,
+        sources: List[str],
+        search_query: Optional[str] = None,
+        perplexity_recency: str = "month",
+        tavily_depth: str = "basic",
+        tavily_max_results: int = 5,
+        tavily_include_answer: bool = True,
+        delay_minutes: Optional[int] = None,
+        delay_seconds: Optional[int] = None,
+        run_date: Optional[datetime] = None,
+        task_id: Optional[str] = None,
+    ) -> str:
+        """
+        Запланировать сбор данных из внешних источников.
+
+        Args:
+            inn: ИНН компании
+            sources: Список источников (dadata, casebook, infosphere, perplexity, tavily)
+            search_query: Поисковый запрос (для perplexity/tavily)
+            perplexity_recency: Фильтр актуальности Perplexity (day/week/month)
+            tavily_depth: Глубина поиска Tavily (basic/advanced)
+            tavily_max_results: Максимум результатов Tavily
+            tavily_include_answer: Включить краткий ответ Tavily
+            delay_minutes: Задержка в минутах
+            delay_seconds: Задержка в секундах
+            run_date: Конкретное время выполнения
+            task_id: ID задачи (опционально)
+
+        Returns:
+            str: ID созданной задачи
+        """
+        metadata = {
+            "type": "data_fetch",
+            "inn": inn,
+            "sources": sources,
+            "search_query": search_query,
+            "perplexity_recency": perplexity_recency,
+            "tavily_depth": tavily_depth,
+            "tavily_max_results": tavily_max_results,
+            "tavily_include_answer": tavily_include_answer,
+        }
+
+        return await self.schedule_task(
+            func=self._execute_data_fetch,
+            task_id=task_id,
+            delay_minutes=delay_minutes,
+            delay_seconds=delay_seconds,
+            run_date=run_date,
+            metadata=metadata,
+            inn=inn,
+            sources=sources,
+            search_query=search_query,
+            perplexity_recency=perplexity_recency,
+            tavily_depth=tavily_depth,
+            tavily_max_results=tavily_max_results,
+            tavily_include_answer=tavily_include_answer,
+        )
+
+    async def _execute_data_fetch(
+        self,
+        inn: str,
+        sources: List[str],
+        search_query: Optional[str] = None,
+        perplexity_recency: str = "month",
+        tavily_depth: str = "basic",
+        tavily_max_results: int = 5,
+        tavily_include_answer: bool = True,
+    ):
+        """
+        Внутренний метод для сбора данных из внешних источников.
+        """
+        import asyncio
+
+        from app.services.fetch_data import (
+            fetch_from_casebook,
+            fetch_from_dadata,
+            fetch_from_infosphere,
+        )
+        from app.services.perplexity_client import PerplexityClient
+        from app.services.tavily_client import TavilyClient
+
+        logger.info(
+            f"Starting scheduled data fetch for INN {inn} from sources: {sources}",
+            component="scheduler",
+        )
+
+        results = {}
+        tasks = []
+
+        if "dadata" in sources:
+            tasks.append(("dadata", fetch_from_dadata(inn)))
+        if "casebook" in sources:
+            tasks.append(("casebook", fetch_from_casebook(inn)))
+        if "infosphere" in sources:
+            tasks.append(("infosphere", fetch_from_infosphere(inn)))
+
+        if "perplexity" in sources and search_query:
+            async def fetch_perplexity():
+                client = PerplexityClient.get_instance()
+                if client.is_configured():
+                    return await client.ask(
+                        question=f"ИНН {inn}: {search_query}. Ответь только фактами.",
+                        search_recency_filter=perplexity_recency,
+                    )
+                return {"success": False, "error": "Perplexity not configured"}
+            tasks.append(("perplexity", fetch_perplexity()))
+
+        if "tavily" in sources and search_query:
+            async def fetch_tavily():
+                client = TavilyClient.get_instance()
+                if client.is_configured():
+                    return await client.search(
+                        query=f"ИНН {inn} {search_query}",
+                        search_depth=tavily_depth,
+                        max_results=tavily_max_results,
+                        include_answer=tavily_include_answer,
+                    )
+                return {"success": False, "error": "Tavily not configured"}
+            tasks.append(("tavily", fetch_tavily()))
+
+        if tasks:
+            gathered = await asyncio.gather(
+                *[t[1] for t in tasks],
+                return_exceptions=True,
+            )
+            for i, (source_name, _) in enumerate(tasks):
+                result = gathered[i]
+                if isinstance(result, Exception):
+                    results[source_name] = {"error": str(result)}
+                else:
+                    results[source_name] = result
+
+        logger.structured(
+            "info",
+            "scheduled_data_fetch_completed",
+            component="scheduler",
+            inn=inn,
+            sources=sources,
+            results_count=len(results),
+        )
+
+        return results
+
     def cancel_task(self, task_id: str) -> bool:
         """
         Отменить запланированную задачу.

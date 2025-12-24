@@ -62,6 +62,19 @@ def render(api: ApiClient) -> None:
     st.divider()
 
     st.subheader("Запланировать анализ")
+    
+    when_mode = st.radio(
+        "Когда выполнить",
+        options=["delay_minutes", "delay_seconds", "run_date"],
+        format_func=lambda x: {
+            "delay_minutes": "Через N минут",
+            "delay_seconds": "Через N секунд",
+            "run_date": "В конкретную дату/время",
+        }[x],
+        horizontal=True,
+        key="schedule_when_mode",
+    )
+    
     with st.form("schedule_analysis"):
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -69,17 +82,6 @@ def render(api: ApiClient) -> None:
         with col2:
             sch_inn = st.text_input("ИНН (обязательно)", key="sch_inn", max_chars=12)
         sch_notes = st.text_area("Дополнительные заметки (опционально)", key="sch_notes", height=100)
-
-        when_mode = st.radio(
-            "Когда выполнить",
-            options=["delay_minutes", "delay_seconds", "run_date"],
-            format_func=lambda x: {
-                "delay_minutes": "Через N минут",
-                "delay_seconds": "Через N секунд",
-                "run_date": "В конкретную дату/время",
-            }[x],
-            horizontal=True,
-        )
 
         delay_minutes = None
         delay_seconds = None
