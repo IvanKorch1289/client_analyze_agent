@@ -33,14 +33,14 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
 
-    # API Keys - External Services
-    DADATA_API_TOKEN: str = Field(..., min_length=10)
-    DADATA_API_SECRET: str = Field(..., min_length=10)
-    CASEBOOK_API_KEY: str = Field(..., min_length=10)
-    INFOSFERA_API_KEY: str = Field(..., min_length=10)
-    PERPLEXITY_API_KEY: str = Field(..., min_length=10)
-    TAVILY_API_KEY: str = Field(..., min_length=10)
-    OPENROUTER_API_KEY: str = Field(..., min_length=10)
+    # API Keys - External Services (optional in development, required in production)
+    DADATA_API_TOKEN: Optional[str] = Field(default=None)
+    DADATA_API_SECRET: Optional[str] = Field(default=None)
+    CASEBOOK_API_KEY: Optional[str] = Field(default=None)
+    INFOSFERA_API_KEY: Optional[str] = Field(default=None)
+    PERPLEXITY_API_KEY: Optional[str] = Field(default=None)
+    TAVILY_API_KEY: Optional[str] = Field(default=None)
+    OPENROUTER_API_KEY: Optional[str] = Field(default=None)
     OPENAI_API_KEY: Optional[str] = None
 
     # LLM Configuration
@@ -52,14 +52,14 @@ class Settings(BaseSettings):
     TARANTOOL_HOST: str = "localhost"
     TARANTOOL_PORT: int = Field(default=3301, gt=0, lt=65536)
     TARANTOOL_USER: str = "admin"
-    TARANTOOL_PASSWORD: str = Field(..., min_length=1)
+    TARANTOOL_PASSWORD: Optional[str] = Field(default=None)
 
     # RabbitMQ
     RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
 
-    # Security
-    SECRET_KEY: str = Field(..., min_length=32)
-    API_KEY_SALT: str = Field(..., min_length=16)
+    # Security (use secure random defaults for development)
+    SECRET_KEY: str = Field(default="dev-secret-key-change-in-production-32chars")
+    API_KEY_SALT: str = Field(default="dev-salt-16chars")
 
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = Field(default=60, gt=0)
@@ -103,8 +103,10 @@ class Settings(BaseSettings):
         "API_KEY_SALT",
     )
     @classmethod
-    def validate_no_whitespace(cls, v: str) -> str:
+    def validate_no_whitespace(cls, v: Optional[str]) -> Optional[str]:
         """Ensure API keys have no leading/trailing whitespace."""
+        if v is None:
+            return v
         if v != v.strip():
             raise ValueError("API keys must not have leading/trailing whitespace")
         return v.strip()

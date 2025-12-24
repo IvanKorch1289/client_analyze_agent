@@ -1,7 +1,6 @@
 /* 
- * Улучшенные стили для Системы анализа контрагентов
- * 
- * Применяется ко всем страницам через load_css() в components.py
+ * Unified Dark Theme for Analyze Agent
+ * Sidebar and main area share consistent colors
  */
 
 /* ============================================================================
@@ -29,67 +28,101 @@ header[data-testid="stHeader"] {
 }
 
 /* ============================================================================
- * SIDEBAR STYLING
+ * UNIFIED DARK THEME - MAIN + SIDEBAR
+ * Theme colors: 
+ *   - Primary BG: #0f172a (slate-950)
+ *   - Secondary BG: #1e293b (slate-800)
+ *   - Text: #e2e8f0 (slate-200)
+ *   - Accent: #667eea (indigo-500)
  * ============================================================================ */
 
+/* Base app background */
+.stApp {
+    background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%) !important;
+}
+
+/* Main content area */
+[data-testid="stAppViewContainer"] {
+    background: transparent !important;
+}
+
+[data-testid="stMain"] {
+    background: transparent !important;
+}
+
+/* Sidebar - matches main area */
 section[data-testid="stSidebar"] {
     background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%) !important;
+    border-right: 1px solid #334155 !important;
 }
 
 section[data-testid="stSidebar"] > div {
     padding-top: 2rem;
 }
 
-/* Sidebar text colors */
-section[data-testid="stSidebar"] label,
-section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] span {
+/* ============================================================================
+ * UNIFIED TEXT COLORS
+ * ============================================================================ */
+
+/* All text in both areas */
+h1, h2, h3, h4, h5, h6 {
+    color: #f1f5f9 !important;
+    font-weight: 700 !important;
+}
+
+p, span, label, div {
     color: #e2e8f0 !important;
 }
 
-/* Sidebar inputs */
-section[data-testid="stSidebar"] input,
-section[data-testid="stSidebar"] textarea {
-    background-color: #0f172a !important;
+/* Sidebar text */
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 {
+    color: #e2e8f0 !important;
+}
+
+/* Captions */
+.stCaption, [data-testid="stCaptionContainer"] {
+    color: #94a3b8 !important;
+}
+
+/* ============================================================================
+ * INPUT FIELDS - UNIFIED STYLE
+ * ============================================================================ */
+
+input, textarea, select {
+    background-color: #1e293b !important;
     color: #f1f5f9 !important;
     border: 1px solid #334155 !important;
     border-radius: 0.5rem !important;
 }
 
-section[data-testid="stSidebar"] input:focus,
-section[data-testid="stSidebar"] textarea:focus {
-    border-color: #3b82f6 !important;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
+input:focus, textarea:focus, select:focus {
+    border-color: #667eea !important;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2) !important;
+    outline: none !important;
 }
 
-/* Sidebar buttons */
-section[data-testid="stSidebar"] .stButton button {
-    background-color: #1e40af !important;
-    color: #ffffff !important;
-    border: none !important;
-    border-radius: 0.5rem !important;
-    font-weight: 600 !important;
-    transition: all 0.2s ease !important;
+input::placeholder, textarea::placeholder {
+    color: #64748b !important;
 }
 
-section[data-testid="stSidebar"] .stButton button:hover {
-    background-color: #1d4ed8 !important;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(30, 64, 175, 0.4) !important;
+/* Streamlit specific inputs */
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stSelectbox"] > div > div {
+    background-color: #1e293b !important;
+    color: #f1f5f9 !important;
+    border: 1px solid #334155 !important;
 }
 
 /* ============================================================================
- * MAIN CONTENT STYLING
+ * BUTTONS - UNIFIED STYLE
  * ============================================================================ */
 
-/* Page titles */
-h1 {
-    color: #1e293b !important;
-    font-weight: 700 !important;
-    margin-bottom: 1.5rem !important;
-}
-
-/* Buttons */
 .stButton button {
     border-radius: 0.5rem !important;
     font-weight: 600 !important;
@@ -97,78 +130,214 @@ h1 {
     border: none !important;
 }
 
-.stButton button[kind="primary"] {
+/* Primary buttons */
+.stButton button[kind="primary"],
+.stButton button[data-baseweb="button"][kind="primary"] {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
     color: white !important;
 }
 
 .stButton button[kind="primary"]:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3) !important;
+    box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4) !important;
 }
 
-.stButton button[kind="secondary"] {
-    background-color: #f1f5f9 !important;
-    color: #475569 !important;
-    border: 1px solid #cbd5e1 !important;
+/* Secondary buttons */
+.stButton button[kind="secondary"],
+.stButton button[data-baseweb="button"][kind="secondary"] {
+    background-color: #334155 !important;
+    color: #e2e8f0 !important;
+    border: 1px solid #475569 !important;
 }
 
 .stButton button[kind="secondary"]:hover {
-    background-color: #e2e8f0 !important;
+    background-color: #475569 !important;
 }
 
-/* Containers */
-.stContainer {
-    border-radius: 0.75rem !important;
+/* Sidebar buttons */
+section[data-testid="stSidebar"] .stButton button {
+    background-color: #1e40af !important;
+    color: #ffffff !important;
+    border: none !important;
 }
+
+section[data-testid="stSidebar"] .stButton button:hover {
+    background-color: #2563eb !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important;
+}
+
+/* ============================================================================
+ * CONTAINERS AND CARDS
+ * ============================================================================ */
 
 /* Expanders */
+[data-testid="stExpander"] {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    border-radius: 0.5rem !important;
+}
+
+[data-testid="stExpander"] summary,
 .streamlit-expanderHeader {
-    background-color: #f8fafc !important;
+    background-color: #1e293b !important;
+    color: #f1f5f9 !important;
     border-radius: 0.5rem !important;
     font-weight: 600 !important;
 }
 
+[data-testid="stExpander"] > div {
+    background-color: #0f172a !important;
+}
+
 /* Metrics */
+[data-testid="stMetric"] {
+    background-color: #1e293b !important;
+    padding: 1rem !important;
+    border-radius: 0.5rem !important;
+    border: 1px solid #334155 !important;
+}
+
 [data-testid="stMetricValue"] {
     font-size: 2rem !important;
     font-weight: 700 !important;
+    color: #f1f5f9 !important;
+}
+
+[data-testid="stMetricLabel"] {
+    color: #94a3b8 !important;
 }
 
 /* ============================================================================
  * STATUS INDICATORS
  * ============================================================================ */
 
-/* Success messages */
+/* Success */
+[data-testid="stAlert"][data-baseweb="notification"][kind="positive"],
 .stSuccess {
-    background-color: #d1fae5 !important;
-    color: #065f46 !important;
+    background-color: rgba(16, 185, 129, 0.15) !important;
+    color: #34d399 !important;
     border-left: 4px solid #10b981 !important;
     border-radius: 0.5rem !important;
 }
 
-/* Error messages */
+/* Error */
+[data-testid="stAlert"][data-baseweb="notification"][kind="negative"],
 .stError {
-    background-color: #fee2e2 !important;
-    color: #991b1b !important;
+    background-color: rgba(239, 68, 68, 0.15) !important;
+    color: #f87171 !important;
     border-left: 4px solid #ef4444 !important;
     border-radius: 0.5rem !important;
 }
 
-/* Warning messages */
+/* Warning */
+[data-testid="stAlert"][data-baseweb="notification"][kind="warning"],
 .stWarning {
-    background-color: #fef3c7 !important;
-    color: #92400e !important;
+    background-color: rgba(245, 158, 11, 0.15) !important;
+    color: #fbbf24 !important;
     border-left: 4px solid #f59e0b !important;
     border-radius: 0.5rem !important;
 }
 
-/* Info messages */
+/* Info */
+[data-testid="stAlert"][data-baseweb="notification"][kind="info"],
 .stInfo {
-    background-color: #dbeafe !important;
-    color: #1e40af !important;
+    background-color: rgba(59, 130, 246, 0.15) !important;
+    color: #60a5fa !important;
     border-left: 4px solid #3b82f6 !important;
     border-radius: 0.5rem !important;
+}
+
+/* ============================================================================
+ * JSON VIEWER
+ * ============================================================================ */
+
+[data-testid="stJson"] {
+    background-color: #0f172a !important;
+    border: 1px solid #334155 !important;
+    border-radius: 0.5rem !important;
+}
+
+/* ============================================================================
+ * DIVIDERS
+ * ============================================================================ */
+
+hr, [data-testid="stDivider"] {
+    border-color: #334155 !important;
+}
+
+/* ============================================================================
+ * RADIO BUTTONS AND CHECKBOXES
+ * ============================================================================ */
+
+[data-testid="stRadio"] label,
+[data-testid="stCheckbox"] label {
+    color: #e2e8f0 !important;
+}
+
+/* ============================================================================
+ * SELECTBOX DROPDOWN
+ * ============================================================================ */
+
+[data-baseweb="select"] {
+    background-color: #1e293b !important;
+}
+
+[data-baseweb="popover"] {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+}
+
+[data-baseweb="menu"] {
+    background-color: #1e293b !important;
+}
+
+[data-baseweb="menu"] li {
+    background-color: #1e293b !important;
+    color: #e2e8f0 !important;
+}
+
+[data-baseweb="menu"] li:hover {
+    background-color: #334155 !important;
+}
+
+/* ============================================================================
+ * TABS
+ * ============================================================================ */
+
+[data-baseweb="tab-list"] {
+    background-color: transparent !important;
+}
+
+[data-baseweb="tab"] {
+    color: #94a3b8 !important;
+}
+
+[data-baseweb="tab"][aria-selected="true"] {
+    color: #f1f5f9 !important;
+    border-bottom-color: #667eea !important;
+}
+
+/* ============================================================================
+ * SCROLLBAR - DARK THEME
+ * ============================================================================ */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
 }
 
 /* ============================================================================
@@ -203,26 +372,4 @@ h1 {
 
 .stContainer {
     animation: fadeIn 0.3s ease-out;
-}
-
-/* ============================================================================
- * CUSTOM SCROLLBAR
- * ============================================================================ */
-
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: #f1f5f9;
-}
-
-::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
 }

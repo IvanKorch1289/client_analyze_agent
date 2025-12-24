@@ -21,11 +21,20 @@ app:
 
 security:
   cors_enabled: true
+  cors_origins:
+    - "*"
+  cors_methods:
+    - "*"
+  cors_headers:
+    - "*"
+  cors_credentials: false
   rate_limit_enabled: true
   rate_limit_storage: "memory://"
-  enable_security_headers: true
-  hsts_enabled: false  # Выключено для dev
+  enable_security_headers: false
+  hsts_enabled: false
   encryption_enabled: false
+  trusted_hosts:
+    - "*"
 
 scheduler:
   enabled: true
