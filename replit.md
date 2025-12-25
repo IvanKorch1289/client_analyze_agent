@@ -126,3 +126,18 @@ app/
 - **Messaging**: faststream[rabbit]
 - **PDF**: WeasyPrint
 - **Observability**: opentelemetry, slowapi (rate limiting)
+
+## Recent Changes
+
+**25 декабря 2025:**
+- Создан комплексный отчёт анализа `ANALYSIS_REPORT.md` (оценка 8.5/10)
+- Создан план повышения готовности к production `PRODUCTION_READINESS_PLAN.md` (85% → 95%)
+- Исправлен дублирующий импорт в `app/api/routes/utility.py`
+
+## Production Readiness
+
+**Текущий уровень:** 85% (8.5/10)  
+**Целевой уровень:** 95% (9.5/10)  
+**План:** 3-недельный спринт (Backend → QA → SRE)
+
+Подробности в `PRODUCTION_READINESS_PLAN.md`
