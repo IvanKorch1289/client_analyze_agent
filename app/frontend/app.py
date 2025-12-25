@@ -46,18 +46,19 @@ def _load_css() -> None:
 def _render_logo() -> None:
     """
     Render logo in top-right corner of the page.
-    
+
     To change the logo:
       - Replace app/frontend/assets/logo.png with your image
       - Adjust height in the CSS below (currently 50px)
       - Adjust top/right position if needed
     """
     import base64
+
     logo_path = Path(__file__).resolve().parent / "assets" / "logo.png"
-    
+
     if not logo_path.exists():
         return
-    
+
     try:
         logo_b64 = base64.b64encode(logo_path.read_bytes()).decode()
         st.markdown(
@@ -92,9 +93,9 @@ def _apply_admin_token(token: str) -> None:
     token = (token or "").strip()
 
     st.session_state["admin_token"] = token
-    
+
     if expected:
-        st.session_state["is_admin"] = (token == expected)
+        st.session_state["is_admin"] = token == expected
     else:
         is_dev = os.getenv("APP_ENV", "development").lower() in ("dev", "development")
         st.session_state["is_admin"] = bool(is_dev and token)

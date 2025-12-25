@@ -265,7 +265,7 @@ class YandexGPTAPISettings(BaseSettingsWithLoader):
 class JayGuardAPISettings(BaseSettingsWithLoader):
     """
     Настройки Jay Guard Proxy.
-    
+
     Jay Guard - прокси для LLM запросов с защитой данных (PII маскирование).
     Все запросы к LLM проходят через Jay Guard для фильтрации и анонимизации.
     """

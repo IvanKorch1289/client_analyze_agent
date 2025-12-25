@@ -372,6 +372,7 @@ class SchedulerService:
             tasks.append(("infosphere", fetch_from_infosphere(inn)))
 
         if "perplexity" in sources and search_query:
+
             async def fetch_perplexity():
                 client = PerplexityClient.get_instance()
                 if client.is_configured():
@@ -380,9 +381,11 @@ class SchedulerService:
                         search_recency_filter=perplexity_recency,
                     )
                 return {"success": False, "error": "Perplexity not configured"}
+
             tasks.append(("perplexity", fetch_perplexity()))
 
         if "tavily" in sources and search_query:
+
             async def fetch_tavily():
                 client = TavilyClient.get_instance()
                 if client.is_configured():
@@ -393,6 +396,7 @@ class SchedulerService:
                         include_answer=tavily_include_answer,
                     )
                 return {"success": False, "error": "Tavily not configured"}
+
             tasks.append(("tavily", fetch_tavily()))
 
         if tasks:

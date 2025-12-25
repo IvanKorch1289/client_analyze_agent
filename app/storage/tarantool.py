@@ -737,21 +737,21 @@ class TarantoolClient:
     async def get_all_persistent_keys(self, prefix: Optional[str] = None) -> List[str]:
         """
         Получает список всех ключей из persistent storage.
-        
+
         Args:
             prefix: Опциональный префикс для фильтрации ключей (например, 'dlq:')
-            
+
         Returns:
             Список ключей
         """
         await self._ensure_connection()
-        
+
         if self._use_memory:
             keys = list(_memory_persistent.keys())
             if prefix:
                 keys = [k for k in keys if k.startswith(prefix)]
             return keys
-        
+
         def do_list_keys():
             try:
                 result = self._connection.select("persistent", limit=10000)
@@ -762,7 +762,7 @@ class TarantoolClient:
             except Exception as e:
                 logger.error(f"Failed to list persistent keys: {e}", component="tarantool")
                 return []
-        
+
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(_executor, do_list_keys)
 

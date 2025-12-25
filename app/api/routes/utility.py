@@ -887,40 +887,44 @@ async def check_queue_health() -> Dict[str, Any]:
 async def get_dlq_stats(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """
     P1-2: Получить статистику Dead Letter Queue из Tarantool.
-    
+
     Возвращает количество failed messages и последние 10 ошибок.
     Требуется роль администратора.
     """
     try:
         tarantool = await TarantoolClient.get_instance()
-        
+
         analysis_failures = []
         cache_failures = []
-        
+
         if tarantool.is_connected:
             all_keys = await tarantool.get_all_persistent_keys()
-            
+
             for key in all_keys:
                 if key.startswith("dlq:analysis:"):
                     value = await tarantool.get_persistent(key)
                     if value:
-                        analysis_failures.append({
-                            "key": key,
-                            "timestamp": value.get("timestamp"),
-                            "message": value.get("message", {}),
-                        })
+                        analysis_failures.append(
+                            {
+                                "key": key,
+                                "timestamp": value.get("timestamp"),
+                                "message": value.get("message", {}),
+                            }
+                        )
                 elif key.startswith("dlq:cache:"):
                     value = await tarantool.get_persistent(key)
                     if value:
-                        cache_failures.append({
-                            "key": key,
-                            "timestamp": value.get("timestamp"),
-                            "message": value.get("message", {}),
-                        })
-        
+                        cache_failures.append(
+                            {
+                                "key": key,
+                                "timestamp": value.get("timestamp"),
+                                "message": value.get("message", {}),
+                            }
+                        )
+
         analysis_failures.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
         cache_failures.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
-        
+
         return {
             "status": "success",
             "analysis_dlq": {

@@ -268,7 +268,7 @@ class AsyncHttpClient:
                     connect=AppTimeoutConfig.DADATA_CONNECT,
                     read=AppTimeoutConfig.DADATA_READ,
                     write=AppTimeoutConfig.DADATA_WRITE,
-                    pool=5.0
+                    pool=5.0,
                 ),
                 "retry": RetryConfig(max_attempts=2, min_wait=0.5, max_wait=5.0),
                 "circuit_breaker": CircuitBreakerConfig(failure_threshold=3, success_threshold=1, timeout=30.0),
@@ -278,7 +278,7 @@ class AsyncHttpClient:
                     connect=AppTimeoutConfig.INFOSPHERE_CONNECT,
                     read=AppTimeoutConfig.INFOSPHERE_READ,  # ✅ 360s (6 минут)
                     write=AppTimeoutConfig.INFOSPHERE_WRITE,
-                    pool=5.0
+                    pool=5.0,
                 ),
                 "retry": RetryConfig(max_attempts=2, min_wait=0.5, max_wait=5.0),
                 # P0-1: Circuit breaker timeout увеличен для длительных запросов
@@ -289,7 +289,7 @@ class AsyncHttpClient:
                     connect=AppTimeoutConfig.CASEBOOK_CONNECT,
                     read=AppTimeoutConfig.CASEBOOK_READ,  # ✅ 360s (6 минут)
                     write=AppTimeoutConfig.CASEBOOK_WRITE,
-                    pool=5.0
+                    pool=5.0,
                 ),
                 "retry": RetryConfig(max_attempts=2, min_wait=0.5, max_wait=5.0),
                 # P0-1: Circuit breaker timeout увеличен для длительных запросов
@@ -505,7 +505,7 @@ class AsyncHttpClient:
     ) -> List[Any]:
         """
         Fetch all pages with pagination support and protection against infinite loops.
-        
+
         P0-4: Добавлена защита от бесконечной пагинации через MAX_PAGES_LIMIT.
         """
         if not self._client:
@@ -544,7 +544,7 @@ class AsyncHttpClient:
                     component="http_client",
                 )
                 break
-            
+
             # P0-4: Защита #2 - обнаружение циклов (та же страница дважды)
             if current_page in seen_pages:
                 logger.warning(

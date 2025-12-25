@@ -129,7 +129,13 @@ def _render_web_search_section(api: ApiClient) -> None:
             index=0,
             key="tavily_depth",
         )
-    max_results = st.slider("Tavily: максимум результатов", min_value=1, max_value=10, value=5, key="tavily_max_results")
+    max_results = st.slider(
+        "Tavily: максимум результатов",
+        min_value=1,
+        max_value=10,
+        value=5,
+        key="tavily_max_results",
+    )
     include_answer = st.checkbox("Tavily: включить краткий ответ", value=True, key="tavily_include_answer")
 
     btn_search = st.button("Искать", type="primary", key="btn_web_search")
@@ -238,7 +244,11 @@ def _render_search_results(outputs: Dict[str, Any]) -> None:
 
 
 def _render_scheduled_section(api: ApiClient) -> None:
-    section_header("Отложенный сбор данных", emoji="⏰", help_text="Запланировать сбор данных на будущее")
+    section_header(
+        "Отложенный сбор данных",
+        emoji="⏰",
+        help_text="Запланировать сбор данных на будущее",
+    )
 
     scheduled_inn = st.text_input("ИНН", placeholder="7707083893", max_chars=12, key="scheduled_inn")
 
@@ -258,7 +268,10 @@ def _render_scheduled_section(api: ApiClient) -> None:
     schedule_type = st.radio(
         "Когда выполнить:",
         options=["delay", "datetime"],
-        format_func=lambda x: {"delay": "Через N минут", "datetime": "В конкретное время"}[x],
+        format_func=lambda x: {
+            "delay": "Через N минут",
+            "datetime": "В конкретное время",
+        }[x],
         horizontal=True,
         key="schedule_type",
     )
@@ -304,7 +317,11 @@ def _render_scheduled_section(api: ApiClient) -> None:
             sch_perplexity_recency = st.selectbox(
                 "Perplexity: актуальность",
                 options=["day", "week", "month"],
-                format_func=lambda x: {"day": "День", "week": "Неделя", "month": "Месяц"}[x],
+                format_func=lambda x: {
+                    "day": "День",
+                    "week": "Неделя",
+                    "month": "Месяц",
+                }[x],
                 index=2,
                 key="sch_perplexity_recency",
             )
@@ -314,13 +331,18 @@ def _render_scheduled_section(api: ApiClient) -> None:
                 sch_tavily_depth = st.selectbox(
                     "Tavily: глубина",
                     options=["basic", "advanced"],
-                    format_func=lambda x: {"basic": "Базовая", "advanced": "Расширенная"}[x],
+                    format_func=lambda x: {
+                        "basic": "Базовая",
+                        "advanced": "Расширенная",
+                    }[x],
                     index=0,
                     key="sch_tavily_depth",
                 )
             with col_tm:
                 sch_tavily_max_results = st.slider("Tavily: макс. результатов", 1, 10, 5, key="sch_tavily_max_results")
-            sch_tavily_include_answer = st.checkbox("Tavily: краткий ответ", value=True, key="sch_tavily_include_answer")
+            sch_tavily_include_answer = st.checkbox(
+                "Tavily: краткий ответ", value=True, key="sch_tavily_include_answer"
+            )
 
     btn_schedule = st.button("Запланировать", type="primary", key="btn_schedule")
 

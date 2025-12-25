@@ -189,11 +189,11 @@ async def _stream_client_analysis(client_name: str, inn: str, additional_notes: 
 
     generator = None
     current_task = asyncio.current_task()
-    
+
     # P2: Регистрируем текущую задачу для возможности отмены
     if current_task:
         _register_task(session_id, current_task)
-    
+
     try:
         generator = run_client_analysis_streaming(
             client_name=client_name,
@@ -274,30 +274,30 @@ async def list_threads(request: Request) -> Dict[str, Any]:
 async def cancel_analysis(request: Request, session_id: str) -> Dict[str, Any]:
     """
     Отменить запущенный анализ по session_id.
-    
+
     P2: Реализация поддержки отмены долгих задач анализа.
-    
+
     Returns:
         Статус отмены задачи
     """
     task = _get_running_task(session_id)
-    
+
     if task is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Анализ с session_id '{session_id}' не найден или уже завершён"
+            detail=f"Анализ с session_id '{session_id}' не найден или уже завершён",
         )
-    
+
     if task.done():
         _unregister_task(session_id)
         return {
             "status": "already_completed",
             "session_id": session_id,
-            "message": "Анализ уже завершён"
+            "message": "Анализ уже завершён",
         }
-    
+
     task.cancel()
-    
+
     try:
         await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
     except asyncio.CancelledError:
@@ -308,13 +308,13 @@ async def cancel_analysis(request: Request, session_id: str) -> Dict[str, Any]:
         logger.error(f"Error during task cancellation: {e}", component="agent_api")
     finally:
         _unregister_task(session_id)
-    
+
     logger.info(f"Analysis cancelled: {session_id}", component="agent_api")
-    
+
     return {
         "status": "cancelled",
         "session_id": session_id,
-        "message": "Анализ успешно отменён"
+        "message": "Анализ успешно отменён",
     }
 
 
@@ -322,25 +322,27 @@ async def cancel_analysis(request: Request, session_id: str) -> Dict[str, Any]:
 async def list_running_analyses(request: Request) -> Dict[str, Any]:
     """
     Получить список запущенных анализов.
-    
+
     P2: Мониторинг активных задач для возможности их отмены.
-    
+
     Returns:
         Список активных анализов с их session_id
     """
     running = []
     completed = []
-    
+
     for session_id, task in list(_running_tasks.items()):
         if task.done():
             completed.append(session_id)
             _unregister_task(session_id)
         else:
-            running.append({
-                "session_id": session_id,
-                "status": "running",
-            })
-    
+            running.append(
+                {
+                    "session_id": session_id,
+                    "status": "running",
+                }
+            )
+
     return {
         "running_count": len(running),
         "running_analyses": running,
@@ -353,19 +355,19 @@ async def list_running_analyses(request: Request) -> Dict[str, Any]:
 async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, Any]:
     """
     Отправить фидбек по отчёту и перезапустить анализ с учётом комментариев.
-    
+
     Если LLM игнорирует данные или формирует некорректный отчёт,
     пользователь может отправить фидбек с указанием проблем.
     Система перезапустит анализ с дополнительными инструкциями.
-    
+
     Args:
         data: Данные фидбека (report_id, rating, comment, focus_areas)
-        
+
     Returns:
         Результат переанализа или подтверждение сохранения фидбека
     """
     from app.storage.tarantool import TarantoolClient
-    
+
     logger.structured(
         "info",
         "feedback_received",
@@ -374,20 +376,20 @@ async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, 
         rating=data.rating,
         rerun_analysis=data.rerun_analysis,
     )
-    
+
     tarantool = await TarantoolClient.get_instance()
     reports_repo = tarantool.get_reports_repository()
     original_report = await reports_repo.get(data.report_id)
-    
+
     if not original_report:
         raise HTTPException(status_code=404, detail=f"Отчёт {data.report_id} не найден")
-    
+
     client_name = original_report.get("client_name", "")
     inn = original_report.get("inn", "")
     original_notes = (original_report.get("report_data") or {}).get("metadata", {}).get("additional_notes", "")
-    
+
     feedback_instructions = _build_feedback_instructions(data, original_report)
-    
+
     feedback_record = {
         "report_id": data.report_id,
         "rating": data.rating,
@@ -395,16 +397,16 @@ async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, 
         "focus_areas": data.focus_areas,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    
+
     if not data.rerun_analysis:
         return {
             "status": "feedback_saved",
             "message": "Фидбек сохранён. Переанализ не запрошен.",
             "feedback": feedback_record,
         }
-    
+
     combined_notes = f"{original_notes}\n\n{feedback_instructions}" if original_notes else feedback_instructions
-    
+
     try:
         result = await execute_client_analysis(
             client_name=client_name,
@@ -412,7 +414,7 @@ async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, 
             additional_notes=combined_notes,
             save_report=True,
         )
-        
+
         logger.structured(
             "info",
             "feedback_reanalysis_complete",
@@ -420,7 +422,7 @@ async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, 
             original_report_id=data.report_id,
             new_session_id=result.get("session_id"),
         )
-        
+
         return {
             "status": "reanalysis_complete",
             "message": "Переанализ выполнен с учётом вашего фидбека",
@@ -429,25 +431,22 @@ async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, 
             "feedback": feedback_record,
             "result": result,
         }
-        
+
     except Exception as e:
         logger.error(f"Feedback reanalysis error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка при переанализе: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Ошибка при переанализе: {str(e)}") from e
 
 
 def _build_feedback_instructions(data: FeedbackRequest, original_report: Dict[str, Any]) -> str:
     """
     Сформировать инструкции для LLM на основе фидбека пользователя.
-    
+
     Включает:
     - Системный промпт по переанализу
     - Фидбек пользователя (рейтинг, комментарий, области внимания)
     - Контекст предыдущего отчёта
     """
-    
+
     instructions = [
         "=" * 60,
         "[СИСТЕМНЫЙ ПРОМПТ: РЕЖИМ ПЕРЕАНАЛИЗА С УЧЁТОМ ФИДБЕКА]",
@@ -457,7 +456,7 @@ def _build_feedback_instructions(data: FeedbackRequest, original_report: Dict[st
         "Ты ОБЯЗАН учесть все замечания и исправить выявленные ошибки.",
         "",
     ]
-    
+
     rating_messages = {
         "accurate": "Пользователь оценил предыдущий анализ как ТОЧНЫЙ, но просит переанализ.",
         "partially_accurate": "Пользователь оценил предыдущий анализ как ЧАСТИЧНО ТОЧНЫЙ. Требуется существенная доработка.",
@@ -465,7 +464,7 @@ def _build_feedback_instructions(data: FeedbackRequest, original_report: Dict[st
     }
     instructions.append(f"ОЦЕНКА: {rating_messages.get(data.rating, '')}")
     instructions.append("")
-    
+
     if data.comment:
         instructions.append("-" * 40)
         instructions.append("КОММЕНТАРИЙ ПОЛЬЗОВАТЕЛЯ (КРИТИЧЕСКИ ВАЖНО):")
@@ -474,7 +473,7 @@ def _build_feedback_instructions(data: FeedbackRequest, original_report: Dict[st
         instructions.append("")
         instructions.append("ИНСТРУКЦИЯ: ВНИМАТЕЛЬНО изучи комментарий выше и учти ВСЕ замечания!")
         instructions.append("")
-    
+
     if data.focus_areas:
         areas_str = ", ".join(data.focus_areas)
         instructions.append("-" * 40)
@@ -482,14 +481,14 @@ def _build_feedback_instructions(data: FeedbackRequest, original_report: Dict[st
         instructions.append("-" * 40)
         instructions.append("ИНСТРУКЦИЯ: Эти области должны быть ДЕТАЛЬНО проанализированы и отражены в отчёте.")
         instructions.append("")
-    
+
     # Добавляем контекст предыдущего отчёта
     previous_risk = original_report.get("risk_score", 0)
     previous_level = original_report.get("risk_level", "unknown")
     report_data = original_report.get("report_data", {})
     previous_summary = report_data.get("summary", "")
     previous_findings = report_data.get("findings", [])
-    
+
     instructions.append("-" * 40)
     instructions.append("ПРЕДЫДУЩИЙ РЕЗУЛЬТАТ (для сравнения):")
     instructions.append("-" * 40)
@@ -499,7 +498,7 @@ def _build_feedback_instructions(data: FeedbackRequest, original_report: Dict[st
     if previous_findings:
         instructions.append(f"Ключевые находки: {', '.join(str(f)[:100] for f in previous_findings[:3])}")
     instructions.append("")
-    
+
     if data.rating in ("partially_accurate", "inaccurate"):
         instructions.append("=" * 60)
         instructions.append("ОБЯЗАТЕЛЬНЫЕ ТРЕБОВАНИЯ К ПЕРЕАНАЛИЗУ:")
@@ -510,5 +509,5 @@ def _build_feedback_instructions(data: FeedbackRequest, original_report: Dict[st
         instructions.append("4. Если данные противоречивы - укажи это ЯВНО")
         instructions.append("5. Сравни новые выводы с предыдущими и объясни различия")
         instructions.append("")
-    
+
     return "\n".join(instructions)

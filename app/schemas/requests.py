@@ -40,9 +40,7 @@ class ScheduleDataFetchRequest(BaseModel):
         ...,
         description="Источники данных: dadata, casebook, infosphere, perplexity, tavily",
     )
-    search_query: Optional[str] = Field(
-        None, description="Поисковый запрос (обязателен для perplexity/tavily)"
-    )
+    search_query: Optional[str] = Field(None, description="Поисковый запрос (обязателен для perplexity/tavily)")
 
     perplexity_recency: str = Field(default="month", description="Perplexity: фильтр актуальности (day/week/month)")
     tavily_depth: str = Field(default="basic", description="Tavily: глубина поиска (basic/advanced)")

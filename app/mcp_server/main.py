@@ -320,7 +320,7 @@ from app.mcp_server.resources.best_practices import (
 async def best_practices_resource() -> str:
     """
     P0-3.5: Централизованные best practices для анализа.
-    
+
     Содержит:
     - Обязательные проверки (ЕГРЮЛ, арбитраж, финансы)
     - Оценка рисков (формулы, пороги)
@@ -340,7 +340,7 @@ async def best_practices_resource() -> str:
 async def api_examples_resource() -> str:
     """
     P0-3.5: Примеры использования всех внешних API.
-    
+
     Содержит:
     - Примеры запросов/ответов для каждого API
     - Важные параметры (timeouts, pagination, filters)
@@ -359,11 +359,11 @@ async def api_examples_resource() -> str:
 async def api_specs_resource() -> Dict[str, Any]:
     """
     P0-3.5: Централизованные спецификации всех внешних API.
-    
+
     Используется агентами для понимания структуры данных.
     """
     from app.mcp_server.resources.reference_data import API_SOURCES
-    
+
     return {
         "version": "1.0",
         "updated": "2025-12-24",
@@ -429,14 +429,8 @@ def system_prompt_orchestrator():
     """Системный промпт для оркестратора анализа."""
     content = get_system_prompt(AnalyzerRole.ORCHESTRATOR)
     metadata = get_prompt_metadata(AnalyzerRole.ORCHESTRATOR)
-    
-    return [
-        Message(
-            f"РОЛЬ: Оркестратор анализа рисков\n"
-            f"ВЕРСИЯ: {metadata['version']}\n\n"
-            f"{content}"
-        )
-    ]
+
+    return [Message(f"РОЛЬ: Оркестратор анализа рисков\nВЕРСИЯ: {metadata['version']}\n\n{content}")]
 
 
 @mcp.prompt(
@@ -449,14 +443,8 @@ def system_prompt_report_analyzer():
     """Системный промпт для анализатора отчётов."""
     content = get_system_prompt(AnalyzerRole.REPORT_ANALYZER)
     metadata = get_prompt_metadata(AnalyzerRole.REPORT_ANALYZER)
-    
-    return [
-        Message(
-            f"РОЛЬ: Эксперт по комплаенсу и оценке рисков\n"
-            f"ВЕРСИЯ: {metadata['version']}\n\n"
-            f"{content}"
-        )
-    ]
+
+    return [Message(f"РОЛЬ: Эксперт по комплаенсу и оценке рисков\nВЕРСИЯ: {metadata['version']}\n\n{content}")]
 
 
 @mcp.prompt(
@@ -469,13 +457,9 @@ def system_prompt_registry_analyzer():
     """Системный промпт для анализатора реестровых данных."""
     content = get_system_prompt(AnalyzerRole.REGISTRY_ANALYZER)
     metadata = get_prompt_metadata(AnalyzerRole.REGISTRY_ANALYZER)
-    
+
     return [
-        Message(
-            f"РОЛЬ: Эксперт по анализу официальных реестровых данных\n"
-            f"ВЕРСИЯ: {metadata['version']}\n\n"
-            f"{content}"
-        )
+        Message(f"РОЛЬ: Эксперт по анализу официальных реестровых данных\nВЕРСИЯ: {metadata['version']}\n\n{content}")
     ]
 
 
@@ -489,13 +473,9 @@ def system_prompt_web_analyzer():
     """Системный промпт для веб-аналитика."""
     content = get_system_prompt(AnalyzerRole.WEB_ANALYZER)
     metadata = get_prompt_metadata(AnalyzerRole.WEB_ANALYZER)
-    
+
     return [
-        Message(
-            f"РОЛЬ: Специалист по анализу веб-разведки и репутации\n"
-            f"ВЕРСИЯ: {metadata['version']}\n\n"
-            f"{content}"
-        )
+        Message(f"РОЛЬ: Специалист по анализу веб-разведки и репутации\nВЕРСИЯ: {metadata['version']}\n\n{content}")
     ]
 
 
@@ -509,14 +489,8 @@ def system_prompt_risk_assessor():
     """Системный промпт для оценщика рисков."""
     content = get_system_prompt(AnalyzerRole.RISK_ASSESSOR)
     metadata = get_prompt_metadata(AnalyzerRole.RISK_ASSESSOR)
-    
-    return [
-        Message(
-            f"РОЛЬ: Эксперт по оценке рисков контрагентов\n"
-            f"ВЕРСИЯ: {metadata['version']}\n\n"
-            f"{content}"
-        )
-    ]
+
+    return [Message(f"РОЛЬ: Эксперт по оценке рисков контрагентов\nВЕРСИЯ: {metadata['version']}\n\n{content}")]
 
 
 def main() -> None:

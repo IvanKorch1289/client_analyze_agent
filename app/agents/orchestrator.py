@@ -90,7 +90,7 @@ async def orchestrator_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         try:
             logger.info(f"Orchestrator: fetching DaData for INN {inn}", component="orchestrator")
             dadata_result = await fetch_from_dadata(inn)
-            
+
             # P0-5: Улучшенная обработка ответа DaData
             if dadata_result and "error" not in dadata_result:
                 if "data" in dadata_result and dadata_result["data"]:

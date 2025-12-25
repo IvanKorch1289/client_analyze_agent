@@ -98,27 +98,27 @@ async def _cascade_perplexity_analysis(
 ) -> Dict[str, Any]:
     """
     P2-1: CASCADE АНАЛИЗ - повторный Perplexity с учётом Tavily данных.
-    
-    Описание из проекта: "после вызова Tavily и получения ссылок на сайты 
-    запускать повторно Perplexity и анализировать предыдущую информацию 
+
+    Описание из проекта: "после вызова Tavily и получения ссылок на сайты
+    запускать повторно Perplexity и анализировать предыдущую информацию
     Perplexity + найденные данные Tavily"
     """
     from app.services.perplexity_client import PerplexityClient
-    
+
     client = PerplexityClient.get_instance()
     if not client.is_configured():
         return {"success": False, "error": "Not configured"}
-    
+
     urls = [t["url"] for t in tavily_full_texts if t.get("full_content")]
     if not urls:
         return {"success": False, "error": "No Tavily URLs"}
-    
+
     # Собираем факты из первичного Perplexity
     initial_facts = []
     for result in initial_perplexity_results[:3]:
         if result.get("success") and result.get("content"):
             initial_facts.append(result["content"][:500])
-    
+
     question = f"""Углублённый анализ компании {client_name} (ИНН: {inn}).
 
 ПЕРВИЧНЫЕ НАХОДКИ Perplexity:
@@ -128,7 +128,7 @@ async def _cascade_perplexity_analysis(
 {chr(10).join(f"- {url}" for url in urls[:5])}
 
 Проанализируй источники, сопоставь с первичными находками, выяви риски."""
-    
+
     try:
         result = await client.ask(
             question=question,
@@ -137,7 +137,7 @@ async def _cascade_perplexity_analysis(
             max_tokens=3000,
             use_cache=True,
         )
-        
+
         return {
             "success": result.get("success", False),
             "content": result.get("content", ""),
@@ -199,7 +199,7 @@ async def _fetch_tavily(intent_id: str, query: str, client_name: str, inn: str =
 async def _fetch_dadata_wrapper(inn: str) -> Dict[str, Any]:
     """
     Обёртка для DaData с обработкой ошибок.
-    
+
     P0-2: DaData - быстрый источник, оставляем wait_for с 30s timeout
     (соответствует таймауту в http_client: DADATA_READ=30s).
     """
@@ -223,7 +223,7 @@ async def _fetch_dadata_wrapper(inn: str) -> Dict[str, Any]:
 async def _fetch_infosphere_wrapper(inn: str) -> Dict[str, Any]:
     """
     Обёртка для InfoSphere с обработкой ошибок.
-    
+
     P0-2: InfoSphere - многостраничный источник, требует до 6 минут.
     Убран asyncio.wait_for - таймаут обрабатывается в http_client (360s).
     """
@@ -234,13 +234,10 @@ async def _fetch_infosphere_wrapper(inn: str) -> Dict[str, Any]:
         # P0-2: УБРАН wait_for - таймаут теперь в http_client (INFOSPHERE_READ=360s)
         logger.info(
             f"InfoSphere: starting long fetch for INN {inn} (may take up to 6 min)",
-            component="data_collector"
+            component="data_collector",
         )
         result = await fetch_from_infosphere(inn)
-        logger.info(
-            f"InfoSphere: fetch completed for INN {inn}",
-            component="data_collector"
-        )
+        logger.info(f"InfoSphere: fetch completed for INN {inn}", component="data_collector")
         return {
             "source": "infosphere",
             "success": "error" not in result,
@@ -248,17 +245,14 @@ async def _fetch_infosphere_wrapper(inn: str) -> Dict[str, Any]:
             "error": result.get("error"),
         }
     except Exception as e:
-        logger.error(
-            f"InfoSphere: fetch failed for INN {inn}: {e}",
-            component="data_collector"
-        )
+        logger.error(f"InfoSphere: fetch failed for INN {inn}: {e}", component="data_collector")
         return {"source": "infosphere", "success": False, "error": str(e)}
 
 
 async def _fetch_casebook_wrapper(inn: str) -> Dict[str, Any]:
     """
     Обёртка для Casebook с обработкой ошибок.
-    
+
     P0-2: Casebook - многостраничный источник (100+ страниц арбитражных дел).
     Требует до 6 минут для вычитывания всех страниц.
     Убран asyncio.wait_for - таймаут обрабатывается в http_client (360s).
@@ -271,17 +265,17 @@ async def _fetch_casebook_wrapper(inn: str) -> Dict[str, Any]:
         # Пагинация обрабатывается автоматически в fetch_all_pages
         logger.info(
             f"Casebook: starting long fetch for INN {inn} (may take up to 6 min, multi-page)",
-            component="data_collector"
+            component="data_collector",
         )
         result = await fetch_from_casebook(inn)
-        
+
         # Логируем количество найденных дел
         cases_count = len(result.get("data", [])) if result.get("data") else 0
         logger.info(
             f"Casebook: fetch completed for INN {inn}, found {cases_count} cases",
-            component="data_collector"
+            component="data_collector",
         )
-        
+
         return {
             "source": "casebook",
             "success": "error" not in result,
@@ -289,10 +283,7 @@ async def _fetch_casebook_wrapper(inn: str) -> Dict[str, Any]:
             "error": result.get("error"),
         }
     except Exception as e:
-        logger.error(
-            f"Casebook: fetch failed for INN {inn}: {e}",
-            component="data_collector"
-        )
+        logger.error(f"Casebook: fetch failed for INN {inn}: {e}", component="data_collector")
         return {"source": "casebook", "success": False, "error": str(e)}
 
 
@@ -464,26 +455,32 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
             for intent_data in perpl_intents.values():
                 if intent_data.get("success"):
                     perplexity_results.append(intent_data)
-            
+
             if perplexity_results:
-                logger.info("Data collector: starting cascade Perplexity analysis", component="data_collector")
-                
+                logger.info(
+                    "Data collector: starting cascade Perplexity analysis",
+                    component="data_collector",
+                )
+
                 cascade_result = await _cascade_perplexity_analysis(
                     client_name=client_name,
                     inn=inn,
                     initial_perplexity_results=perplexity_results,
                     tavily_full_texts=tavily_full_texts,
                 )
-                
+
                 source_data["cascade_perplexity"] = cascade_result
-                
+
                 if cascade_result.get("success"):
                     logger.info(
                         f"Data collector: cascade completed, {len(cascade_result.get('content', ''))} chars",
                         component="data_collector",
                     )
         except Exception as e:
-            logger.error(f"Data collector: cascade analysis error: {e}", component="data_collector")
+            logger.error(
+                f"Data collector: cascade analysis error: {e}",
+                component="data_collector",
+            )
 
     logger.structured(
         "info",

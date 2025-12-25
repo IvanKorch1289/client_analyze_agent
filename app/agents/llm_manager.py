@@ -113,7 +113,7 @@ class LLMManager:
     def _get_openrouter_llm(self) -> Any:
         """
         Получить OpenRouter LLM (primary).
-        
+
         Если включен Jay Guard прокси (JAYGUARD_ENABLED=true), запросы идут через него.
 
         Returns:

@@ -51,7 +51,7 @@ def get_current_role(
 
     admin_token = get_admin_token()
     token = x_auth_token.strip()
-    
+
     if admin_token:
         if token == admin_token.strip():
             return Role.ADMIN

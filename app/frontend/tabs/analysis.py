@@ -11,7 +11,6 @@ import streamlit as st
 from app.frontend.api_client import ApiClient
 from app.frontend.lib.formatters import format_ts, get_risk_emoji
 from app.frontend.lib.ui import (
-    progress_with_status,
     render_metric_cards,
     safe_api_call,
     section_header,
@@ -108,48 +107,49 @@ def _render_run_analysis_now(api: ApiClient) -> None:
 def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None:
     """Run analysis with progress indicator and status updates."""
     progress_container = st.empty()
-    status_container = st.empty()
     time_container = st.empty()
-    
+
     start_time = time.time()
     estimated_remaining = ESTIMATED_ANALYSIS_SECONDS
-    
+
     progress_container.progress(0.05, text="🚀 Запуск анализа...")
     time_container.caption(f"⏱️ Примерное время: ~{ESTIMATED_ANALYSIS_SECONDS} сек")
-    
-    result_container = st.empty()
+
     result = None
     error_occurred = False
-    
+
     try:
         with safe_api_call("Запуск анализа клиента", show_error=False, log_error=True):
             import threading
-            result_holder: Dict[str, Any] = {"result": None, "error": None, "done": False}
-            
+
+            result_holder: Dict[str, Any] = {
+                "result": None,
+                "error": None,
+                "done": False,
+            }
+
             def api_call():
                 try:
-                    result_holder["result"] = api.post(
-                        "/agent/analyze-client", json=payload, admin_token=_get_token()
-                    )
+                    result_holder["result"] = api.post("/agent/analyze-client", json=payload, admin_token=_get_token())
                 except Exception as e:
                     result_holder["error"] = str(e)
                 finally:
                     result_holder["done"] = True
-            
+
             thread = threading.Thread(target=api_call, daemon=True)
             thread.start()
-            
+
             step_idx = 0
             while not result_holder["done"]:
                 elapsed = time.time() - start_time
                 progress_fraction = min(0.9, elapsed / ESTIMATED_ANALYSIS_SECONDS)
-                
+
                 while step_idx < len(ANALYSIS_STEPS) - 1 and progress_fraction >= ANALYSIS_STEPS[step_idx + 1][1]:
                     step_idx += 1
-                
+
                 step_name, _ = ANALYSIS_STEPS[step_idx]
                 progress_container.progress(progress_fraction, text=step_name)
-                
+
                 estimated_remaining = max(0, ESTIMATED_ANALYSIS_SECONDS - int(elapsed))
                 if estimated_remaining >= 60:
                     minutes = estimated_remaining // 60
@@ -160,14 +160,14 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
                 else:
                     time_text = "завершается..."
                 time_container.caption(f"⏱️ Примерное время: {time_text}")
-                
+
                 time.sleep(0.5)
-            
+
             thread.join(timeout=1)
-            
+
             if result_holder["error"]:
                 raise Exception(result_holder["error"])
-            
+
             result = result_holder["result"]
     except Exception as e:
         error_occurred = True
@@ -176,11 +176,11 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
         time_container.empty()
         st.error(f"❌ Ошибка при выполнении анализа: {str(e)}")
         st.info("💡 Попробуйте повторить запрос или обратитесь к администратору")
-    
+
     if not error_occurred:
         progress_container.progress(1.0, text="✅ Анализ завершён!")
         time_container.empty()
-        
+
         if result is not None:
             st.session_state["last_analysis_result"] = result
         else:
@@ -189,7 +189,7 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
 
 def _render_schedule_analysis(api: ApiClient) -> None:
     section_header("Запланировать анализ", emoji="⏰")
-    
+
     when_mode = st.radio(
         "Когда выполнить",
         options=["delay_minutes", "delay_seconds", "run_date"],
@@ -201,7 +201,7 @@ def _render_schedule_analysis(api: ApiClient) -> None:
         horizontal=True,
         key="schedule_when_mode",
     )
-    
+
     with st.form("schedule_analysis"):
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -223,7 +223,10 @@ def _render_schedule_analysis(api: ApiClient) -> None:
             with col_d:
                 d = st.date_input("Дата", value=date.today(), min_value=date.today())
             with col_t:
-                t = st.time_input("Время", value=datetime.now().time().replace(second=0, microsecond=0))
+                t = st.time_input(
+                    "Время",
+                    value=datetime.now().time().replace(second=0, microsecond=0),
+                )
             run_dt = datetime.combine(d, t if isinstance(t, time_type) else time_type(0, 0))
             run_date_iso = run_dt.isoformat()
             if run_dt <= datetime.now():
@@ -234,7 +237,7 @@ def _render_schedule_analysis(api: ApiClient) -> None:
     if schedule:
         name_valid, name_err = validate_client_name(sch_client_name)
         inn_valid, inn_err = validate_inn(sch_inn, required=True)
-        
+
         datetime_valid = True
         if when_mode == "run_date" and run_date_iso:
             scheduled_dt = datetime.fromisoformat(run_date_iso)
@@ -262,7 +265,11 @@ def _render_schedule_analysis(api: ApiClient) -> None:
 
             with st.spinner("Планирую задачу..."):
                 with safe_api_call("Планирование анализа"):
-                    resp = api.post("/scheduler/schedule-analysis", json=payload, admin_token=_get_token())
+                    resp = api.post(
+                        "/scheduler/schedule-analysis",
+                        json=payload,
+                        admin_token=_get_token(),
+                    )
             if resp is not None:
                 st.success("✅ Запланировано")
                 st.write(f"**ID задачи:** `{resp.get('task_id')}`")
@@ -374,25 +381,24 @@ def _handle_pdf_download(
 ) -> None:
     """
     Handle PDF download with error handling, retry option, and JSON fallback.
-    
+
     Args:
         api: ApiClient instance
         report_id: ID of the report to download
         is_retry: Whether this is a retry attempt
         report_data_override: Optional pre-loaded report data
     """
-    retry_key = f"pdf_retry_{report_id}"
+
     error_key = f"pdf_error_{report_id}"
-    
+
     progress_container = st.empty()
     progress_container.progress(0.1, text="📄 Загрузка данных отчёта...")
-    
+
     try:
         if report_data_override:
             report_full = report_data_override
         elif (
-            not st.session_state.get("opened_report")
-            or st.session_state["opened_report"].get("report_id") != report_id
+            not st.session_state.get("opened_report") or st.session_state["opened_report"].get("report_id") != report_id
         ):
             progress_container.progress(0.2, text="📥 Получение данных с сервера...")
             with safe_api_call("Загрузка отчёта для PDF", show_error=False, log_error=True):
@@ -415,7 +421,7 @@ def _handle_pdf_download(
             return
 
         progress_container.progress(0.5, text="🖨️ Генерация PDF...")
-        
+
         report_data = report_full.get("report_data") or {}
         pdf_payload = {
             "client_name": report_full.get("client_name", "") or report_data.get("metadata", {}).get("client_name", ""),
@@ -423,25 +429,25 @@ def _handle_pdf_download(
             "session_id": report_full.get("report_id", "") or None,
             "report_data": report_data,
         }
-        
+
         pdf_resp = None
         pdf_error = None
-        
+
         try:
             pdf_resp = api.post("/utility/reports/pdf", json=pdf_payload, admin_token=_get_token())
         except Exception as e:
             pdf_error = str(e)
             logger.error(f"PDF generation error: {e}")
-        
+
         progress_container.progress(0.9, text="📋 Обработка результата...")
-        
+
         if pdf_resp is not None and isinstance(pdf_resp, dict) and pdf_resp.get("status") == "success":
             download_url = pdf_resp.get("download_url") or ""
             if download_url:
                 progress_container.progress(1.0, text="✅ PDF готов!")
                 time.sleep(0.3)
                 progress_container.empty()
-                
+
                 st.success("✅ PDF отчёт сгенерирован!")
                 st.link_button(
                     "⬇️ Скачать PDF",
@@ -455,18 +461,18 @@ def _handle_pdf_download(
                 _show_pdf_error_actions(api, report_id, "Ссылка на скачивание не получена", report_full)
         else:
             progress_container.empty()
-            
+
             error_detail = "Неизвестная ошибка"
             if pdf_error:
                 error_detail = pdf_error
             elif isinstance(pdf_resp, dict):
                 error_detail = pdf_resp.get("message") or pdf_resp.get("detail") or str(pdf_resp)
-            
+
             st.session_state[error_key] = error_detail
-            
+
             st.error("❌ Ошибка при генерации PDF")
             _show_pdf_error_actions(api, report_id, error_detail, report_full)
-            
+
     except Exception as e:
         progress_container.empty()
         error_msg = f"Непредвиденная ошибка: {str(e)}"
@@ -486,13 +492,17 @@ def _show_pdf_error_actions(
     with st.expander("🔍 Детали ошибки", expanded=False):
         st.code(error_detail, language="text")
         st.caption("Эта информация может быть полезна для технической поддержки")
-    
+
     col_retry, col_json = st.columns(2)
-    
+
     with col_retry:
-        if st.button("🔄 Повторить генерацию PDF", key=f"retry_pdf_{report_id}", use_container_width=True):
+        if st.button(
+            "🔄 Повторить генерацию PDF",
+            key=f"retry_pdf_{report_id}",
+            use_container_width=True,
+        ):
             _handle_pdf_download(api, report_id, is_retry=True, report_data_override=report_full)
-    
+
     with col_json:
         if report_full:
             json_data = json.dumps(report_full, ensure_ascii=False, indent=2)
@@ -506,7 +516,7 @@ def _show_pdf_error_actions(
             )
         else:
             st.info("JSON недоступен — отчёт не загружен")
-    
+
     st.caption("💡 Если проблема повторяется, попробуйте экспортировать в CSV или обратитесь к администратору")
 
 
@@ -574,7 +584,7 @@ def _handle_pdf_download_from_details(
     """Handle PDF download from report details section with enhanced error handling."""
     progress_container = st.empty()
     progress_container.progress(0.2, text="🖨️ Подготовка данных...")
-    
+
     report_data = opened.get("report_data") or {}
     pdf_payload = {
         "client_name": opened.get("client_name", "") or report_data.get("metadata", {}).get("client_name", ""),
@@ -582,28 +592,28 @@ def _handle_pdf_download_from_details(
         "session_id": opened.get("report_id", "") or None,
         "report_data": report_data,
     }
-    
+
     progress_container.progress(0.5, text="🖨️ Генерация PDF отчёта...")
-    
+
     pdf_resp = None
     pdf_error = None
-    
+
     try:
         with safe_api_call("Генерация PDF", show_error=False, log_error=True):
             pdf_resp = api.post("/utility/reports/pdf", json=pdf_payload, admin_token=_get_token())
     except Exception as e:
         pdf_error = str(e)
         logger.error(f"PDF generation error from details: {e}")
-    
+
     progress_container.progress(0.9, text="📋 Обработка...")
-    
+
     if pdf_resp is not None and isinstance(pdf_resp, dict) and pdf_resp.get("status") == "success":
         download_url = pdf_resp.get("download_url") or ""
         if download_url:
             progress_container.progress(1.0, text="✅ PDF готов!")
             time.sleep(0.3)
             progress_container.empty()
-            
+
             st.success("✅ PDF отчёт успешно сгенерирован!")
             st.link_button(
                 "⬇️ Скачать PDF файл",
@@ -617,13 +627,13 @@ def _handle_pdf_download_from_details(
             _show_pdf_error_actions(api, report_id, "Ссылка на скачивание не получена", opened)
     else:
         progress_container.empty()
-        
+
         error_detail = "Неизвестная ошибка при генерации"
         if pdf_error:
             error_detail = pdf_error
         elif isinstance(pdf_resp, dict):
             error_detail = pdf_resp.get("message") or pdf_resp.get("detail") or str(pdf_resp)
-        
+
         st.error("❌ Ошибка при генерации PDF")
         _show_pdf_error_actions(api, report_id, error_detail, opened)
 
@@ -632,7 +642,7 @@ def _render_feedback_section(api: ApiClient, opened: Dict[str, Any], selected_re
     st.subheader("📝 Фидбек и переанализ")
     st.markdown("**Если отчёт некорректен или LLM пропустила данные — отправьте фидбек:**")
     st.caption("Система перезапустит анализ с учётом ваших замечаний")
-    
+
     feedback_rating = st.radio(
         "Оценка качества анализа",
         options=["accurate", "partially_accurate", "inaccurate"],
@@ -645,14 +655,14 @@ def _render_feedback_section(api: ApiClient, opened: Dict[str, Any], selected_re
         key=f"feedback_rating_{selected_report_id}",
         index=1,
     )
-    
+
     feedback_comment = st.text_area(
         "Опишите проблему подробно",
         placeholder="Например: LLM не учла данные о судебных делах, пропущена информация о долгах в ФССП, неверно оценён риск по банкротству...",
         key=f"feedback_comment_{selected_report_id}",
         height=120,
     )
-    
+
     focus_areas_options = [
         "Судебные дела",
         "Финансовое состояние",
@@ -668,13 +678,13 @@ def _render_feedback_section(api: ApiClient, opened: Dict[str, Any], selected_re
         options=focus_areas_options,
         key=f"focus_areas_{selected_report_id}",
     )
-    
+
     rerun_checkbox = st.checkbox(
         "Перезапустить анализ с учётом фидбека",
         value=True,
         key=f"rerun_{selected_report_id}",
     )
-    
+
     col_submit, col_status = st.columns([1, 2])
     with col_submit:
         submit_feedback = st.button(
@@ -683,7 +693,7 @@ def _render_feedback_section(api: ApiClient, opened: Dict[str, Any], selected_re
             key=f"submit_feedback_{selected_report_id}",
             use_container_width=True,
         )
-    
+
     if submit_feedback:
         if feedback_rating in ("partially_accurate", "inaccurate") and not feedback_comment.strip():
             st.error("❌ Пожалуйста, опишите проблему в комментарии для переанализа")
@@ -695,26 +705,30 @@ def _render_feedback_section(api: ApiClient, opened: Dict[str, Any], selected_re
                 "rerun_analysis": rerun_checkbox,
                 "focus_areas": focus_areas if focus_areas else None,
             }
-            
+
             with st.spinner("Отправляю фидбек и запускаю переанализ..." if rerun_checkbox else "Сохраняю фидбек..."):
                 with safe_api_call("Отправка фидбека"):
-                    feedback_result = api.post("/agent/feedback", json=feedback_payload, admin_token=_get_token())
-            
+                    feedback_result = api.post(
+                        "/agent/feedback",
+                        json=feedback_payload,
+                        admin_token=_get_token(),
+                    )
+
             if feedback_result is not None:
                 status = feedback_result.get("status", "")
-                
+
                 if status == "reanalysis_complete":
                     st.success("✅ Переанализ выполнен с учётом вашего фидбека!")
                     new_session = feedback_result.get("new_session_id", "")
                     if new_session:
                         st.info(f"Новый ID сессии: `{new_session}`")
-                    
+
                     if feedback_result.get("result"):
                         st.session_state["last_analysis_result"] = feedback_result["result"]
-                    
+
                     st.balloons()
                     st.rerun()
-                    
+
                 elif status == "feedback_saved":
                     st.success("✅ Фидбек сохранён")
                     st.json(feedback_result.get("feedback", {}))

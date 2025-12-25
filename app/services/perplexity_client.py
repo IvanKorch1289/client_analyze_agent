@@ -190,7 +190,7 @@ class PerplexityClient:
                 else:
                     # Другая ошибка - пробрасываем дальше
                     raise
-            
+
             content = getattr(msg, "content", "") or ""
 
             citations: List[str] = []
