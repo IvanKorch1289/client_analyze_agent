@@ -133,11 +133,31 @@ app/
 - Создан комплексный отчёт анализа `ANALYSIS_REPORT.md` (оценка 8.5/10)
 - Создан план повышения готовности к production `PRODUCTION_READINESS_PLAN.md` (85% → 95%)
 - Исправлен дублирующий импорт в `app/api/routes/utility.py`
+- **Sprint 1 (Backend Hardening) завершён:**
+  - Методы count, list, delete, search в threads_repository и cache_repository
+  - Pydantic response models для health/metrics endpoints
+  - 10 smoke-тестов Tarantool connectivity
+- **Sprint 2 (QA/Testing) завершён:**
+  - 12 интеграционных тестов feedback API (tests/test_feedback_api.py)
+  - 17 интеграционных тестов RabbitMQ/FastStream (tests/test_messaging.py)
+  - 8 E2E тестов полного workflow (tests/test_e2e_workflow.py)
+  - Всего: 37 новых тестов, все проходят
+
+## Test Coverage
+
+| Suite | Tests | Focus |
+|-------|-------|-------|
+| test_tarantool.py | 18 | Repository CRUD, in-memory fallback |
+| test_tarantool_smoke.py | 10 | Connectivity, spaces, engines |
+| test_feedback_api.py | 12 | Validation, rerun, instruction builder |
+| test_messaging.py | 17 | Publisher, broker, DLQ config |
+| test_e2e_workflow.py | 8 | Full INN→Report→Storage cycle |
+| **Total** | **65** | |
 
 ## Production Readiness
 
-**Текущий уровень:** 85% (8.5/10)  
+**Текущий уровень:** 87% (Sprint 1-2 done)  
 **Целевой уровень:** 95% (9.5/10)  
-**План:** 3-недельный спринт (Backend → QA → SRE)
+**План:** 5-спринтовый план (Backend → QA → SRE → Frontend → UX)
 
 Подробности в `PRODUCTION_READINESS_PLAN.md`
