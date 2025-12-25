@@ -312,11 +312,18 @@ class ThreadsRepository(BaseRepository[Dict[str, Any]]):
         """
         Получить общее количество threads.
 
+        Ограничение: максимум 10000 записей для in-memory режима.
+        Для production с Tarantool рекомендуется использовать box.space:len().
+
         Returns:
-            Количество threads в space
+            Количество threads в space (до 10000)
         """
-        # TODO: Implement через Tarantool box.space.threads:len()
-        return 0
+        try:
+            threads = await self.client.list_threads(limit=10000)
+            return len(threads)
+        except Exception as e:
+            logger.error(f"Threads count error: {e}", component="threads_repo")
+            return 0
 
     async def get_stats(self) -> Dict[str, Any]:
         """
@@ -325,12 +332,32 @@ class ThreadsRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Статистика: total, recent, etc.
         """
-        return {
-            "total": await self.count(),
-            "recent_24h": 0,
-            "recent_7d": 0,
-            "recent_30d": 0,
-        }
+        try:
+            threads = await self.client.list_threads(limit=10000)
+            total = len(threads)
+            now = time.time()
+            day_ago = now - 86400
+            week_ago = now - 604800
+            month_ago = now - 2592000
+
+            recent_24h = sum(1 for t in threads if t.get("created_at", 0) >= day_ago)
+            recent_7d = sum(1 for t in threads if t.get("created_at", 0) >= week_ago)
+            recent_30d = sum(1 for t in threads if t.get("created_at", 0) >= month_ago)
+
+            return {
+                "total": total,
+                "recent_24h": recent_24h,
+                "recent_7d": recent_7d,
+                "recent_30d": recent_30d,
+            }
+        except Exception as e:
+            logger.error(f"Threads stats error: {e}", component="threads_repo")
+            return {
+                "total": 0,
+                "recent_24h": 0,
+                "recent_7d": 0,
+                "recent_30d": 0,
+            }
 
 
 __all__ = ["ThreadsRepository"]

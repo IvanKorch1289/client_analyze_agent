@@ -31,7 +31,15 @@ from app.api.response import ok
 from app.config.constants import RATE_LIMIT_ADMIN_PER_MINUTE
 from app.config.reload import get_reload_state, reload_settings
 from app.config.settings import settings
-from app.schemas import AppMetricsResponse, HealthResponse, PDFReportRequest
+from app.schemas import (
+    AppMetricsResponse,
+    HealthComponents,
+    HealthComponentPerplexity,
+    HealthComponentTavily,
+    HealthResponse,
+    HealthServiceInfo,
+    PDFReportRequest,
+)
 from app.services.email_client import EmailClient
 from app.services.http_client import AsyncHttpClient
 from app.services.openrouter_client import get_openrouter_client
@@ -117,27 +125,27 @@ async def health_check(deep: bool = False) -> HealthResponse:
 
     overall_status = "healthy" if not issues else "degraded"
 
-    return {
-        "status": overall_status,
-        "issues": issues if issues else None,
-        "components": {
-            "http_client": http_status,
-            "tarantool": tarantool_status,
-            "openrouter": {
-                "configured": openrouter_configured,
-                "status": openrouter_status,
-                "model": openrouter.model,
-            },
-            "perplexity": {
-                "configured": perplexity.is_configured(),
-                "status": perplexity_status,
-            },
-            "tavily": {
-                "configured": tavily.is_configured(),
-                "status": tavily_status,
-            },
-        },
-    }
+    return HealthResponse(
+        status=overall_status,
+        issues=issues if issues else None,
+        components=HealthComponents(
+            http_client=http_status,
+            tarantool=tarantool_status,
+            openrouter=HealthServiceInfo(
+                configured=openrouter_configured,
+                status=openrouter_status,
+                model=openrouter.model,
+            ),
+            perplexity=HealthComponentPerplexity(
+                configured=perplexity.is_configured(),
+                status=perplexity_status,
+            ),
+            tavily=HealthComponentTavily(
+                configured=tavily.is_configured(),
+                status=tavily_status,
+            ),
+        ),
+    )
 
 
 # =============================================================================
@@ -382,8 +390,8 @@ async def reset_metrics(
 @utility_router.get("/app-metrics")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def get_app_metrics(request: Request, role: str = Depends(require_admin)) -> AppMetricsResponse:
-    """Get in-process application request metrics. Requires admin role."""
-    return {"status": "success", "metrics": app_metrics.snapshot()}
+    """Получить метрики запросов приложения. Требуется роль администратора."""
+    return AppMetricsResponse(status="success", metrics=app_metrics.snapshot())
 
 
 @utility_router.post("/app-metrics/reset")
