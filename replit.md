@@ -54,6 +54,16 @@ User Input → Orchestrator Agent → Data Collector (parallel sources)
 
 5. **Role-Based Access**: Admin/guest roles controlled via `X-Auth-Token` header for protecting administrative endpoints
 
+6. **Tarantool Dual-Engine Storage**: 
+   - `memtx` engine for cache_space (RAM-based with snapshots/WAL for persistence)
+   - `vinyl` engine for reports_space (LSM-backed disk storage with configurable bloom filters and page cache)
+   - Automatic engine selection based on data access patterns
+
+7. **User Feedback Re-analysis**: 
+   - Feedback includes rating (accurate/partially_accurate/inaccurate), comment, and focus areas
+   - Re-analysis incorporates previous report context (risk score, summary, findings) into LLM system prompt
+   - Report analyzer agent includes "ДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ И КОНТЕКСТ" section in user message
+
 ### Directory Structure
 ```
 app/
