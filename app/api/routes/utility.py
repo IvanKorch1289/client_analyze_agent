@@ -28,7 +28,6 @@ from slowapi import Limiter
 
 from app.api.compat import fail_code, is_versioned_request
 from app.api.response import ok
-from app.config import settings
 from app.config.constants import RATE_LIMIT_ADMIN_PER_MINUTE
 from app.config.reload import get_reload_state, reload_settings
 from app.config.settings import settings
