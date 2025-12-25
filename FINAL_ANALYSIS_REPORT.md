@@ -68,22 +68,28 @@
 
 ### 4.1 Статистика тестов
 
+**Проверенные тесты (65 passed):**
+
 | Тестовый модуль | Тестов | Статус |
 |-----------------|--------|--------|
-| test_data_collector.py | 2 | PASS |
-| test_e2e_workflow.py | 8 | PASS |
-| test_feedback_api.py | 12 | PASS |
-| test_messaging.py | 17 | PASS |
-| test_p0_1_timeouts.py | 6 | PASS |
-| test_p0_2_wait_for.py | 3 | PASS |
-| test_p0_3_5_mcp_refactor.py | 8 | PASS |
-| test_p0_3_perplexity_recency.py | 2 | PASS |
-| test_p0_4_pagination_protection.py | 4 | PASS |
-| test_pdf_generator.py | 6 | PASS |
-| test_report_schema.py | 5 | PASS |
 | test_repositories.py | 24 | PASS |
 | test_tarantool_smoke.py | 10 | PASS |
-| **ИТОГО** | **107** | **PASS** |
+| test_feedback_api.py | 12 | PASS |
+| test_messaging.py | 17 | PASS (DLQ, publisher, broker) |
+| test_e2e_workflow.py | 8 | PASS |
+| **Подтверждённые** | **65** | **PASS** |
+
+**Дополнительные тесты (42, требуют API ключи):**
+
+| Тестовый модуль | Тестов | Примечание |
+|-----------------|--------|------------|
+| test_data_collector.py | 2 | Требует моков внешних API |
+| test_p0_*.py | 23 | Timeout/pagination тесты |
+| test_pdf_generator.py | 6 | PDF генерация |
+| test_report_schema.py | 5 | Schema validation |
+| **Дополнительные** | **42** | **Требуют staging** |
+
+**ИТОГО:** 107 тестов в кодовой базе, 65 подтверждённо проходят.
 
 ### 4.2 Покрытие по компонентам
 
