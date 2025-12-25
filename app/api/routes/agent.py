@@ -3,7 +3,7 @@ import json
 import re
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -164,7 +164,7 @@ async def prompt_agent(request: Request, data: PromptRequest) -> Dict[str, Any]:
         "response": result.get("summary", "") or "",
         "thread_id": result.get("session_id", ""),
         "tools_used": True,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "raw_result": result,
     }
 
@@ -393,7 +393,7 @@ async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, 
         "rating": data.rating,
         "comment": data.comment,
         "focus_areas": data.focus_areas,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     
     if not data.rerun_analysis:

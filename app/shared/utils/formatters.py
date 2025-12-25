@@ -3,7 +3,7 @@ Text and data formatting utilities.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 
@@ -49,14 +49,14 @@ def format_ts(ts: Any = None) -> str:
     """
     try:
         if ts is None:
-            return datetime.utcnow().isoformat()
+            return datetime.now(timezone.utc).isoformat()
         if isinstance(ts, datetime):
             return ts.isoformat()
         if isinstance(ts, (int, float)):
-            return datetime.fromtimestamp(float(ts)).isoformat()
+            return datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat()
         return str(ts)
     except Exception:
-        return datetime.utcnow().isoformat()
+        return datetime.now(timezone.utc).isoformat()
 
 
 def format_json(
