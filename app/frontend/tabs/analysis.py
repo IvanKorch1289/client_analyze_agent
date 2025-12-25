@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
+from typing import Any, Dict
 
 import streamlit as st
 
@@ -8,6 +9,7 @@ from app.frontend.api_client import ApiClient
 from app.frontend.lib.formatters import format_ts, get_risk_emoji
 from app.frontend.lib.ui import (
     render_metric_cards,
+    section_header,
 )
 from app.frontend.lib.validators import validate_client_name, validate_inn
 
@@ -20,7 +22,30 @@ def _get_token() -> str:
 def render(api: ApiClient) -> None:
     st.header("Анализ клиента")
 
-    st.subheader("Запустить анализ сейчас")
+    section = st.selectbox(
+        "Выберите секцию",
+        options=[
+            "Запустить анализ сейчас",
+            "Запланировать анализ",
+            "Предыдущие анализы",
+        ],
+        index=0,
+        key="analysis_section",
+    )
+
+    st.divider()
+
+    if section == "Запустить анализ сейчас":
+        _render_run_analysis_now(api)
+    elif section == "Запланировать анализ":
+        _render_schedule_analysis(api)
+    elif section == "Предыдущие анализы":
+        _render_previous_analyses(api)
+
+
+def _render_run_analysis_now(api: ApiClient) -> None:
+    section_header("Запустить анализ сейчас", emoji="🔍")
+
     with st.form("run_analysis_now"):
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -64,9 +89,9 @@ def render(api: ApiClient) -> None:
         with st.expander("Полный результат (JSON)"):
             st.json(last)
 
-    st.divider()
 
-    st.subheader("Запланировать анализ")
+def _render_schedule_analysis(api: ApiClient) -> None:
+    section_header("Запланировать анализ", emoji="⏰")
     
     when_mode = st.radio(
         "Когда выполнить",
@@ -145,11 +170,10 @@ def render(api: ApiClient) -> None:
                 st.write(f"**ID задачи:** `{resp.get('task_id')}`")
                 st.write(f"**Дата выполнения:** `{resp.get('run_date')}`")
 
-    st.divider()
 
-    st.subheader("Предыдущие анализы (Tarantool, TTL ~ 30 дней)")
+def _render_previous_analyses(api: ApiClient) -> None:
+    section_header("Предыдущие анализы", emoji="📊", help_text="Tarantool, TTL ~ 30 дней")
 
-    # Статистика
     if st.button("📊 Загрузить статистику", type="secondary"):
         with st.spinner("Загружаю статистику..."):
             stats_data = api.get("/reports/stats/summary", admin_token=_get_token())
@@ -169,7 +193,6 @@ def render(api: ApiClient) -> None:
 
     st.divider()
 
-    # Фильтры и список
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
         limit = st.number_input("Показывать", min_value=5, max_value=200, value=20, step=5)
@@ -194,7 +217,6 @@ def render(api: ApiClient) -> None:
         st.info("Отчётов пока нет (или Tarantool в fallback режиме).")
         return
 
-    # Таблица отчётов
     st.markdown("**Список отчётов**")
     table_data = []
     for r in reports:
@@ -205,31 +227,28 @@ def render(api: ApiClient) -> None:
                 "Компания": r.get("client_name", "")[:30],
                 "ИНН": r.get("inn", ""),
                 "Риск": f"{get_risk_emoji(risk_level)} {risk_level}",
-                "Баллы": r.get("risk_score", 0),
-                "ID": r.get("report_id", "")[:8],
+                "Скор": r.get("risk_score", 0),
+                "ID": r.get("report_id", "")[:16],
             }
         )
+    st.dataframe(table_data, use_container_width=True, hide_index=True)
 
-    # Выбор отчёта через клик на строку (эмуляция через radio)
-    selected_idx = st.radio(
-        "Выберите отчёт",
-        options=range(len(table_data)),
-        format_func=lambda i: f"{table_data[i]['Дата']} — {table_data[i]['Компания']} ({table_data[i]['ИНН']}) — {table_data[i]['Риск']}/{table_data[i]['Баллы']} — {table_data[i]['ID']}",
-        label_visibility="collapsed",
-    )
+    report_ids = [r.get("report_id", "") for r in reports if r.get("report_id")]
+    if not report_ids:
+        return
 
-    selected_report_id = reports[selected_idx].get("report_id", "")
+    selected_report_id = st.selectbox("Выберите отчёт для просмотра", options=report_ids, index=0)
 
-    col_open, col_pdf, col_csv = st.columns([1, 1, 1])
+    col_open, col_pdf = st.columns(2)
     with col_open:
-        open_btn = st.button("Открыть детали", type="primary")
+        open_btn = st.button("Открыть детали", type="primary", use_container_width=True)
     with col_pdf:
-        download_pdf_btn = st.button("📄 Скачать PDF", type="secondary")
-    with col_csv:
-        st.link_button(
-            "📊 Экспорт CSV",
-            api.url(f"/reports/{selected_report_id}/export?format=csv"),
-        )
+        download_pdf_btn = st.button("📄 Скачать PDF", use_container_width=True)
+
+    st.link_button(
+        "📊 Экспорт CSV",
+        api.url(f"/reports/{selected_report_id}/export?format=csv"),
+    )
 
     if open_btn:
         with st.spinner("Загружаю отчёт..."):
@@ -238,8 +257,7 @@ def render(api: ApiClient) -> None:
             st.session_state["opened_report"] = detail.get("report") if isinstance(detail, dict) else detail
 
     if download_pdf_btn:
-        with st.spinner("Генерирую PDF отчёт..."):
-            # Загружаем полный отчёт если ещё не загружен
+        with st.spinner("Генерирую PDF..."):
             if (
                 not st.session_state.get("opened_report")
                 or st.session_state["opened_report"].get("report_id") != selected_report_id
@@ -256,8 +274,7 @@ def render(api: ApiClient) -> None:
             if report_full:
                 report_data = report_full.get("report_data") or {}
                 pdf_payload = {
-                    "client_name": report_full.get("client_name", "")
-                    or report_data.get("metadata", {}).get("client_name", ""),
+                    "client_name": report_full.get("client_name", "") or report_data.get("metadata", {}).get("client_name", ""),
                     "inn": report_full.get("inn", "") or None,
                     "session_id": report_full.get("report_id", "") or None,
                     "report_data": report_data,
@@ -279,71 +296,53 @@ def render(api: ApiClient) -> None:
 
     opened = st.session_state.get("opened_report")
     if isinstance(opened, dict) and opened.get("report_id") == selected_report_id:
-        st.divider()
-        st.subheader("📄 Детали отчёта")
+        _render_report_details(api, opened, selected_report_id)
 
-        ra = (opened.get("report_data") or {}).get("risk_assessment") or {}
-        risk_level = opened.get("risk_level", ra.get("level", "unknown"))
 
-        metrics = {
-            "Уровень риска": f"{get_risk_emoji(risk_level)} {risk_level.upper()}",
-            "Риск-скор": f"{opened.get('risk_score', ra.get('score', 0))}/100",
-            "Компания": opened.get("client_name", ""),
-            "Дата": format_ts(opened.get("created_at")),
-        }
-        render_metric_cards(metrics, columns=4)
+def _render_report_details(api: ApiClient, opened: Dict[str, Any], selected_report_id: str) -> None:
+    st.divider()
+    st.subheader("📄 Детали отчёта")
 
-        # Основная информация
-        col_main, col_side = st.columns([2, 1])
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Компания", opened.get("client_name", "N/A"))
+    with col2:
+        st.metric("ИНН", opened.get("inn") or "—")
+    with col3:
+        st.metric("Риск-скор", opened.get("risk_score", 0))
 
-        with col_main:
-            with st.expander("📋 Краткое резюме", expanded=True):
-                report_data = opened.get("report_data") or {}
-                summary = report_data.get("summary") or ""
-                if summary:
-                    st.markdown(summary)
-                else:
-                    st.info("Резюме недоступно")
+    report_data = opened.get("report_data") or {}
 
-        with col_side:
-            with st.expander("📊 Метаданные", expanded=True):
-                metadata = (opened.get("report_data") or {}).get("metadata") or {}
-                if metadata:
-                    st.json(metadata)
-                else:
-                    st.write(f"**ИНН:** {opened.get('inn', 'N/A')}")
-                    st.write(f"**ID:** {opened.get('report_id', '')[:16]}")
+    if report_data.get("summary"):
+        st.markdown("### 📝 Резюме")
+        st.markdown(report_data.get("summary", ""))
 
-        # Факторы риска
-        factors = (report_data.get("risk_assessment") or {}).get("factors") or []
+    risk_assessment = report_data.get("risk_assessment") or {}
+    if risk_assessment:
+        st.markdown("### ⚠️ Оценка рисков")
+        col_ra1, col_ra2, col_ra3 = st.columns(3)
+        with col_ra1:
+            st.metric("Скор", risk_assessment.get("score", 0))
+        with col_ra2:
+            level = risk_assessment.get("level", "unknown")
+            st.metric("Уровень", f"{get_risk_emoji(level)} {level}")
+        with col_ra3:
+            st.metric("Факторов риска", len(risk_assessment.get("factors", [])))
+
+        factors = risk_assessment.get("factors") or []
         if factors:
-            with st.expander("⚠️ Факторы риска", expanded=True):
-                for i, f in enumerate(factors[:15], 1):
-                    st.markdown(f"{i}. {f}")
-                if len(factors) > 15:
-                    st.caption(f"... и ещё {len(factors) - 15} факторов")
+            with st.expander("📋 Факторы риска", expanded=False):
+                for f in factors:
+                    st.write(f"- {f}")
 
-        st.divider()
-
-        # PDF генерация
-        col_actions = st.columns([1, 1, 2])
-        with col_actions[0]:
-            gen_pdf = st.button("📄 Сгенерировать PDF", use_container_width=True)
-        with col_actions[1]:
-            st.link_button(
-                "📊 Экспорт CSV",
-                api.url(f"/reports/{selected_report_id}/export?format=csv"),
-                use_container_width=True,
-            )
-
-        if gen_pdf:
-            report_data = opened.get("report_data") or {}
-            pdf_payload = {
-                "client_name": opened.get("client_name", "") or report_data.get("metadata", {}).get("client_name", ""),
-                "inn": opened.get("inn", "") or None,
-                "session_id": opened.get("report_id", "") or None,
-                "report_data": report_data,
-            }
+    with st.expander("📄 Генерация PDF отчёта", expanded=False):
+        pdf_payload = {
+            "client_name": opened.get("client_name", "") or report_data.get("metadata", {}).get("client_name", ""),
+            "inn": opened.get("inn", "") or None,
+            "session_id": opened.get("report_id", "") or None,
+            "report_data": report_data,
+        }
+        if st.button("🖨️ Сгенерировать PDF отчёт", key="generate_pdf_from_details"):
             with st.spinner("Генерирую PDF отчёт..."):
                 pdf_resp = api.post("/utility/reports/pdf", json=pdf_payload, admin_token=_get_token())
             if isinstance(pdf_resp, dict) and pdf_resp.get("status") == "success":
@@ -361,99 +360,103 @@ def render(api: ApiClient) -> None:
             else:
                 st.error("❌ Ошибка при генерации PDF")
 
-        with st.expander("📋 Полные данные отчёта (JSON)", expanded=False):
-            st.json(opened)
+    with st.expander("📋 Полные данные отчёта (JSON)", expanded=False):
+        st.json(opened)
 
-        st.divider()
+    st.divider()
 
-        with st.expander("📝 Фидбек и переанализ (если отчёт неверный)", expanded=True):
-            st.markdown("**Если отчёт некорректен или LLM пропустила данные — отправьте фидбек:**")
-            st.caption("Система перезапустит анализ с учётом ваших замечаний")
+    _render_feedback_section(api, opened, selected_report_id)
+
+
+def _render_feedback_section(api: ApiClient, opened: Dict[str, Any], selected_report_id: str) -> None:
+    st.subheader("📝 Фидбек и переанализ")
+    st.markdown("**Если отчёт некорректен или LLM пропустила данные — отправьте фидбек:**")
+    st.caption("Система перезапустит анализ с учётом ваших замечаний")
+    
+    feedback_rating = st.radio(
+        "Оценка качества анализа",
+        options=["accurate", "partially_accurate", "inaccurate"],
+        format_func=lambda x: {
+            "accurate": "✅ Точный — всё верно",
+            "partially_accurate": "⚠️ Частично точный — есть неточности",
+            "inaccurate": "❌ Неточный — много ошибок",
+        }[x],
+        horizontal=True,
+        key=f"feedback_rating_{selected_report_id}",
+        index=1,
+    )
+    
+    feedback_comment = st.text_area(
+        "Опишите проблему подробно",
+        placeholder="Например: LLM не учла данные о судебных делах, пропущена информация о долгах в ФССП, неверно оценён риск по банкротству...",
+        key=f"feedback_comment_{selected_report_id}",
+        height=120,
+    )
+    
+    focus_areas_options = [
+        "Судебные дела",
+        "Финансовое состояние",
+        "Банкротство",
+        "Исполнительные производства (ФССП)",
+        "Госконтракты",
+        "Аффилированность",
+        "Репутация",
+        "Учредители и руководство",
+    ]
+    focus_areas = st.multiselect(
+        "На что обратить особое внимание при переанализе",
+        options=focus_areas_options,
+        key=f"focus_areas_{selected_report_id}",
+    )
+    
+    rerun_checkbox = st.checkbox(
+        "Перезапустить анализ с учётом фидбека",
+        value=True,
+        key=f"rerun_{selected_report_id}",
+    )
+    
+    col_submit, col_status = st.columns([1, 2])
+    with col_submit:
+        submit_feedback = st.button(
+            "🔄 Отправить фидбек" if rerun_checkbox else "💾 Сохранить фидбек",
+            type="primary",
+            key=f"submit_feedback_{selected_report_id}",
+            use_container_width=True,
+        )
+    
+    if submit_feedback:
+        if feedback_rating in ("partially_accurate", "inaccurate") and not feedback_comment.strip():
+            st.error("❌ Пожалуйста, опишите проблему в комментарии для переанализа")
+        else:
+            feedback_payload = {
+                "report_id": selected_report_id,
+                "rating": feedback_rating,
+                "comment": feedback_comment.strip() if feedback_comment else None,
+                "rerun_analysis": rerun_checkbox,
+                "focus_areas": focus_areas if focus_areas else None,
+            }
             
-            feedback_rating = st.radio(
-                "Оценка качества анализа",
-                options=["accurate", "partially_accurate", "inaccurate"],
-                format_func=lambda x: {
-                    "accurate": "✅ Точный — всё верно",
-                    "partially_accurate": "⚠️ Частично точный — есть неточности",
-                    "inaccurate": "❌ Неточный — много ошибок",
-                }[x],
-                horizontal=True,
-                key=f"feedback_rating_{selected_report_id}",
-                index=1,
-            )
+            with st.spinner("Отправляю фидбек и запускаю переанализ..." if rerun_checkbox else "Сохраняю фидбек..."):
+                feedback_result = api.post("/agent/feedback", json=feedback_payload, admin_token=_get_token())
             
-            feedback_comment = st.text_area(
-                "Опишите проблему подробно",
-                placeholder="Например: LLM не учла данные о судебных делах, пропущена информация о долгах в ФССП, неверно оценён риск по банкротству...",
-                key=f"feedback_comment_{selected_report_id}",
-                height=120,
-            )
-            
-            focus_areas_options = [
-                "Судебные дела",
-                "Финансовое состояние",
-                "Банкротство",
-                "Исполнительные производства (ФССП)",
-                "Госконтракты",
-                "Аффилированность",
-                "Репутация",
-                "Учредители и руководство",
-            ]
-            focus_areas = st.multiselect(
-                "На что обратить особое внимание при переанализе",
-                options=focus_areas_options,
-                key=f"focus_areas_{selected_report_id}",
-            )
-            
-            rerun_checkbox = st.checkbox(
-                "Перезапустить анализ с учётом фидбека",
-                value=True,
-                key=f"rerun_{selected_report_id}",
-            )
-            
-            col_submit, col_status = st.columns([1, 2])
-            with col_submit:
-                submit_feedback = st.button(
-                    "🔄 Отправить фидбек" if rerun_checkbox else "💾 Сохранить фидбек",
-                    type="primary",
-                    key=f"submit_feedback_{selected_report_id}",
-                    use_container_width=True,
-                )
-            
-            if submit_feedback:
-                if feedback_rating in ("partially_accurate", "inaccurate") and not feedback_comment.strip():
-                    st.error("❌ Пожалуйста, опишите проблему в комментарии для переанализа")
+            if feedback_result is not None:
+                status = feedback_result.get("status", "")
+                
+                if status == "reanalysis_complete":
+                    st.success("✅ Переанализ выполнен с учётом вашего фидбека!")
+                    new_session = feedback_result.get("new_session_id", "")
+                    if new_session:
+                        st.info(f"Новый ID сессии: `{new_session}`")
+                    
+                    if feedback_result.get("result"):
+                        st.session_state["last_analysis_result"] = feedback_result["result"]
+                    
+                    st.balloons()
+                    st.rerun()
+                    
+                elif status == "feedback_saved":
+                    st.success("✅ Фидбек сохранён")
+                    st.json(feedback_result.get("feedback", {}))
                 else:
-                    feedback_payload = {
-                        "report_id": selected_report_id,
-                        "rating": feedback_rating,
-                        "comment": feedback_comment.strip() if feedback_comment else None,
-                        "rerun_analysis": rerun_checkbox,
-                        "focus_areas": focus_areas if focus_areas else None,
-                    }
-                    
-                    with st.spinner("Отправляю фидбек и запускаю переанализ..." if rerun_checkbox else "Сохраняю фидбек..."):
-                        feedback_result = api.post("/agent/feedback", json=feedback_payload, admin_token=_get_token())
-                    
-                    if feedback_result is not None:
-                        status = feedback_result.get("status", "")
-                        
-                        if status == "reanalysis_complete":
-                            st.success("✅ Переанализ выполнен с учётом вашего фидбека!")
-                            new_session = feedback_result.get("new_session_id", "")
-                            if new_session:
-                                st.info(f"Новый ID сессии: `{new_session}`")
-                            
-                            if feedback_result.get("result"):
-                                st.session_state["last_analysis_result"] = feedback_result["result"]
-                            
-                            st.balloons()
-                            st.rerun()
-                            
-                        elif status == "feedback_saved":
-                            st.success("✅ Фидбек сохранён")
-                            st.json(feedback_result.get("feedback", {}))
-                        else:
-                            st.warning(f"Статус: {status}")
-                            st.json(feedback_result)
+                    st.warning(f"Статус: {status}")
+                    st.json(feedback_result)

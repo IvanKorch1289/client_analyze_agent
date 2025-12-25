@@ -10,6 +10,11 @@ from app.frontend.lib.ui import info_box, render_payload, section_header
 from app.frontend.lib.validators import validate_inn
 
 
+def _get_token() -> str:
+    """Получить admin token из session_state."""
+    return st.session_state.get("admin_token", "") or ""
+
+
 def render(api: ApiClient) -> None:
     st.header("🔍 Внешние данные")
 
@@ -18,11 +23,25 @@ def render(api: ApiClient) -> None:
         "реестры, судебные дела, финансовая информация."
     )
 
-    _render_inn_sources_section(api)
+    section = st.selectbox(
+        "Выберите секцию",
+        options=[
+            "Источники по ИНН",
+            "Веб-поиск",
+            "Отложенный сбор данных",
+        ],
+        index=0,
+        key="data_section",
+    )
+
     st.divider()
-    _render_web_search_section(api)
-    st.divider()
-    _render_scheduled_section(api)
+
+    if section == "Источники по ИНН":
+        _render_inn_sources_section(api)
+    elif section == "Веб-поиск":
+        _render_web_search_section(api)
+    elif section == "Отложенный сбор данных":
+        _render_scheduled_section(api)
 
 
 def _render_inn_sources_section(api: ApiClient) -> None:
@@ -55,7 +74,7 @@ def _render_inn_sources_section(api: ApiClient) -> None:
 
         with st.spinner("Запрашиваю данные..."):
             if btn_all:
-                results["Все источники"] = api.get(f"/data/client/info/{inn_clean}")
+                results["Все источники"] = api.get(f"/data/client/info/{inn_clean}", admin_token=_get_token())
             else:
                 selected_any = chk_dadata or chk_casebook or chk_infosphere
                 if not selected_any:
@@ -63,11 +82,11 @@ def _render_inn_sources_section(api: ApiClient) -> None:
                     return
 
                 if chk_dadata:
-                    results["DaData"] = api.get(f"/data/client/dadata/{inn_clean}")
+                    results["DaData"] = api.get(f"/data/client/dadata/{inn_clean}", admin_token=_get_token())
                 if chk_casebook:
-                    results["Casebook"] = api.get(f"/data/client/casebook/{inn_clean}")
+                    results["Casebook"] = api.get(f"/data/client/casebook/{inn_clean}", admin_token=_get_token())
                 if chk_infosphere:
-                    results["Инфосфера"] = api.get(f"/data/client/infosphere/{inn_clean}")
+                    results["Инфосфера"] = api.get(f"/data/client/infosphere/{inn_clean}", admin_token=_get_token())
 
         for title, payload in results.items():
             render_payload(payload, title=f"📦 {title}", expanded=True, show_status=False)
@@ -140,6 +159,7 @@ def _render_web_search_section(api: ApiClient) -> None:
                         "search_query": query_clean,
                         "search_recency": perplexity_recency,
                     },
+                    admin_token=_get_token(),
                 )
             if chk_tavily:
                 outputs["Tavily"] = api.post(
@@ -151,6 +171,7 @@ def _render_web_search_section(api: ApiClient) -> None:
                         "max_results": int(max_results),
                         "include_answer": bool(include_answer),
                     },
+                    admin_token=_get_token(),
                 )
 
         _render_search_results(outputs)
@@ -351,7 +372,7 @@ def _render_scheduled_section(api: ApiClient) -> None:
             payload["tavily_include_answer"] = sch_tavily_include_answer
 
         with st.spinner("Планирую задачу..."):
-            result = api.post("/scheduler/schedule-data-fetch", json=payload)
+            result = api.post("/scheduler/schedule-data-fetch", json=payload, admin_token=_get_token())
 
         if result:
             if isinstance(result, dict) and result.get("task_id"):
