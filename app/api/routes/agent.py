@@ -439,35 +439,76 @@ async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, 
 
 
 def _build_feedback_instructions(data: FeedbackRequest, original_report: Dict[str, Any]) -> str:
-    """Сформировать инструкции для LLM на основе фидбека пользователя."""
+    """
+    Сформировать инструкции для LLM на основе фидбека пользователя.
     
-    instructions = ["[ФИДБЕК ПОЛЬЗОВАТЕЛЯ - КРИТИЧЕСКИ ВАЖНО УЧЕСТЬ]"]
+    Включает:
+    - Системный промпт по переанализу
+    - Фидбек пользователя (рейтинг, комментарий, области внимания)
+    - Контекст предыдущего отчёта
+    """
+    
+    instructions = [
+        "=" * 60,
+        "[СИСТЕМНЫЙ ПРОМПТ: РЕЖИМ ПЕРЕАНАЛИЗА С УЧЁТОМ ФИДБЕКА]",
+        "=" * 60,
+        "",
+        "Это ПЕРЕАНАЛИЗ отчёта на основе фидбека пользователя.",
+        "Ты ОБЯЗАН учесть все замечания и исправить выявленные ошибки.",
+        "",
+    ]
     
     rating_messages = {
-        "accurate": "Пользователь оценил предыдущий анализ как ТОЧНЫЙ.",
-        "partially_accurate": "Пользователь оценил предыдущий анализ как ЧАСТИЧНО ТОЧНЫЙ. Требуется доработка.",
-        "inaccurate": "Пользователь оценил предыдущий анализ как НЕТОЧНЫЙ. Требуется полный пересмотр.",
+        "accurate": "Пользователь оценил предыдущий анализ как ТОЧНЫЙ, но просит переанализ.",
+        "partially_accurate": "Пользователь оценил предыдущий анализ как ЧАСТИЧНО ТОЧНЫЙ. Требуется существенная доработка.",
+        "inaccurate": "Пользователь оценил предыдущий анализ как НЕТОЧНЫЙ. Требуется ПОЛНЫЙ пересмотр всех выводов.",
     }
-    instructions.append(rating_messages.get(data.rating, ""))
+    instructions.append(f"ОЦЕНКА: {rating_messages.get(data.rating, '')}")
+    instructions.append("")
     
     if data.comment:
-        instructions.append(f"\nКОММЕНТАРИЙ ПОЛЬЗОВАТЕЛЯ: {data.comment}")
-        instructions.append("\nВНИМАТЕЛЬНО изучи комментарий и учти все замечания в новом анализе.")
+        instructions.append("-" * 40)
+        instructions.append("КОММЕНТАРИЙ ПОЛЬЗОВАТЕЛЯ (КРИТИЧЕСКИ ВАЖНО):")
+        instructions.append("-" * 40)
+        instructions.append(data.comment)
+        instructions.append("")
+        instructions.append("ИНСТРУКЦИЯ: ВНИМАТЕЛЬНО изучи комментарий выше и учти ВСЕ замечания!")
+        instructions.append("")
     
     if data.focus_areas:
         areas_str = ", ".join(data.focus_areas)
-        instructions.append(f"\nОБЛАСТИ ДЛЯ ОСОБОГО ВНИМАНИЯ: {areas_str}")
-        instructions.append("Убедись, что эти области детально проанализированы и отражены в отчёте.")
+        instructions.append("-" * 40)
+        instructions.append(f"ОБЛАСТИ ДЛЯ ОСОБОГО ВНИМАНИЯ: {areas_str}")
+        instructions.append("-" * 40)
+        instructions.append("ИНСТРУКЦИЯ: Эти области должны быть ДЕТАЛЬНО проанализированы и отражены в отчёте.")
+        instructions.append("")
     
+    # Добавляем контекст предыдущего отчёта
     previous_risk = original_report.get("risk_score", 0)
     previous_level = original_report.get("risk_level", "unknown")
-    instructions.append(f"\nПРЕДЫДУЩИЙ РЕЗУЛЬТАТ: Риск-скор {previous_risk}/100, уровень: {previous_level}")
+    report_data = original_report.get("report_data", {})
+    previous_summary = report_data.get("summary", "")
+    previous_findings = report_data.get("findings", [])
+    
+    instructions.append("-" * 40)
+    instructions.append("ПРЕДЫДУЩИЙ РЕЗУЛЬТАТ (для сравнения):")
+    instructions.append("-" * 40)
+    instructions.append(f"Риск-скор: {previous_risk}/100, уровень: {previous_level}")
+    if previous_summary:
+        instructions.append(f"Резюме: {previous_summary[:500]}...")
+    if previous_findings:
+        instructions.append(f"Ключевые находки: {', '.join(str(f)[:100] for f in previous_findings[:3])}")
+    instructions.append("")
     
     if data.rating in ("partially_accurate", "inaccurate"):
-        instructions.append("\nВАЖНО:")
-        instructions.append("- НЕ пропускай никакие данные из источников")
-        instructions.append("- Проверь ВСЕ факторы риска")  
-        instructions.append("- Обоснуй каждый пункт оценки конкретными данными")
-        instructions.append("- Если данные противоречивы - укажи это явно")
+        instructions.append("=" * 60)
+        instructions.append("ОБЯЗАТЕЛЬНЫЕ ТРЕБОВАНИЯ К ПЕРЕАНАЛИЗУ:")
+        instructions.append("=" * 60)
+        instructions.append("1. НЕ пропускай никакие данные из источников")
+        instructions.append("2. Проверь ВСЕ факторы риска заново")
+        instructions.append("3. Обоснуй КАЖДЫЙ пункт оценки конкретными данными")
+        instructions.append("4. Если данные противоречивы - укажи это ЯВНО")
+        instructions.append("5. Сравни новые выводы с предыдущими и объясни различия")
+        instructions.append("")
     
     return "\n".join(instructions)

@@ -119,6 +119,7 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     source_data = state.get("source_data", {})
     client_name = state.get("client_name", "Неизвестный клиент")
     inn = state.get("inn", "")
+    additional_notes = state.get("additional_notes", "")
 
     logger.info(f"Report Analyzer: создание отчёта для '{client_name}'", component="analyzer")
 
@@ -126,6 +127,16 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     source_summary = _prepare_source_data_for_llm(source_data, search_results)
 
     # P0: НОВОЕ - Генерация отчёта через LLM
+    additional_context = ""
+    if additional_notes and additional_notes.strip():
+        additional_context = f"""
+
+ДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ И КОНТЕКСТ:
+{additional_notes}
+
+ВАЖНО: Внимательно изучи дополнительные инструкции выше и обязательно учти их при анализе!
+"""
+    
     user_message = f"""Проанализируй данные о компании и создай отчёт.
 
 КОМПАНИЯ: {client_name}
@@ -133,7 +144,7 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
 
 ДАННЫЕ ИЗ ИСТОЧНИКОВ:
 {source_summary}
-
+{additional_context}
 Создай JSON отчёт с оценкой рисков по формату из системного промпта."""
 
     llm_report = await llm_generate_json(
