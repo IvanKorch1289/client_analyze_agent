@@ -131,7 +131,7 @@ app/
 
 **25 декабря 2025:**
 - Создан комплексный отчёт анализа `ANALYSIS_REPORT.md` (оценка 8.5/10)
-- Создан план повышения готовности к production `PRODUCTION_READINESS_PLAN.md` (85% → 95%)
+- Создан план повышения готовности к production `PRODUCTION_READINESS_PLAN.md` (87% → 95%)
 - Исправлен дублирующий импорт в `app/api/routes/utility.py`
 - **Sprint 1 (Backend Hardening) завершён:**
   - Методы count, list, delete, search в threads_repository и cache_repository
@@ -142,6 +142,10 @@ app/
   - 17 интеграционных тестов RabbitMQ/FastStream (tests/test_messaging.py)
   - 8 E2E тестов полного workflow (tests/test_e2e_workflow.py)
   - Всего: 37 новых тестов, все проходят
+- **Sprint 3 (SRE/Observability) в процессе:**
+  - Исправлен deprecated datetime.utcnow() → datetime.now(timezone.utc) (4 файла)
+  - LSP ошибки в llm_manager.py признаны false positives (pyright type stubs)
+  - Timestamps теперь timezone-aware с explicit UTC offset
 
 ## Test Coverage
 

@@ -664,6 +664,11 @@ class TarantoolClient:
             "use_memory": self._use_memory,
         }
 
+    @property
+    def is_connected(self) -> bool:
+        """Возвращает True если клиент подключён (включая in-memory режим)."""
+        return self._connected
+
     async def set_persistent(self, key: str, value: Any):
         """Сохраняет данные в постоянное хранилище."""
         await self._ensure_connection()
@@ -728,6 +733,38 @@ class TarantoolClient:
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(_executor, do_delete)
+
+    async def get_all_persistent_keys(self, prefix: Optional[str] = None) -> List[str]:
+        """
+        Получает список всех ключей из persistent storage.
+        
+        Args:
+            prefix: Опциональный префикс для фильтрации ключей (например, 'dlq:')
+            
+        Returns:
+            Список ключей
+        """
+        await self._ensure_connection()
+        
+        if self._use_memory:
+            keys = list(_memory_persistent.keys())
+            if prefix:
+                keys = [k for k in keys if k.startswith(prefix)]
+            return keys
+        
+        def do_list_keys():
+            try:
+                result = self._connection.select("persistent", limit=10000)
+                keys = [row[0] for row in result if isinstance(row, (list, tuple)) and len(row) > 0]
+                if prefix:
+                    keys = [k for k in keys if k.startswith(prefix)]
+                return keys
+            except Exception as e:
+                logger.error(f"Failed to list persistent keys: {e}", component="tarantool")
+                return []
+        
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, do_list_keys)
 
     async def list_threads(self, limit: int = 50) -> List[Dict[str, Any]]:
         """

@@ -882,6 +882,70 @@ async def check_queue_health() -> Dict[str, Any]:
     }
 
 
+@utility_router.get("/queue/dlq-stats")
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def get_dlq_stats(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
+    """
+    P1-2: Получить статистику Dead Letter Queue из Tarantool.
+    
+    Возвращает количество failed messages и последние 10 ошибок.
+    Требуется роль администратора.
+    """
+    try:
+        tarantool = await TarantoolClient.get_instance()
+        
+        analysis_failures = []
+        cache_failures = []
+        
+        if tarantool.is_connected:
+            all_keys = await tarantool.get_all_persistent_keys()
+            
+            for key in all_keys:
+                if key.startswith("dlq:analysis:"):
+                    value = await tarantool.get_persistent(key)
+                    if value:
+                        analysis_failures.append({
+                            "key": key,
+                            "timestamp": value.get("timestamp"),
+                            "message": value.get("message", {}),
+                        })
+                elif key.startswith("dlq:cache:"):
+                    value = await tarantool.get_persistent(key)
+                    if value:
+                        cache_failures.append({
+                            "key": key,
+                            "timestamp": value.get("timestamp"),
+                            "message": value.get("message", {}),
+                        })
+        
+        analysis_failures.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+        cache_failures.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+        
+        return {
+            "status": "success",
+            "analysis_dlq": {
+                "total_count": len(analysis_failures),
+                "recent": analysis_failures[:10],
+            },
+            "cache_dlq": {
+                "total_count": len(cache_failures),
+                "recent": cache_failures[:10],
+            },
+            "total_failed": len(analysis_failures) + len(cache_failures),
+            "storage_connected": tarantool.is_connected,
+        }
+    except Exception as e:
+        logger.error(f"Failed to get DLQ stats: {e}", component="dlq_monitor")
+        if is_versioned_request(request):
+            raise
+        return {
+            "status": "error",
+            "error": str(e),
+            "analysis_dlq": {"total_count": 0, "recent": []},
+            "cache_dlq": {"total_count": 0, "recent": []},
+        }
+
+
 # =============================================================================
 # ASYNCAPI ENDPOINTS
 # =============================================================================
