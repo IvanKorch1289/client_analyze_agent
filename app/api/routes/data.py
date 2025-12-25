@@ -26,27 +26,110 @@ data_router = APIRouter(
 
 @data_router.get("/client/infosphere/{inn}")
 async def get_infosphere_data(inn: str):
+    """
+    Получить данные компании из Инфосферы.
+
+    Инфосфера предоставляет:
+    - Финансовую аналитику
+    - Кредитные рейтинги
+    - Бизнес-показатели
+
+    Args:
+        inn: ИНН компании (10 цифр для юр. лиц, 12 для ИП)
+
+    Returns:
+        Данные из Инфосферы или ошибку, если сервис недоступен
+    """
     return await fetch_from_infosphere(inn)
 
 
 @data_router.get("/client/dadata/{inn}")
 async def get_dadata_data(inn: str):
+    """
+    Получить данные компании из DaData.
+
+    DaData предоставляет:
+    - Регистрационные данные (ОГРН, дата регистрации)
+    - Юридический и фактический адреса
+    - Информацию о руководителях и учредителях
+    - Коды ОКВЭД
+    - Статус организации
+
+    Args:
+        inn: ИНН компании (10 цифр для юр. лиц, 12 для ИП)
+
+    Returns:
+        Данные из DaData или ошибку, если сервис недоступен
+    """
     return await fetch_from_dadata(inn)
 
 
 @data_router.get("/client/casebook/{inn}")
 async def get_casebook_data(inn: str):
+    """
+    Получить судебные дела компании из Casebook.
+
+    Casebook предоставляет:
+    - Арбитражные дела (истец/ответчик)
+    - Суммы исков
+    - Статусы дел
+    - Категории споров
+
+    Args:
+        inn: ИНН компании (10 цифр для юр. лиц, 12 для ИП)
+
+    Returns:
+        Список судебных дел или ошибку, если сервис недоступен
+    """
     return await fetch_from_casebook(inn)
 
 
 @data_router.get("/client/info/{inn}")
 async def get_all_client_data(inn: str):
+    """
+    Получить данные компании из всех источников одновременно.
+
+    Выполняет параллельные запросы к:
+    - DaData (регистрационные данные)
+    - Casebook (судебные дела)
+    - Инфосфера (финансовая аналитика)
+
+    Args:
+        inn: ИНН компании (10 цифр для юр. лиц, 12 для ИП)
+
+    Returns:
+        Агрегированные данные из всех доступных источников
+    """
     return await fetch_company_info(inn)
 
 
 @data_router.post("/search/perplexity")
 async def perplexity_search(http_request: Request, payload: PerplexityRequest) -> PerplexitySearchResponse:
-    """Search via Perplexity."""
+    """
+    Веб-поиск через Perplexity AI.
+
+    Perplexity AI предоставляет:
+    - Актуальную информацию из интернета
+    - AI-суммаризацию результатов
+    - Ссылки на источники (citations)
+
+    **Параметры запроса:**
+    - `inn`: ИНН компании для контекста
+    - `query`: Поисковый запрос
+    - `search_recency`: Актуальность результатов (day/week/month)
+
+    **Пример запроса:**
+    ```json
+    {
+        "inn": "7707083893",
+        "query": "судебные дела банкротство",
+        "search_recency": "month"
+    }
+    ```
+
+    Returns:
+        Результат поиска с AI-ответом и ссылками на источники
+    """
     is_valid, error_msg = validate_inn(payload.inn)
     if not is_valid:
         return fail(http_request, status_code=400, message=error_msg)
@@ -81,7 +164,37 @@ async def perplexity_search(http_request: Request, payload: PerplexityRequest) -
 
 @data_router.post("/search/tavily")
 async def tavily_search(http_request: Request, payload: TavilyRequest) -> TavilySearchResponse:
-    """Search via Tavily."""
+    """
+    Веб-поиск через Tavily.
+
+    Tavily предоставляет:
+    - Расширенный поиск по веб-страницам
+    - Настраиваемую глубину поиска
+    - Опциональную AI-суммаризацию
+
+    **Параметры запроса:**
+    - `inn`: ИНН компании для контекста
+    - `query`: Поисковый запрос
+    - `search_depth`: Глубина поиска (basic/advanced)
+    - `max_results`: Максимальное количество результатов (1-10)
+    - `include_answer`: Включить AI-ответ (true/false)
+    - `include_domains`: Список доменов для включения
+    - `exclude_domains`: Список доменов для исключения
+
+    **Пример запроса:**
+    ```json
+    {
+        "inn": "7707083893",
+        "query": "судебные дела",
+        "search_depth": "advanced",
+        "max_results": 10,
+        "include_answer": true
+    }
+    ```
+
+    Returns:
+        Список релевантных страниц со сниппетами и опциональным AI-ответом
+    """
     is_valid, error_msg = validate_inn(payload.inn)
     if not is_valid:
         return fail(http_request, status_code=400, message=error_msg)

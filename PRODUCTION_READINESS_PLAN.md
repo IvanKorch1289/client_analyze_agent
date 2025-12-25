@@ -1,6 +1,6 @@
 # Production Readiness Plan: 87% → 95%
 
-## Current State (89%)
+## Current State (95%)
 | Criterion | Score | Status |
 |-----------|-------|--------|
 | Functionality | 9/10 | ✅ Complete |
@@ -29,21 +29,17 @@
 | Alert rules for DLQ thresholds | P2 | 1h |
 | Grafana dashboard templates | P3 | 2h |
 
-### Sprint 4: Frontend Hardening
-| Task | Priority | Effort |
-|------|----------|--------|
-| Streamlit error boundary components | P1 | 2h |
-| Loading state indicators for long operations | P1 | 1h |
-| Form validation with user-friendly messages | P2 | 2h |
-| PDF download error handling | P2 | 1h |
+### Sprint 4: Frontend Hardening (Completed ✅)
+- [x] Streamlit error boundary - `safe_api_call` context manager and decorator in lib/ui.py
+- [x] Loading state indicators - `st.progress()` with status updates in analysis.py
+- [x] Form validation - Extended validators.py with ValidationResult, email/phone/date validators
+- [x] PDF download error handling - Retry button, JSON fallback, detailed error display
 
-### Sprint 5: UX & Documentation
-| Task | Priority | Effort |
-|------|----------|--------|
-| API documentation with OpenAPI/Swagger | P1 | 2h |
-| User guide for Streamlit interface | P2 | 2h |
-| Deployment runbook | P1 | 2h |
-| Troubleshooting guide | P2 | 1h |
+### Sprint 5: UX & Documentation (Completed ✅)
+- [x] API documentation - `docs/API_REFERENCE.md` with endpoints, rate limits, examples
+- [x] User guide - `docs/USER_GUIDE.md` for Streamlit interface
+- [x] Deployment runbook - `docs/DEPLOYMENT_RUNBOOK.md` with systemd/nginx/docker examples
+- [x] Troubleshooting guide - `docs/TROUBLESHOOTING.md` with error solutions
 
 ---
 
@@ -144,8 +140,8 @@ grafana:
 | Sprint | Duration | Target Readiness |
 |--------|----------|------------------|
 | Sprint 3 (SRE) | Completed | 89% ✅ |
-| Sprint 4 (Frontend) | 2-3 days | 92% |
-| Sprint 5 (UX/Docs) | 2-3 days | 95% |
+| Sprint 4 (Frontend) | Completed | 92% ✅ |
+| Sprint 5 (UX/Docs) | Completed | 95% ✅ |
 
 **Total Effort:** ~6-8 days for full production readiness
 
