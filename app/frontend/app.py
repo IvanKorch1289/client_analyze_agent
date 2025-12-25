@@ -131,7 +131,7 @@ def _render_sidebar() -> None:
         st.divider()
         st.subheader("Admin token")
 
-        token_input = st.text_input(
+        st.text_input(
             "Введите ADMIN_TOKEN",
             type="password",
             value=st.session_state.get("admin_token", ""),

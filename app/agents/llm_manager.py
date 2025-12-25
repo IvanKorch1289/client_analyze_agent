@@ -17,7 +17,7 @@ Jay Guard Proxy:
 import asyncio
 import threading
 from enum import Enum
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 from app.config import settings
 from app.utility.logging_client import logger

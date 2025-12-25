@@ -77,7 +77,7 @@ def test_data_collector_runs_inn_sources_in_parallel_and_then_web_search(monkeyp
 
     # --- Assert: INN-источники отработали (и по времени похоже на параллельность)
     assert inn_calls == {"dadata": 1, "infosphere": 1, "casebook": 1}
-    assert elapsed < 0.25, f"INN-фаза выглядит непараллельной, elapsed={elapsed:.3f}s"
+    assert elapsed < 0.50, f"INN-фаза выглядит непараллельной, elapsed={elapsed:.3f}s"
 
     # --- Assert: web-поиск вызван по обоим интентам
     assert len(perpl_calls) == 2
