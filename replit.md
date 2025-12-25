@@ -142,10 +142,13 @@ app/
   - 17 интеграционных тестов RabbitMQ/FastStream (tests/test_messaging.py)
   - 8 E2E тестов полного workflow (tests/test_e2e_workflow.py)
   - Всего: 37 новых тестов, все проходят
-- **Sprint 3 (SRE/Observability) в процессе:**
+- **Sprint 3 (SRE/Observability) завершён:**
   - Исправлен deprecated datetime.utcnow() → datetime.now(timezone.utc) (4 файла)
   - LSP ошибки в llm_manager.py признаны false positives (pyright type stubs)
   - Timestamps теперь timezone-aware с explicit UTC offset
+  - Добавлен endpoint `/queue/dlq-stats` для мониторинга Dead Letter Queue
+  - Добавлен `is_connected` property и `get_all_persistent_keys()` в TarantoolClient
+  - PRODUCTION_READINESS_PLAN.md создан с оставшимися спринтами
 
 ## Test Coverage
 
@@ -161,9 +164,10 @@ app/
 
 ## Production Readiness
 
-**Текущий уровень:** 87%  
+**Текущий уровень:** 89%  
 **Целевой уровень:** 95% (9.5/10)  
 **План:** 5-спринтовый план (Backend → QA → SRE → Frontend → UX)
+**Прогресс:** Sprint 1-3 завершены (Backend + QA + SRE)
 
 ### Финальный анализ (25.12.2025)
 

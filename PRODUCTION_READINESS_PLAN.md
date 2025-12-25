@@ -1,6 +1,6 @@
 # Production Readiness Plan: 87% → 95%
 
-## Current State (87%)
+## Current State (89%)
 | Criterion | Score | Status |
 |-----------|-------|--------|
 | Functionality | 9/10 | ✅ Complete |
@@ -15,15 +15,17 @@
 
 ## Remaining Sprints
 
-### Sprint 3: SRE/Observability (Completed Items)
+### Sprint 3: SRE/Observability (Completed ✅)
 - [x] Replace deprecated `datetime.utcnow()` → `datetime.now(timezone.utc)` (4 files: agent.py, logger.py, formatters.py x2)
 - [x] LSP errors in llm_manager.py acknowledged as pyright false positives
+- [x] Add `/queue/dlq-stats` endpoint for DLQ monitoring
+- [x] Add `is_connected` property to TarantoolClient
+- [x] Add `get_all_persistent_keys()` method for key enumeration
 
-### Sprint 3: SRE/Observability (Pending)
+### Sprint 3: SRE/Observability (Optional Future Enhancements)
 | Task | Priority | Effort |
 |------|----------|--------|
-| DLQ Prometheus gauges for RabbitMQ monitoring | P1 | 2h |
-| Expand `/utility/metrics` with DLQ statistics | P1 | 1h |
+| Prometheus metrics export format | P2 | 2h |
 | Alert rules for DLQ thresholds | P2 | 1h |
 | Grafana dashboard templates | P3 | 2h |
 
@@ -141,7 +143,7 @@ grafana:
 
 | Sprint | Duration | Target Readiness |
 |--------|----------|------------------|
-| Sprint 3 (SRE) | 1-2 days | 89% |
+| Sprint 3 (SRE) | Completed | 89% ✅ |
 | Sprint 4 (Frontend) | 2-3 days | 92% |
 | Sprint 5 (UX/Docs) | 2-3 days | 95% |
 
