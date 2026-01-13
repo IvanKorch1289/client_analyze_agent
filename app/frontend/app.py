@@ -28,6 +28,7 @@ from app.frontend.router import TAB_BY_KEY, TAB_DEFS, enforce_access, set_tab
 from app.frontend.tabs import analysis as tab_analysis
 from app.frontend.tabs import data as tab_data
 from app.frontend.tabs import docs as tab_docs
+from app.frontend.tabs import llm as tab_llm
 from app.frontend.tabs import utilities as tab_utilities
 
 
@@ -186,6 +187,8 @@ def main() -> None:
         tab_analysis.render(api)
     elif tab == "data":
         tab_data.render(api)
+    elif tab == "llm":
+        tab_llm.render(api)
     elif tab == "utilities":
         tab_utilities.render(api, admin_token=st.session_state.get("admin_token", ""))
     elif tab == "docs":
