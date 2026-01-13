@@ -2,57 +2,14 @@
 Analysis tools for client risk assessment.
 """
 
-from typing import Any, Dict, Optional
-
-from pydantic import BaseModel, Field, field_validator
+from typing import Any, Dict
 
 from app.shared.logger import get_logger
-from app.shared.security import sanitize_for_llm, validate_inn
+
+# Import canonical schema (avoid duplication)
+from app.schemas.requests import ClientAnalysisRequest
 
 logger = get_logger(__name__)
-
-
-# ============================================================================
-# Request Models
-# ============================================================================
-
-
-class ClientAnalysisRequest(BaseModel):
-    """Request for client analysis."""
-
-    client_name: str = Field(..., max_length=200, description="Client/company name")
-    inn: str = Field(default="", description="Company INN (optional)")
-    additional_notes: str = Field(
-        default="",
-        max_length=5000,
-        description="Additional notes from user",
-    )
-    save_report: bool = Field(default=True, description="Save report to database")
-    session_id: Optional[str] = Field(default=None, description="Session ID for tracking")
-
-    @field_validator("client_name")
-    @classmethod
-    def validate_client_name(cls, v: str) -> str:
-        """Validate and sanitize client name."""
-        return sanitize_for_llm(v, max_length=200, strict=False)
-
-    @field_validator("inn")
-    @classmethod
-    def validate_inn_field(cls, v: str) -> str:
-        """Validate INN format."""
-        if v:
-            is_valid, error = validate_inn(v)
-            if not is_valid:
-                raise ValueError(error)
-        return v.strip()
-
-    @field_validator("additional_notes")
-    @classmethod
-    def validate_notes(cls, v: str) -> str:
-        """Validate and sanitize additional notes."""
-        if v:
-            return sanitize_for_llm(v, max_length=5000, strict=False)
-        return ""
 
 
 # ============================================================================

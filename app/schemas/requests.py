@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class BulkDeleteRequest(BaseModel):
@@ -98,11 +98,52 @@ class ComparisonRequest(BaseModel):
 
 
 class ClientAnalysisRequest(BaseModel):
-    """Request for client analysis."""
+    """
+    Request for client analysis.
 
-    client_name: str
-    inn: Optional[str] = ""
-    additional_notes: Optional[str] = ""
+    Canonical schema used by API, messaging, and MCP server.
+    Includes validation for security-sensitive fields.
+    """
+
+    client_name: str = Field(..., max_length=200, description="Client/company name")
+    inn: str = Field(default="", description="Company INN (10 or 12 digits, optional)")
+    additional_notes: str = Field(
+        default="",
+        max_length=5000,
+        description="Additional notes from user",
+    )
+    session_id: Optional[str] = Field(default=None, description="Session ID for tracking")
+    save_report: bool = Field(default=True, description="Save report to database")
+
+    @field_validator("client_name")
+    @classmethod
+    def validate_client_name(cls, v: str) -> str:
+        """Validate and sanitize client name."""
+        from app.shared.security import sanitize_for_llm
+
+        return sanitize_for_llm(v, max_length=200, strict=False)
+
+    @field_validator("inn")
+    @classmethod
+    def validate_inn_field(cls, v: str) -> str:
+        """Validate INN format."""
+        if v:
+            from app.shared.security import validate_inn
+
+            is_valid, error = validate_inn(v)
+            if not is_valid:
+                raise ValueError(error)
+        return v.strip()
+
+    @field_validator("additional_notes")
+    @classmethod
+    def validate_notes(cls, v: str) -> str:
+        """Validate and sanitize additional notes."""
+        if v:
+            from app.shared.security import sanitize_for_llm
+
+            return sanitize_for_llm(v, max_length=5000, strict=False)
+        return ""
 
 
 class PromptRequest(BaseModel):

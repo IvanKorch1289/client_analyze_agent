@@ -8,15 +8,8 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
-
-class ClientAnalysisRequest(BaseModel):
-    """Сообщение-запрос на анализ клиента."""
-
-    client_name: str = Field(..., description="Название контрагента")
-    inn: str = Field("", description="ИНН (10/12) или пусто")
-    additional_notes: str = Field("", description="Дополнительный контекст")
-    session_id: Optional[str] = Field(default=None, description="Явный session_id (опционально)")
-    save_report: bool = Field(default=True, description="Сохранять ли отчёт в Tarantool")
+# Import canonical schema (avoid duplication)
+from app.schemas.requests import ClientAnalysisRequest
 
 
 class ClientAnalysisResult(BaseModel):

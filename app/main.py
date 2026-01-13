@@ -627,7 +627,7 @@ async def main():
 # =======================
 
 if __name__ == "__main__":
-    print("🌐 Запуск Multi-Agent системы...")
+    logger.info("Starting Multi-Agent system...")
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
