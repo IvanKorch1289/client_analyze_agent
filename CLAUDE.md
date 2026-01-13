@@ -16,6 +16,7 @@ A multi-agent system for analyzing business counterparties and clients using LLM
 - Streaming analysis with real-time progress
 - Circuit breaker resilience patterns
 - Role-based access control
+- **Async LLM API with webhook callback** (NEW)
 
 ## Architecture
 
@@ -126,6 +127,7 @@ SKIP_INTEGRATION=true pytest       # CI mode
 │   │   ├── routes/                # Endpoint handlers
 │   │   │   ├── agent.py           # /agent/* endpoints
 │   │   │   ├── data.py            # /data/* endpoints
+│   │   │   ├── llm.py             # /llm/* endpoints (async LLM)
 │   │   │   ├── reports.py         # /reports/* endpoints
 │   │   │   ├── scheduler.py       # /scheduler/* endpoints
 │   │   │   └── utility.py         # /health, /metrics
@@ -184,11 +186,11 @@ SKIP_INTEGRATION=true pytest       # CI mode
 | Category | Package | Purpose |
 |----------|---------|---------|
 | Web | FastAPI 0.125, Streamlit 1.45 | Backend API, Frontend UI |
-| Agents | LangChain 0.3.27, LangGraph 0.6.7 | LLM orchestration |
+| Agents | LangChain 1.2.3, LangGraph 1.0.6 | LLM orchestration |
 | Database | Tarantool 2.11 | In-memory caching |
-| Queue | RabbitMQ 3.13, FastStream 0.6.4 | Async messaging |
+| Queue | RabbitMQ 3.13, FastStream 0.6.5 | Async messaging |
 | HTTP | HTTPX 0.28.1, Tenacity 9.1.2 | Resilient HTTP calls |
-| PDF | FPDF2 2.8.1 | Report generation |
+| PDF | FPDF2 2.8.5 | Report generation |
 | Observability | OpenTelemetry 1.39.1 | Distributed tracing |
 
 ## Environment Variables
@@ -222,6 +224,8 @@ VAULT_ADDR/TOKEN        # HashiCorp Vault
 | GET | `/api/v1/data/dadata/{inn}` | Lookup company by INN |
 | GET | `/api/v1/reports` | List generated reports |
 | GET | `/api/v1/reports/{id}/download` | Download PDF report |
+| POST | `/api/v1/llm/async` | **Async LLM request with webhook** |
+| GET | `/api/v1/llm/providers` | **List available LLM providers** |
 | GET | `/health` | Health check |
 | GET | `/metrics` | Prometheus metrics |
 | GET | `/circuit-breakers` | Circuit breaker status |
@@ -236,11 +240,10 @@ VAULT_ADDR/TOKEN        # HashiCorp Vault
 
 ## Known Issues & TODOs
 
-1. Some `print()` statements should be replaced with logging
-2. CORS configuration needs production/dev separation
-3. MCP server lacks comprehensive documentation
-4. Frontend has no automated tests
-5. Some TODO comments remain in repository code
+1. CORS configuration needs production/dev separation
+2. MCP server lacks comprehensive documentation
+3. Frontend has no automated tests
+4. Some TODO comments remain in repository code
 
 ## Contact & Resources
 
