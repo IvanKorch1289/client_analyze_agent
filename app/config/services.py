@@ -71,6 +71,7 @@ class QueueSettings(BaseSettingsWithLoader):
     reports_queue: str = Field(default="reports.generate", description="Очередь генерации отчётов")
     notifications_queue: str = Field(default="notifications.email", description="Очередь уведомлений")
     cache_queue: str = Field(default="cache.invalidate", description="Очередь инвалидации кеша")
+    llm_queue: str = Field(default="llm.async", description="Очередь асинхронных LLM запросов")
 
     # Настройки обработки
     prefetch_count: int = Field(default=10, description="Количество предзагрузки сообщений")

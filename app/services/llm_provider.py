@@ -7,23 +7,9 @@ Wrapper для LLMManager с retry логикой и fallback.
 import json
 from typing import Any, Dict, Optional
 
-from app.agents.llm_manager import LLMManager
+# Import singleton from canonical source (avoid duplication)
+from app.agents.llm_manager import LLMManager, get_llm_manager
 from app.utility.logging_client import logger
-
-_llm_manager_instance: Optional[LLMManager] = None
-
-
-def get_llm_manager() -> LLMManager:
-    """
-    Получить singleton instance LLMManager.
-
-    Returns:
-        LLMManager instance
-    """
-    global _llm_manager_instance
-    if _llm_manager_instance is None:
-        _llm_manager_instance = LLMManager()
-    return _llm_manager_instance
 
 
 async def llm_generate_json(

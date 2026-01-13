@@ -18,6 +18,7 @@ from faststream.rabbit import ExchangeType, RabbitBroker, RabbitExchange, Rabbit
 
 from app.config import settings
 from app.messaging.models import (
+    AsyncLLMQueueMessage,
     CacheInvalidateRequest,
     ClientAnalysisRequest,
     ClientAnalysisResult,
@@ -64,6 +65,17 @@ _cache_queue = RabbitQueue(
     arguments={
         "x-dead-letter-exchange": "dlx",
         "x-dead-letter-routing-key": "dlq.cache",
+    },
+)
+
+_llm_queue = RabbitQueue(
+    settings.queue.llm_queue,
+    durable=True,
+    routing_key=settings.queue.llm_queue,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "dlq.llm",
+        "x-message-ttl": 300000,  # 5 min TTL
     },
 )
 
@@ -115,6 +127,114 @@ async def handle_cache_invalidate(msg: CacheInvalidateRequest) -> Dict[str, Any]
         invalidate_all=msg.invalidate_all,
         prefer_queue=False,
     )
+
+
+@broker.subscriber(_llm_queue)
+async def handle_async_llm_request(msg: AsyncLLMQueueMessage) -> Dict[str, Any]:
+    """
+    Обработчик асинхронных LLM запросов.
+
+    Выполняет LLM вызов и отправляет результат на callback URL.
+    """
+    import httpx
+
+    from app.agents.llm_manager import LLMProvider, get_llm_manager
+
+    start_time = time.perf_counter()
+    callback_payload: Dict[str, Any]
+
+    logger.info(
+        f"Processing async LLM request: {msg.request_id} (provider: {msg.provider})",
+        component="faststream",
+    )
+
+    try:
+        manager = get_llm_manager()
+
+        # Map string provider to enum
+        provider_map = {
+            "openrouter": LLMProvider.OPENROUTER,
+            "huggingface": LLMProvider.HUGGINGFACE,
+            "gigachat": LLMProvider.GIGACHAT,
+            "yandexgpt": LLMProvider.YANDEXGPT,
+            "openllama": LLMProvider.OPENROUTER,  # Fallback
+        }
+
+        llm_provider = provider_map.get(msg.provider, LLMProvider.OPENROUTER)
+
+        # Build full prompt
+        full_prompt = msg.prompt
+        if msg.system_prompt:
+            full_prompt = f"{msg.system_prompt}\n\n{msg.prompt}"
+
+        # Call LLM
+        response = await manager.ainvoke_with_provider(
+            prompt=full_prompt,
+            provider=llm_provider,
+            temperature=msg.temperature,
+            max_tokens=msg.max_tokens,
+        )
+
+        processing_time = (time.perf_counter() - start_time) * 1000
+
+        callback_payload = {
+            "request_id": msg.request_id,
+            "status": "success",
+            "provider_used": msg.provider,
+            "response": response,
+            "processing_time_ms": processing_time,
+            "request_metadata": msg.request_metadata,
+        }
+
+        logger.structured(
+            "info",
+            "async_llm_completed",
+            request_id=msg.request_id,
+            provider=msg.provider,
+            processing_time_ms=round(processing_time, 2),
+        )
+
+    except Exception as e:
+        processing_time = (time.perf_counter() - start_time) * 1000
+
+        callback_payload = {
+            "request_id": msg.request_id,
+            "status": "error",
+            "provider_used": msg.provider,
+            "error": str(e),
+            "processing_time_ms": processing_time,
+            "request_metadata": msg.request_metadata,
+        }
+
+        logger.error(
+            f"Async LLM request failed: {e}",
+            component="faststream",
+            request_id=msg.request_id,
+        )
+
+    # Send callback
+    try:
+        headers = dict(msg.callback_headers) if msg.callback_headers else {}
+        headers["Content-Type"] = "application/json"
+
+        async with httpx.AsyncClient() as client:
+            callback_response = await client.post(
+                msg.callback_url,
+                json=callback_payload,
+                headers=headers,
+                timeout=30.0,
+            )
+            logger.info(
+                f"Callback sent for {msg.request_id}: status {callback_response.status_code}",
+                component="faststream",
+            )
+    except Exception as e:
+        logger.error(
+            f"Callback failed for {msg.request_id}: {e}",
+            component="faststream",
+        )
+
+    return callback_payload
 
 
 # =============================================================================

@@ -8,15 +8,8 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
-
-class ClientAnalysisRequest(BaseModel):
-    """Сообщение-запрос на анализ клиента."""
-
-    client_name: str = Field(..., description="Название контрагента")
-    inn: str = Field("", description="ИНН (10/12) или пусто")
-    additional_notes: str = Field("", description="Дополнительный контекст")
-    session_id: Optional[str] = Field(default=None, description="Явный session_id (опционально)")
-    save_report: bool = Field(default=True, description="Сохранять ли отчёт в Tarantool")
+# Import canonical schema (avoid duplication)
+from app.schemas.requests import ClientAnalysisRequest
 
 
 class ClientAnalysisResult(BaseModel):
@@ -33,3 +26,18 @@ class CacheInvalidateRequest(BaseModel):
 
     prefix: Optional[str] = Field(default=None, description="Префикс ключей")
     invalidate_all: bool = Field(default=False, description="Инвалидировать всё")
+
+
+class AsyncLLMQueueMessage(BaseModel):
+    """Message for async LLM queue processing."""
+
+    request_id: str = Field(..., description="Unique request ID")
+    prompt: str = Field(..., description="User prompt")
+    system_prompt: Optional[str] = Field(None, description="System prompt")
+    provider: str = Field(..., description="LLM provider name")
+    callback_url: str = Field(..., description="Callback URL for result delivery")
+    callback_headers: Optional[Dict[str, str]] = Field(None, description="Callback headers")
+    temperature: float = Field(default=0.7, description="LLM temperature")
+    max_tokens: int = Field(default=4096, description="Max tokens to generate")
+    request_metadata: Optional[Dict[str, Any]] = Field(None, description="Custom metadata")
+    created_at: float = Field(..., description="Request creation timestamp")

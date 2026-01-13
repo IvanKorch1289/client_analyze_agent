@@ -13,7 +13,11 @@ from typing import Optional
 from faststream.rabbit import RabbitBroker
 
 from app.config import settings
-from app.messaging.models import CacheInvalidateRequest, ClientAnalysisRequest
+from app.messaging.models import (
+    AsyncLLMQueueMessage,
+    CacheInvalidateRequest,
+    ClientAnalysisRequest,
+)
 
 
 class RabbitPublisher:
@@ -63,6 +67,37 @@ class RabbitPublisher:
         await self._ensure_connected()
         msg = CacheInvalidateRequest(prefix=prefix, invalidate_all=invalidate_all)
         await self._broker.publish(msg, queue=settings.queue.cache_queue)
+
+    async def publish_async_llm_request(
+        self,
+        *,
+        request_id: str,
+        prompt: str,
+        provider: str,
+        callback_url: str,
+        system_prompt: Optional[str] = None,
+        callback_headers: Optional[dict] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        request_metadata: Optional[dict] = None,
+    ) -> None:
+        """Publish async LLM request to queue."""
+        import time
+
+        await self._ensure_connected()
+        msg = AsyncLLMQueueMessage(
+            request_id=request_id,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            provider=provider,
+            callback_url=callback_url,
+            callback_headers=callback_headers,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            request_metadata=request_metadata,
+            created_at=time.time(),
+        )
+        await self._broker.publish(msg, queue=settings.queue.llm_queue)
 
 
 _publisher: Optional[RabbitPublisher] = None
