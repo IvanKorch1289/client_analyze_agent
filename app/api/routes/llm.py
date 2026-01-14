@@ -1,9 +1,9 @@
 """
-LLM API endpoints for async processing with webhook callback.
+API эндпоинты LLM для асинхронной обработки с webhook callback.
 
-Provides:
-- POST /llm/async - Submit async LLM request
-- GET /llm/providers - List available providers
+Предоставляет:
+- POST /llm/async - Отправка асинхронного LLM запроса
+- GET /llm/providers - Список доступных провайдеров
 """
 
 import asyncio
@@ -27,18 +27,18 @@ llm_router = APIRouter(prefix="/llm", tags=["LLM"])
 
 
 def _generate_request_id() -> str:
-    """Generate unique request ID."""
+    """Генерация уникального ID запроса."""
     return f"llm_{uuid.uuid4().hex[:16]}_{int(time.time())}"
 
 
 def _is_provider_available(provider: LLMProviderEnum) -> bool:
-    """Check if a provider is configured and available."""
+    """Проверка доступности и настроенности провайдера."""
     provider_configs = {
         LLMProviderEnum.OPENROUTER: bool(settings.openrouter.api_key),
         LLMProviderEnum.HUGGINGFACE: bool(settings.huggingface.api_key),
         LLMProviderEnum.GIGACHAT: bool(settings.gigachat.api_key),
         LLMProviderEnum.YANDEXGPT: bool(settings.yandexgpt.api_key),
-        LLMProviderEnum.OPENLLAMA: True,  # Local, always "available" if requested
+        LLMProviderEnum.OPENLLAMA: True,  # Локальный, всегда "доступен" при запросе
     }
     return provider_configs.get(provider, False)
 
@@ -48,9 +48,9 @@ async def _process_llm_request_background(
     data: AsyncLLMRequest,
 ) -> None:
     """
-    Process LLM request in background and send callback.
+    Обработка LLM запроса в фоне и отправка callback.
 
-    Used as fallback when RabbitMQ is not enabled.
+    Используется как резервный вариант, когда RabbitMQ не включён.
     """
     import httpx
 
@@ -62,23 +62,23 @@ async def _process_llm_request_background(
 
         manager = get_llm_manager()
 
-        # Map enum to LLMProvider
+        # Сопоставление enum с LLMProvider
         provider_map = {
             LLMProviderEnum.OPENROUTER: LLMProvider.OPENROUTER,
             LLMProviderEnum.HUGGINGFACE: LLMProvider.HUGGINGFACE,
             LLMProviderEnum.GIGACHAT: LLMProvider.GIGACHAT,
             LLMProviderEnum.YANDEXGPT: LLMProvider.YANDEXGPT,
-            LLMProviderEnum.OPENLLAMA: LLMProvider.OPENROUTER,  # Fallback
+            LLMProviderEnum.OPENLLAMA: LLMProvider.OPENROUTER,  # Резервный
         }
 
         llm_provider = provider_map.get(data.provider, LLMProvider.OPENROUTER)
 
-        # Build full prompt
+        # Формирование полного промпта
         full_prompt = data.prompt
         if data.system_prompt:
             full_prompt = f"{data.system_prompt}\n\n{data.prompt}"
 
-        # Call LLM with specific provider
+        # Вызов LLM с указанным провайдером
         response = await manager.ainvoke_with_provider(
             prompt=full_prompt,
             provider=llm_provider,
@@ -122,7 +122,7 @@ async def _process_llm_request_background(
             component="llm_api",
         )
 
-    # Send callback
+    # Отправка callback
     try:
         headers = dict(data.callback_headers) if data.callback_headers else {}
         headers["Content-Type"] = "application/json"
@@ -151,24 +151,24 @@ async def submit_async_llm_request(
     data: AsyncLLMRequest,
 ) -> AsyncLLMAccepted:
     """
-    Submit async LLM request with webhook callback.
+    Отправка асинхронного LLM запроса с webhook callback.
 
-    Returns 202 Accepted immediately. Result is delivered via callback URL.
+    Возвращает 202 Accepted немедленно. Результат доставляется через callback URL.
 
-    The request is either:
-    1. Published to RabbitMQ queue for worker processing (if enabled)
-    2. Processed in background task (fallback)
+    Запрос обрабатывается:
+    1. Публикуется в очередь RabbitMQ для обработки воркером (если включено)
+    2. Обрабатывается в фоновой задаче (резервный вариант)
     """
     request_id = _generate_request_id()
 
-    # Validate provider availability
+    # Проверка доступности провайдера
     if not _is_provider_available(data.provider):
         raise HTTPException(
             status_code=400,
-            detail=f"Provider {data.provider.value} is not configured",
+            detail=f"Провайдер {data.provider.value} не настроен",
         )
 
-    # Queue message for processing
+    # Постановка сообщения в очередь для обработки
     if settings.queue.enabled:
         try:
             from app.messaging.publisher import get_rabbit_publisher
@@ -197,10 +197,10 @@ async def submit_async_llm_request(
                 f"Queue publish failed, falling back to background task: {e}",
                 component="llm_api",
             )
-            # Fallback to background task
+            # Резервный вариант - фоновая задача
             asyncio.create_task(_process_llm_request_background(request_id, data))
     else:
-        # Process in background task
+        # Обработка в фоновой задаче
         asyncio.create_task(_process_llm_request_background(request_id, data))
         logger.structured(
             "info",
@@ -219,9 +219,9 @@ async def submit_async_llm_request(
 @llm_router.get("/providers", response_model=LLMProvidersResponse)
 async def list_llm_providers() -> LLMProvidersResponse:
     """
-    List available LLM providers and their status.
+    Список доступных LLM провайдеров и их статус.
 
-    Returns all supported providers and whether they are configured.
+    Возвращает все поддерживаемые провайдеры и их состояние настройки.
     """
     from app.agents.llm_manager import get_llm_manager
 
@@ -230,7 +230,7 @@ async def list_llm_providers() -> LLMProvidersResponse:
     providers = [p.value for p in LLMProviderEnum]
     status = manager.get_provider_status()
 
-    # Add OpenLlama status (always potentially available as internal)
+    # Добавляем статус OpenLlama (всегда потенциально доступен как внутренний)
     status["openllama"] = True
 
     return LLMProvidersResponse(

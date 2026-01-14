@@ -1,7 +1,7 @@
 """
-LLM request/response schemas for async processing.
+Схемы запросов/ответов LLM для асинхронной обработки.
 
-Supports multiple LLM providers with webhook callback delivery.
+Поддерживает несколько LLM провайдеров с доставкой через webhook callback.
 """
 
 from enum import Enum
@@ -11,73 +11,73 @@ from pydantic import BaseModel, Field, HttpUrl
 
 
 class LLMProviderEnum(str, Enum):
-    """Supported LLM providers."""
+    """Поддерживаемые LLM провайдеры."""
 
     OPENROUTER = "openrouter"
     HUGGINGFACE = "huggingface"
     GIGACHAT = "gigachat"
     YANDEXGPT = "yandexgpt"
-    OPENLLAMA = "openllama"  # Internal LLM via local deployment
+    OPENLLAMA = "openllama"  # Внутренний LLM через локальное развёртывание
 
 
 class AsyncLLMRequest(BaseModel):
     """
-    Request for async LLM processing.
+    Запрос на асинхронную обработку LLM.
 
-    The request is queued immediately and the result is delivered
-    via webhook callback to the specified URL.
+    Запрос немедленно ставится в очередь, результат доставляется
+    через webhook callback на указанный URL.
     """
 
-    prompt: str = Field(..., min_length=1, max_length=50000, description="User prompt")
+    prompt: str = Field(..., min_length=1, max_length=50000, description="Пользовательский промпт")
     system_prompt: Optional[str] = Field(
-        None, max_length=10000, description="System prompt (optional)"
+        None, max_length=10000, description="Системный промпт (опционально)"
     )
     provider: LLMProviderEnum = Field(
-        default=LLMProviderEnum.OPENROUTER, description="LLM provider to use"
+        default=LLMProviderEnum.OPENROUTER, description="LLM провайдер для использования"
     )
-    callback_url: HttpUrl = Field(..., description="URL to POST results to")
+    callback_url: HttpUrl = Field(..., description="URL для отправки результатов POST запросом")
     callback_headers: Optional[Dict[str, str]] = Field(
-        default=None, description="Headers to include in callback request"
+        default=None, description="Заголовки для включения в callback запрос"
     )
 
-    # LLM parameters
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Sampling temperature")
-    max_tokens: int = Field(default=4096, ge=1, le=32000, description="Maximum tokens to generate")
+    # Параметры LLM
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Температура семплирования")
+    max_tokens: int = Field(default=4096, ge=1, le=32000, description="Максимальное количество токенов")
 
-    # Metadata for tracking
+    # Метаданные для отслеживания
     request_metadata: Optional[Dict[str, Any]] = Field(
-        default=None, description="Custom metadata returned with callback"
+        default=None, description="Пользовательские метаданные, возвращаемые с callback"
     )
 
 
 class AsyncLLMAccepted(BaseModel):
-    """Response when async LLM request is accepted."""
+    """Ответ при принятии асинхронного LLM запроса."""
 
     status: str = "accepted"
-    request_id: str = Field(..., description="Unique request ID for tracking")
-    message: str = "Request queued for processing"
+    request_id: str = Field(..., description="Уникальный ID запроса для отслеживания")
+    message: str = "Запрос поставлен в очередь на обработку"
     estimated_time_seconds: Optional[int] = Field(
-        None, description="Estimated processing time"
+        None, description="Примерное время обработки"
     )
 
 
 class LLMCallbackPayload(BaseModel):
-    """Payload sent to callback URL after LLM processing."""
+    """Payload, отправляемый на callback URL после обработки LLM."""
 
-    request_id: str = Field(..., description="Original request ID")
-    status: str = Field(..., description="Processing status: success or error")
-    provider_used: str = Field(..., description="Provider that processed the request")
-    response: Optional[str] = Field(None, description="LLM response text")
-    error: Optional[str] = Field(None, description="Error message if failed")
-    usage: Optional[Dict[str, int]] = Field(None, description="Token usage statistics")
-    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
+    request_id: str = Field(..., description="Оригинальный ID запроса")
+    status: str = Field(..., description="Статус обработки: success или error")
+    provider_used: str = Field(..., description="Провайдер, обработавший запрос")
+    response: Optional[str] = Field(None, description="Текст ответа LLM")
+    error: Optional[str] = Field(None, description="Сообщение об ошибке при неудаче")
+    usage: Optional[Dict[str, int]] = Field(None, description="Статистика использования токенов")
+    processing_time_ms: float = Field(..., description="Время обработки в миллисекундах")
     request_metadata: Optional[Dict[str, Any]] = Field(
-        None, description="Original request metadata"
+        None, description="Оригинальные метаданные запроса"
     )
 
 
 class LLMProviderStatus(BaseModel):
-    """Status of an LLM provider."""
+    """Статус LLM провайдера."""
 
     provider: str
     available: bool
@@ -86,10 +86,10 @@ class LLMProviderStatus(BaseModel):
 
 
 class LLMProvidersResponse(BaseModel):
-    """Response listing available LLM providers."""
+    """Ответ со списком доступных LLM провайдеров."""
 
-    providers: list[str] = Field(..., description="List of provider names")
-    status: Dict[str, bool] = Field(..., description="Provider availability status")
+    providers: list[str] = Field(..., description="Список имён провайдеров")
+    status: Dict[str, bool] = Field(..., description="Статус доступности провайдеров")
 
 
 __all__ = [

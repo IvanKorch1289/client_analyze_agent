@@ -1,12 +1,12 @@
 """
-Reports API routes - управление отчетами по анализу клиентов.
+Reports API маршруты - управление отчетами по анализу клиентов.
 
-Provides endpoints for:
-- Listing reports with pagination and filters
-- Getting report details
-- Searching reports by INN, risk level, etc.
-- Reports statistics
-- Bulk operations
+Предоставляет эндпоинты для:
+- Список отчётов с пагинацией и фильтрами
+- Получение деталей отчёта
+- Поиск отчётов по ИНН, уровню риска и т.д.
+- Статистика отчётов
+- Массовые операции
 """
 
 from datetime import datetime
@@ -79,7 +79,7 @@ async def list_reports(
         client = await TarantoolClient.get_instance()
         reports_repo = client.get_reports_repository()
 
-        # Build filters
+        # Формирование фильтров
         filters = {}
         if inn:
             filters["inn"] = inn
@@ -96,20 +96,20 @@ async def list_reports(
         if max_risk_score is not None:
             filters["max_risk_score"] = max_risk_score
 
-        # Get reports
+        # Получение отчётов
         if filters:
-            # Advanced search with filters
+            # Расширенный поиск с фильтрами
             reports = await reports_repo.search_reports(filters=filters, limit=limit + 1)
         else:
-            # Simple list
+            # Простой список
             reports = await reports_repo.list(limit=limit + 1, offset=offset)
 
-        # Check if there are more results
+        # Проверка наличия дополнительных результатов
         has_more = len(reports) > limit
         if has_more:
             reports = reports[:limit]
 
-        # Get total count (approximation for performance)
+        # Получение общего количества (приблизительно для производительности)
         total = await reports_repo.count()
 
         logger.structured(
@@ -232,12 +232,12 @@ async def delete_report(request: Request, report_id: str, role: str = Depends(re
         client = await TarantoolClient.get_instance()
         reports_repo = client.get_reports_repository()
 
-        # Check if exists
+        # Проверка существования
         report = await reports_repo.get(report_id)
         if not report:
-            raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+            raise HTTPException(status_code=404, detail=f"Отчёт {report_id} не найден")
 
-        # Delete
+        # Удаление
         success = await reports_repo.delete(report_id)
 
         if not success:
@@ -424,7 +424,7 @@ async def export_report(
         if not report:
             raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
 
-        # Normalize report
+        # Нормализация отчёта
         normalized = normalize_report_for_export(report)
 
         if format == "json":

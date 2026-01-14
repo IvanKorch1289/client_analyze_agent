@@ -1,5 +1,5 @@
 """
-LLM Access tab for direct LLM interaction with webhook callback support.
+Вкладка доступа к LLM для прямого взаимодействия с поддержкой webhook callback.
 """
 
 from __future__ import annotations
@@ -12,36 +12,36 @@ import streamlit as st
 from app.frontend.api_client import ApiClient
 from app.frontend.lib.ui import info_box, render_payload, section_header
 
-# Provider options with display names
+# Опции провайдеров с отображаемыми именами
 LLM_PROVIDERS: List[tuple[str, str]] = [
     ("OpenRouter (Claude 3.5 Sonnet)", "openrouter"),
     ("HuggingFace (Llama 3.1 70B)", "huggingface"),
-    ("GigaChat (Sber)", "gigachat"),
+    ("GigaChat (Сбер)", "gigachat"),
     ("YandexGPT", "yandexgpt"),
-    ("OpenLlama (Internal)", "openllama"),
+    ("OpenLlama (Внутренний)", "openllama"),
 ]
 
 
 def _get_token() -> str:
-    """Get admin token from session_state."""
+    """Получение admin токена из session_state."""
     return st.session_state.get("admin_token", "") or ""
 
 
 def render(api: ApiClient) -> None:
-    """Render the LLM Access tab."""
-    st.header("LLM Direct Access")
+    """Отрисовка вкладки доступа к LLM."""
+    st.header("Прямой доступ к LLM")
 
     info_box(
-        "Send prompts directly to LLM providers with async webhook support. "
-        "Requests are processed asynchronously and results are delivered to your callback URL."
+        "Отправляйте промпты напрямую провайдерам LLM с поддержкой асинхронного webhook. "
+        "Запросы обрабатываются асинхронно, результаты доставляются на ваш callback URL."
     )
 
     section = st.selectbox(
-        "Select Section",
+        "Выберите раздел",
         options=[
-            "Async Request (Webhook)",
-            "Provider Status",
-            "Request History",
+            "Асинхронный запрос (Webhook)",
+            "Статус провайдеров",
+            "История запросов",
         ],
         index=0,
         key="llm_section",
@@ -49,75 +49,75 @@ def render(api: ApiClient) -> None:
 
     st.divider()
 
-    if section == "Async Request (Webhook)":
+    if section == "Асинхронный запрос (Webhook)":
         _render_async_request(api)
-    elif section == "Provider Status":
+    elif section == "Статус провайдеров":
         _render_provider_status(api)
-    elif section == "Request History":
+    elif section == "История запросов":
         _render_request_history()
 
 
 def _render_async_request(api: ApiClient) -> None:
-    """Render the async LLM request form."""
-    section_header("Async LLM Request", emoji="robot", help_text="Submit request and receive result via webhook")
+    """Отрисовка формы асинхронного LLM запроса."""
+    section_header("Асинхронный LLM запрос", emoji="robot", help_text="Отправьте запрос и получите результат через webhook")
 
     st.info(
-        "This endpoint accepts your request immediately (202 Accepted) "
-        "and sends the result to your callback URL when ready."
+        "Этот эндпоинт принимает ваш запрос немедленно (202 Accepted) "
+        "и отправляет результат на ваш callback URL, когда он будет готов."
     )
 
     with st.form("async_llm_form"):
-        # Provider selection
+        # Выбор провайдера
         provider_labels = [p[0] for p in LLM_PROVIDERS]
         provider_label = st.selectbox(
-            "LLM Provider",
+            "LLM Провайдер",
             options=provider_labels,
             index=0,
             key="llm_provider_select",
         )
         provider_value = next(p[1] for p in LLM_PROVIDERS if p[0] == provider_label)
 
-        # Prompt inputs
+        # Поля промптов
         system_prompt = st.text_area(
-            "System Prompt (optional)",
-            placeholder="You are a helpful assistant...",
+            "Системный промпт (опционально)",
+            placeholder="Ты полезный ассистент...",
             height=100,
             key="llm_system_prompt",
         )
 
         prompt = st.text_area(
-            "User Prompt",
-            placeholder="Enter your question or task...",
+            "Пользовательский промпт",
+            placeholder="Введите ваш вопрос или задачу...",
             height=200,
             key="llm_user_prompt",
         )
 
-        # Callback configuration
-        st.subheader("Callback Configuration")
+        # Настройка callback
+        st.subheader("Настройка Callback")
         callback_url = st.text_input(
             "Callback URL",
             placeholder="https://your-service.com/webhook/llm-response",
-            help="URL where the LLM response will be sent via POST",
+            help="URL, на который будет отправлен ответ LLM через POST",
             key="llm_callback_url",
         )
 
         col1, col2 = st.columns(2)
         with col1:
             callback_auth_header = st.text_input(
-                "Authorization Header (optional)",
+                "Заголовок авторизации (опционально)",
                 type="password",
                 placeholder="Bearer token...",
                 key="llm_callback_auth",
             )
         with col2:
-            pass  # Reserved for future options
+            pass  # Зарезервировано для будущих опций
 
-        # LLM Parameters
-        st.subheader("LLM Parameters")
+        # Параметры LLM
+        st.subheader("Параметры LLM")
         col1, col2 = st.columns(2)
         with col1:
             temperature = st.slider(
-                "Temperature",
+                "Температура",
                 min_value=0.0,
                 max_value=2.0,
                 value=0.7,
@@ -126,7 +126,7 @@ def _render_async_request(api: ApiClient) -> None:
             )
         with col2:
             max_tokens = st.number_input(
-                "Max Tokens",
+                "Максимум токенов",
                 min_value=100,
                 max_value=32000,
                 value=4096,
@@ -134,34 +134,34 @@ def _render_async_request(api: ApiClient) -> None:
                 key="llm_max_tokens",
             )
 
-        # Metadata
+        # Метаданные
         metadata_str = st.text_input(
-            "Request Metadata (JSON, optional)",
+            "Метаданные запроса (JSON, опционально)",
             placeholder='{"source": "streamlit", "user_id": "123"}',
             key="llm_metadata",
         )
 
-        submit = st.form_submit_button("Submit Async Request", type="primary")
+        submit = st.form_submit_button("Отправить асинхронный запрос", type="primary")
 
     if submit:
-        # Validation
+        # Валидация
         if not prompt.strip():
-            st.error("Prompt is required")
+            st.error("Промпт обязателен")
             return
         if not callback_url.strip():
-            st.error("Callback URL is required")
+            st.error("Callback URL обязателен")
             return
 
-        # Parse metadata
+        # Парсинг метаданных
         metadata = None
         if metadata_str.strip():
             try:
                 metadata = json.loads(metadata_str)
             except json.JSONDecodeError:
-                st.error("Invalid JSON in metadata field")
+                st.error("Невалидный JSON в поле метаданных")
                 return
 
-        # Build payload
+        # Формирование payload
         payload: Dict[str, Any] = {
             "prompt": prompt.strip(),
             "provider": provider_value,
@@ -181,8 +181,8 @@ def _render_async_request(api: ApiClient) -> None:
         if metadata:
             payload["request_metadata"] = metadata
 
-        # Submit request
-        with st.spinner("Submitting request..."):
+        # Отправка запроса
+        with st.spinner("Отправка запроса..."):
             result = api.post(
                 "/llm/async",
                 json=payload,
@@ -191,9 +191,9 @@ def _render_async_request(api: ApiClient) -> None:
 
         if result:
             if result.get("status") == "accepted":
-                st.success(f"Request accepted! ID: {result.get('request_id')}")
+                st.success(f"Запрос принят! ID: {result.get('request_id')}")
 
-                # Save to history
+                # Сохранение в историю
                 if "llm_request_history" not in st.session_state:
                     st.session_state["llm_request_history"] = []
 
@@ -204,17 +204,17 @@ def _render_async_request(api: ApiClient) -> None:
                     "prompt_preview": prompt[:100] + "..." if len(prompt) > 100 else prompt,
                 })
             else:
-                st.error(f"Request failed: {result.get('error', 'Unknown error')}")
+                st.error(f"Ошибка запроса: {result.get('error', 'Неизвестная ошибка')}")
 
-            render_payload(result, title="Response")
+            render_payload(result, title="Ответ")
 
 
 def _render_provider_status(api: ApiClient) -> None:
-    """Render the provider status section."""
-    section_header("LLM Provider Status", emoji="satellite_antenna", help_text="Check availability of providers")
+    """Отрисовка раздела статуса провайдеров."""
+    section_header("Статус LLM провайдеров", emoji="satellite_antenna", help_text="Проверка доступности провайдеров")
 
-    if st.button("Refresh Status", type="primary", key="btn_refresh_providers"):
-        with st.spinner("Checking providers..."):
+    if st.button("Обновить статус", type="primary", key="btn_refresh_providers"):
+        with st.spinner("Проверка провайдеров..."):
             result = api.get("/llm/providers", admin_token=_get_token())
 
         if result:
@@ -233,40 +233,40 @@ def _render_provider_status(api: ApiClient) -> None:
                     if is_available:
                         st.metric(
                             provider.upper(),
-                            "Available",
+                            "Доступен",
                             delta="OK",
                             delta_color="normal",
                         )
                     else:
                         st.metric(
                             provider.upper(),
-                            "Unavailable",
+                            "Недоступен",
                             delta="X",
                             delta_color="inverse",
                         )
 
 
 def _render_request_history() -> None:
-    """Render the request history section."""
-    section_header("Request History", emoji="scroll", help_text="Recent requests from this session")
+    """Отрисовка раздела истории запросов."""
+    section_header("История запросов", emoji="scroll", help_text="Последние запросы этой сессии")
 
     history = st.session_state.get("llm_request_history", [])
 
     if not history:
-        st.info("No requests submitted yet in this session")
+        st.info("В этой сессии ещё нет отправленных запросов")
         return
 
-    # Clear history button
-    if st.button("Clear History", key="btn_clear_llm_history"):
+    # Кнопка очистки истории
+    if st.button("Очистить историю", key="btn_clear_llm_history"):
         st.session_state["llm_request_history"] = []
         st.rerun()
 
-    # Show last 10 requests in reverse order
+    # Показать последние 10 запросов в обратном порядке
     for item in reversed(history[-10:]):
         with st.expander(f"{item['request_id'][:20]}... - {item['provider']}"):
-            st.write(f"**Provider:** {item['provider']}")
+            st.write(f"**Провайдер:** {item['provider']}")
             st.write(f"**Callback:** {item['callback_url']}")
-            st.write(f"**Prompt:** {item['prompt_preview']}")
+            st.write(f"**Промпт:** {item['prompt_preview']}")
 
 
 __all__ = ["render"]
