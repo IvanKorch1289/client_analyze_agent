@@ -29,11 +29,10 @@ class AsyncLLMRequest(BaseModel):
     """
 
     prompt: str = Field(..., min_length=1, max_length=50000, description="Пользовательский промпт")
-    system_prompt: Optional[str] = Field(
-        None, max_length=10000, description="Системный промпт (опционально)"
-    )
+    system_prompt: Optional[str] = Field(None, max_length=10000, description="Системный промпт (опционально)")
     provider: LLMProviderEnum = Field(
-        default=LLMProviderEnum.OPENROUTER, description="LLM провайдер для использования"
+        default=LLMProviderEnum.OPENROUTER,
+        description="LLM провайдер для использования",
     )
     callback_url: HttpUrl = Field(..., description="URL для отправки результатов POST запросом")
     callback_headers: Optional[Dict[str, str]] = Field(
@@ -56,9 +55,7 @@ class AsyncLLMAccepted(BaseModel):
     status: str = "accepted"
     request_id: str = Field(..., description="Уникальный ID запроса для отслеживания")
     message: str = "Запрос поставлен в очередь на обработку"
-    estimated_time_seconds: Optional[int] = Field(
-        None, description="Примерное время обработки"
-    )
+    estimated_time_seconds: Optional[int] = Field(None, description="Примерное время обработки")
 
 
 class LLMCallbackPayload(BaseModel):
@@ -71,9 +68,7 @@ class LLMCallbackPayload(BaseModel):
     error: Optional[str] = Field(None, description="Сообщение об ошибке при неудаче")
     usage: Optional[Dict[str, int]] = Field(None, description="Статистика использования токенов")
     processing_time_ms: float = Field(..., description="Время обработки в миллисекундах")
-    request_metadata: Optional[Dict[str, Any]] = Field(
-        None, description="Оригинальные метаданные запроса"
-    )
+    request_metadata: Optional[Dict[str, Any]] = Field(None, description="Оригинальные метаданные запроса")
 
 
 class LLMProviderStatus(BaseModel):

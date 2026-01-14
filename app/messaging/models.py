@@ -9,7 +9,6 @@ from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field
 
 # Import canonical schema (avoid duplication)
-from app.schemas.requests import ClientAnalysisRequest
 
 
 class ClientAnalysisResult(BaseModel):

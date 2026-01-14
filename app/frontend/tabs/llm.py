@@ -59,7 +59,11 @@ def render(api: ApiClient) -> None:
 
 def _render_async_request(api: ApiClient) -> None:
     """Отрисовка формы асинхронного LLM запроса."""
-    section_header("Асинхронный LLM запрос", emoji="robot", help_text="Отправьте запрос и получите результат через webhook")
+    section_header(
+        "Асинхронный LLM запрос",
+        emoji="robot",
+        help_text="Отправьте запрос и получите результат через webhook",
+    )
 
     st.info(
         "Этот эндпоинт принимает ваш запрос немедленно (202 Accepted) "
@@ -174,9 +178,7 @@ def _render_async_request(api: ApiClient) -> None:
             payload["system_prompt"] = system_prompt.strip()
 
         if callback_auth_header.strip():
-            payload["callback_headers"] = {
-                "Authorization": callback_auth_header.strip()
-            }
+            payload["callback_headers"] = {"Authorization": callback_auth_header.strip()}
 
         if metadata:
             payload["request_metadata"] = metadata
@@ -197,12 +199,14 @@ def _render_async_request(api: ApiClient) -> None:
                 if "llm_request_history" not in st.session_state:
                     st.session_state["llm_request_history"] = []
 
-                st.session_state["llm_request_history"].append({
-                    "request_id": result.get("request_id"),
-                    "provider": provider_value,
-                    "callback_url": callback_url,
-                    "prompt_preview": prompt[:100] + "..." if len(prompt) > 100 else prompt,
-                })
+                st.session_state["llm_request_history"].append(
+                    {
+                        "request_id": result.get("request_id"),
+                        "provider": provider_value,
+                        "callback_url": callback_url,
+                        "prompt_preview": (prompt[:100] + "..." if len(prompt) > 100 else prompt),
+                    }
+                )
             else:
                 st.error(f"Ошибка запроса: {result.get('error', 'Неизвестная ошибка')}")
 
@@ -211,7 +215,11 @@ def _render_async_request(api: ApiClient) -> None:
 
 def _render_provider_status(api: ApiClient) -> None:
     """Отрисовка раздела статуса провайдеров."""
-    section_header("Статус LLM провайдеров", emoji="satellite_antenna", help_text="Проверка доступности провайдеров")
+    section_header(
+        "Статус LLM провайдеров",
+        emoji="satellite_antenna",
+        help_text="Проверка доступности провайдеров",
+    )
 
     if st.button("Обновить статус", type="primary", key="btn_refresh_providers"):
         with st.spinner("Проверка провайдеров..."):
