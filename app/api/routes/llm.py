@@ -118,9 +118,8 @@ async def _process_llm_request_background(
         ).model_dump()
 
         logger.error(
-            f"Async LLM request failed: {e}",
+            f"Async LLM request {request_id} failed: {e}",
             component="llm_api",
-            request_id=request_id,
         )
 
     # Send callback
@@ -174,7 +173,7 @@ async def submit_async_llm_request(
         try:
             from app.messaging.publisher import get_rabbit_publisher
 
-            publisher = await get_rabbit_publisher()
+            publisher = get_rabbit_publisher()
             await publisher.publish_async_llm_request(
                 request_id=request_id,
                 prompt=data.prompt,

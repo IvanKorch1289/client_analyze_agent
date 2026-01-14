@@ -207,9 +207,8 @@ async def handle_async_llm_request(msg: AsyncLLMQueueMessage) -> Dict[str, Any]:
         }
 
         logger.error(
-            f"Async LLM request failed: {e}",
+            f"Async LLM request {msg.request_id} failed: {e}",
             component="faststream",
-            request_id=msg.request_id,
         )
 
     # Send callback
