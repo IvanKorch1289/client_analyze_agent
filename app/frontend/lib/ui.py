@@ -1,0 +1,219 @@
+from __future__ import annotations
+
+import logging
+from contextlib import contextmanager
+from typing import Any, Callable, Dict, Generator, Optional, TypeVar
+
+import streamlit as st
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+@contextmanager
+def safe_api_call(
+    operation_name: str,
+    *,
+    show_error: bool = True,
+    log_error: bool = True,
+) -> Generator[None, None, None]:
+    """
+    Context manager for safely wrapping API calls with error handling.
+    
+    Usage:
+        with safe_api_call("Загрузка данных"):
+            result = api.get("/endpoint")
+    
+    Args:
+        operation_name: Human-readable name of the operation for error messages
+        show_error: Whether to display st.error() on failure
+        log_error: Whether to log the error for debugging
+    
+    Yields:
+        None - the wrapped code executes within the context
+    
+    On exception:
+        - Logs the error if log_error=True
+        - Shows user-friendly error via st.error() if show_error=True
+        - Does not re-raise, allowing graceful degradation
+    """
+    try:
+        yield
+    except TimeoutError as e:
+        error_msg = f"Превышено время ожидания: {operation_name}"
+        if log_error:
+            logger.error(f"Timeout in {operation_name}: {e}")
+        if show_error:
+            st.error(f"⏱️ {error_msg}. Попробуйте повторить позже.")
+    except ConnectionError as e:
+        error_msg = f"Ошибка соединения: {operation_name}"
+        if log_error:
+            logger.error(f"Connection error in {operation_name}: {e}")
+        if show_error:
+            st.error(f"🔌 {error_msg}. Проверьте подключение к сети.")
+    except ValueError as e:
+        error_msg = f"Некорректные данные: {operation_name}"
+        if log_error:
+            logger.error(f"Value error in {operation_name}: {e}")
+        if show_error:
+            st.error(f"⚠️ {error_msg}: {str(e)}")
+    except Exception as e:
+        error_msg = f"Ошибка при выполнении: {operation_name}"
+        if log_error:
+            logger.exception(f"Unexpected error in {operation_name}: {e}")
+        if show_error:
+            st.error(f"❌ {error_msg}. Обратитесь к администратору.")
+
+
+def safe_api_call_decorator(
+    operation_name: str,
+    *,
+    show_error: bool = True,
+    log_error: bool = True,
+    default: Any = None,
+) -> Callable[[Callable[..., T]], Callable[..., Optional[T]]]:
+    """
+    Decorator version of safe_api_call for wrapping functions.
+    
+    Usage:
+        @safe_api_call_decorator("Загрузка данных")
+        def fetch_data():
+            return api.get("/endpoint")
+    
+    Args:
+        operation_name: Human-readable name of the operation
+        show_error: Whether to display st.error() on failure
+        log_error: Whether to log the error for debugging
+        default: Default value to return on failure (default: None)
+    
+    Returns:
+        Decorated function that handles exceptions gracefully
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., Optional[T]]:
+        def wrapper(*args: Any, **kwargs: Any) -> Optional[T]:
+            try:
+                return func(*args, **kwargs)
+            except TimeoutError as e:
+                if log_error:
+                    logger.error(f"Timeout in {operation_name}: {e}")
+                if show_error:
+                    st.error(f"⏱️ Превышено время ожидания: {operation_name}. Попробуйте повторить позже.")
+                return default
+            except ConnectionError as e:
+                if log_error:
+                    logger.error(f"Connection error in {operation_name}: {e}")
+                if show_error:
+                    st.error(f"🔌 Ошибка соединения: {operation_name}. Проверьте подключение к сети.")
+                return default
+            except ValueError as e:
+                if log_error:
+                    logger.error(f"Value error in {operation_name}: {e}")
+                if show_error:
+                    st.error(f"⚠️ Некорректные данные: {operation_name}: {str(e)}")
+                return default
+            except Exception as e:
+                if log_error:
+                    logger.exception(f"Unexpected error in {operation_name}: {e}")
+                if show_error:
+                    st.error(f"❌ Ошибка при выполнении: {operation_name}. Обратитесь к администратору.")
+                return default
+        return wrapper
+    return decorator
+
+
+def section_header(
+    title: str,
+    *,
+    emoji: str = "",
+    help_text: Optional[str] = None,
+) -> None:
+    header = f"{emoji} {title}" if emoji else title
+    if help_text:
+        st.markdown(f"### {header}")
+        st.caption(help_text)
+    else:
+        st.markdown(f"### {header}")
+
+
+def info_box(message: str, *, emoji: str = "ℹ️") -> None:
+    st.info(f"{emoji} {message}")
+
+
+def render_payload(
+    payload: Any,
+    *,
+    title: str = "Response",
+    expanded: bool = False,
+    show_status: bool = True,
+) -> None:
+    if payload is None:
+        st.warning(f"⚠️ {title}: нет данных")
+        return
+
+    if isinstance(payload, dict):
+        status = payload.get("status", "")
+        if show_status and status:
+            if status == "success":
+                st.success(f"✅ {title}")
+            elif status == "error":
+                st.error(f"❌ {title}")
+            else:
+                st.info(f"ℹ️ {title}")
+
+        with st.expander(f"📋 {title}", expanded=expanded):
+            st.json(payload)
+    elif isinstance(payload, str):
+        with st.expander(f"📋 {title}", expanded=expanded):
+            st.text(payload)
+    else:
+        with st.expander(f"📋 {title}", expanded=expanded):
+            st.json(payload)
+
+
+def render_metric_cards(
+    metrics: Dict[str, Any],
+    *,
+    columns: int = 3,
+) -> None:
+    cols = st.columns(columns)
+    for idx, (label, value) in enumerate(metrics.items()):
+        with cols[idx % columns]:
+            st.metric(label=label, value=str(value))
+
+
+def confirm_action(
+    key: str,
+    label: str = "Confirm action",
+) -> bool:
+    return st.checkbox(label, value=False, key=key)
+
+
+def progress_with_status(
+    steps: list[tuple[str, float]],
+    current_step: int,
+    estimated_seconds: Optional[int] = None,
+) -> None:
+    """
+    Display a progress bar with status text and optional time estimate.
+    
+    Args:
+        steps: List of (step_name, progress_fraction) tuples
+        current_step: Index of the current step (0-based)
+        estimated_seconds: Optional estimated time remaining in seconds
+    """
+    if not steps or current_step < 0:
+        return
+    
+    step_name, progress = steps[min(current_step, len(steps) - 1)]
+    
+    st.progress(progress, text=step_name)
+    
+    if estimated_seconds is not None and estimated_seconds > 0:
+        if estimated_seconds >= 60:
+            minutes = estimated_seconds // 60
+            seconds = estimated_seconds % 60
+            time_text = f"~{minutes} мин {seconds} сек"
+        else:
+            time_text = f"~{estimated_seconds} сек"
+        st.caption(f"⏱️ Примерное время: {time_text}")

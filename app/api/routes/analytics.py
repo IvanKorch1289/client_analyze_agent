@@ -8,13 +8,13 @@ Provides endpoints for:
 - Analytics for frontend dashboards
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field
 
 from app.api.rate_limit import limiter_for_client_ip
 from app.config.constants import RATE_LIMIT_SEARCH_PER_MINUTE
+from app.schemas import ComparisonRequest, DashboardResponse, TrendsResponse
 from app.services.openrouter_client import get_openrouter_client
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
@@ -28,26 +28,6 @@ analytics_router = APIRouter(
 )
 
 limiter = limiter_for_client_ip()
-
-
-class DashboardResponse(BaseModel):
-    """Response for dashboard analytics."""
-
-    status: str = "success"
-    data: Dict[str, Any]
-
-
-class TrendsResponse(BaseModel):
-    """Response for risk trends."""
-
-    status: str = "success"
-    trends: Dict[str, Any]
-
-
-class ComparisonRequest(BaseModel):
-    """Request for reports comparison."""
-
-    report_ids: List[str] = Field(..., min_items=2, max_items=10)
 
 
 @analytics_router.get("/dashboard", response_model=DashboardResponse)

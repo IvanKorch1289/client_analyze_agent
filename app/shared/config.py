@@ -5,11 +5,14 @@ All configuration is loaded from environment variables (.env file).
 Never hardcode API keys or secrets in code!
 """
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_config_logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -136,9 +139,9 @@ class Settings(BaseSettings):
 try:
     settings = Settings()  # type: ignore[call-arg]
 except Exception as e:
-    print(f"❌ Failed to load configuration: {e}")
-    print("📝 Make sure .env file exists and contains all required variables")
-    print("📄 See .env.example for the template")
+    _config_logger.error("Failed to load configuration: %s", e)
+    _config_logger.error("Make sure .env file exists and contains all required variables")
+    _config_logger.error("See .env.example for the template")
     raise
 
 

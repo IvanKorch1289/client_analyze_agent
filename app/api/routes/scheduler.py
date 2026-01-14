@@ -2,14 +2,19 @@
 Scheduler API endpoints - управление отложенными задачами.
 """
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
 
 from app.api.rate_limit import limiter_for_client_ip
 from app.config import RATE_LIMIT_GENERAL_PER_MINUTE
+from app.schemas import (
+    ScheduleClientAnalysisRequest,
+    ScheduleDataFetchRequest,
+    ScheduleTaskResponse,
+    SchedulerStatsResponse,
+    TaskInfoResponse,
+)
 from app.services.scheduler_service import get_scheduler_service
 from app.utility.logging_client import logger
 
@@ -17,49 +22,94 @@ scheduler_router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 limiter = limiter_for_client_ip()
 
 
-class ScheduleClientAnalysisRequest(BaseModel):
-    """Запрос на планирование анализа клиента."""
+@scheduler_router.post("/schedule-data-fetch", response_model=ScheduleTaskResponse)
+@limiter.limit(f"{RATE_LIMIT_GENERAL_PER_MINUTE}/minute")
+async def schedule_data_fetch(request: Request, req: ScheduleDataFetchRequest) -> ScheduleTaskResponse:
+    """
+    Запланировать сбор данных из внешних источников.
 
-    client_name: str = Field(..., description="Название клиента")
-    inn: str = Field(..., description="ИНН клиента", min_length=10, max_length=12)
-    additional_notes: str = Field(default="", description="Дополнительные заметки")
+    Позволяет запланировать сбор данных из нескольких источников одновременно:
+    - dadata: Данные из ДаДата
+    - casebook: Судебные дела из Casebook
+    - infosphere: Данные из Инфосферы
+    - perplexity: Веб-поиск через Perplexity AI
+    - tavily: Веб-поиск через Tavily
 
-    # Время выполнения (один из параметров обязателен)
-    delay_minutes: Optional[int] = Field(None, description="Задержка в минутах", ge=1)
-    delay_seconds: Optional[int] = Field(None, description="Задержка в секундах", ge=1)
-    run_date: Optional[datetime] = Field(None, description="Конкретное время выполнения (ISO 8601)")
+    **Пример:**
+    ```json
+    {
+        "inn": "7707083893",
+        "sources": ["dadata", "casebook", "perplexity"],
+        "search_query": "судебные дела банкротство",
+        "delay_minutes": 5
+    }
+    ```
+    """
+    valid_sources = {"dadata", "casebook", "infosphere", "perplexity", "tavily"}
+    invalid = set(req.sources) - valid_sources
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid sources: {invalid}. Valid: {valid_sources}",
+        )
 
-    task_id: Optional[str] = Field(None, description="Пользовательский ID задачи (опционально)")
+    web_sources = {"perplexity", "tavily"}
+    if web_sources & set(req.sources) and not req.search_query:
+        raise HTTPException(
+            status_code=400,
+            detail="search_query is required when using perplexity or tavily",
+        )
 
+    if not any([req.delay_minutes, req.delay_seconds, req.run_date]):
+        raise HTTPException(
+            status_code=400,
+            detail="At least one of delay_minutes, delay_seconds or run_date must be specified",
+        )
 
-class ScheduleTaskResponse(BaseModel):
-    """Ответ при создании задачи."""
+    try:
+        scheduler = get_scheduler_service()
 
-    task_id: str = Field(..., description="ID созданной задачи")
-    scheduled_at: datetime = Field(..., description="Время создания задачи")
-    run_date: datetime = Field(..., description="Время выполнения задачи")
-    status: str = Field(default="scheduled", description="Статус задачи")
-    message: str = Field(..., description="Сообщение")
+        task_id = await scheduler.schedule_data_fetch(
+            inn=req.inn,
+            sources=req.sources,
+            search_query=req.search_query,
+            perplexity_recency=req.perplexity_recency,
+            tavily_depth=req.tavily_depth,
+            tavily_max_results=req.tavily_max_results,
+            tavily_include_answer=req.tavily_include_answer,
+            delay_minutes=req.delay_minutes,
+            delay_seconds=req.delay_seconds,
+            run_date=req.run_date,
+            task_id=req.task_id,
+        )
 
+        task_info = scheduler.get_task_info(task_id)
 
-class TaskInfoResponse(BaseModel):
-    """Информация о задаче."""
+        logger.structured(
+            "info",
+            "data_fetch_scheduled",
+            component="scheduler_api",
+            task_id=task_id,
+            inn=req.inn,
+            sources=req.sources,
+            run_date=task_info["run_date"].isoformat() if task_info else None,
+        )
 
-    task_id: str
-    func_name: str
-    scheduled_at: datetime
-    run_date: datetime
-    status: str
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+        return ScheduleTaskResponse(
+            task_id=task_id,
+            scheduled_at=task_info["scheduled_at"],
+            run_date=task_info["run_date"],
+            status="scheduled",
+            message=f"Data fetch scheduled for {task_info['run_date'].strftime('%Y-%m-%d %H:%M:%S')}",
+        )
 
-
-class SchedulerStatsResponse(BaseModel):
-    """Статистика scheduler."""
-
-    scheduler_running: bool
-    total_scheduled_tasks: int
-    total_tasks_history: int
-    tasks_by_status: Dict[str, int]
+    except Exception as e:
+        logger.error(
+            f"Failed to schedule data fetch: {e}",
+            component="scheduler_api",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to schedule data fetch: {str(e)}") from e
 
 
 @scheduler_router.post("/schedule-analysis", response_model=ScheduleTaskResponse)

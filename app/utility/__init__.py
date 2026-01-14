@@ -1,11 +1,14 @@
 """
 app.utility package exports.
 
+DEPRECATED: This module re-exports from app.shared.toolkit for backward compatibility.
+Please use app.shared.toolkit directly for new code.
+
 Важно: избегаем импортов, которые тянут Tarantool при инициализации пакета,
 чтобы не создавать циклические импорты (app.storage.tarantool <-> app.utility.cache).
 """
 
-from app.utility.logging_client import (
+from app.shared.toolkit.logging import (
     AppLogger,
     generate_request_id,
     get_request_id,
@@ -17,7 +20,7 @@ from app.utility.logging_client import (
 def __getattr__(name: str):
     # Lazy exports to prevent circular imports at package import time.
     if name == "clean_xml_dict":
-        from app.utility.helpers import clean_xml_dict as _clean_xml_dict
+        from app.shared.toolkit.helpers import clean_xml_dict as _clean_xml_dict
 
         return _clean_xml_dict
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

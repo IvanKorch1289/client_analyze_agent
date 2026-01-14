@@ -159,8 +159,9 @@ class CacheRepository(BaseRepository[Dict[str, Any]]):
         """
         Получить список записей из кеша.
 
-        Note: Не рекомендуется для больших кешей, так как требует
-        полного сканирования space.
+        Ограничение: пагинация реализована через slicing, что неэффективно
+        для больших объёмов. Для production рекомендуется использовать
+        курсорную пагинацию через Tarantool.
 
         Args:
             limit: Максимальное количество записей
@@ -169,10 +170,12 @@ class CacheRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Список записей (может быть пустым)
         """
-        logger.warning("Cache list() не оптимален для больших объемов", component="cache_repo")
-        # TODO: Implement через прямое обращение к Tarantool
-        # Пока возвращаем пустой список
-        return []
+        try:
+            entries = await self.client.get_entries(limit=limit + offset)
+            return entries[offset : offset + limit]
+        except Exception as e:
+            logger.error(f"Cache list error: {e}", component="cache_repo")
+            return []
 
     async def clear_all(self) -> int:
         """
@@ -248,10 +251,9 @@ class CacheRepository(BaseRepository[Dict[str, Any]]):
             Количество записей
         """
         try:
-            # TarantoolClient может не иметь прямого метода len()
-            # Пока возвращаем 0
-            return 0
-        except Exception:
+            return self.client.get_cache_size()
+        except Exception as e:
+            logger.error(f"Cache count error: {e}", component="cache_repo")
             return 0
 
 

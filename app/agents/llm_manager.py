@@ -1,10 +1,15 @@
 """
-LLM Manager с fallback стратегией.
+LLM Manager с fallback стратегией и поддержкой Jay Guard прокси.
 
 Fallback последовательность:
 1. OpenRouter (Primary) - anthropic/claude-3.5-sonnet
 2. HuggingFace (Fallback #1) - Meta-Llama-3.1-70B-Instruct
 3. GigaChat (Fallback #2) - GigaChat-Pro
+4. YandexGPT (Fallback #3) - YandexGPT-Lite
+
+Jay Guard Proxy:
+- Если включен (JAYGUARD_ENABLED=true), все запросы к OpenRouter идут через Jay Guard
+- Jay Guard обеспечивает PII маскирование и защиту данных
 
 Автоматически переключается при ошибках или недоступности провайдера.
 """
@@ -13,8 +18,6 @@ import asyncio
 import threading
 from enum import Enum
 from typing import Any, Dict, Optional
-
-from langchain_core.language_models.llms import LLM
 
 from app.config import settings
 from app.utility.logging_client import logger
@@ -56,6 +59,7 @@ class LLMProvider(str, Enum):
     OPENROUTER = "openrouter"
     HUGGINGFACE = "huggingface"
     GIGACHAT = "gigachat"
+    YANDEXGPT = "yandexgpt"
 
 
 class LLMManager:
@@ -85,59 +89,86 @@ class LLMManager:
         """Инициализация LLM Manager."""
         # Lazy-init провайдеров. Импорты тяжёлых зависимостей делаем внутри геттеров,
         # чтобы ускорить холодный старт и не тянуть лишнее, если провайдер не используется.
-        self._openrouter_llm: Optional[LLM] = None
-        self._huggingface_llm: Optional[LLM] = None
-        self._gigachat_llm: Optional[LLM] = None
+        self._openrouter_llm: Any = None
+        self._huggingface_llm: Any = None
+        self._gigachat_llm: Any = None
+        self._yandexgpt_llm: Any = None
 
         self._provider_status: Dict[LLMProvider, bool] = {
             LLMProvider.OPENROUTER: True,
             LLMProvider.HUGGINGFACE: True,
             LLMProvider.GIGACHAT: True,
+            LLMProvider.YANDEXGPT: True,
         }
 
         self._fallback_order = [
             LLMProvider.OPENROUTER,
             LLMProvider.HUGGINGFACE,
             LLMProvider.GIGACHAT,
+            LLMProvider.YANDEXGPT,
         ]
 
         logger.info("LLMManager initialized", component="llm_manager")
 
-    def _get_openrouter_llm(self) -> LLM:
+    def _get_openrouter_llm(self) -> Any:
         """
         Получить OpenRouter LLM (primary).
 
+        Если включен Jay Guard прокси (JAYGUARD_ENABLED=true), запросы идут через него.
+
         Returns:
-            LLM: Настроенный LLM для OpenRouter
+            LLM: Настроенный LLM для OpenRouter (через Jay Guard если включен)
         """
         if self._openrouter_llm is None:
-            if not settings.openrouter.api_key:
-                raise ValueError("OpenRouter API key not configured")
-            # Импортируем здесь, чтобы не замедлять импорт модуля на холодном старте.
             from langchain_openai import ChatOpenAI
 
-            self._openrouter_llm = ChatOpenAI(
-                api_key=settings.openrouter.api_key,
-                base_url=settings.openrouter.api_url,
-                model=settings.openrouter.model,
-                temperature=settings.openrouter.temperature,
-                max_tokens=settings.openrouter.max_tokens,
-                timeout=settings.openrouter.timeout,
-                # OpenRouter specific headers
-                default_headers={
-                    "HTTP-Referer": "https://client-analysis-system.com",
-                    "X-Title": "Client Analysis System",
-                },
-            )
+            jayguard_enabled = settings.jayguard.enabled
+            jayguard_url = settings.jayguard.api_url
+            jayguard_key = settings.jayguard.api_key
 
-            logger.info(
-                f"OpenRouter LLM initialized: {settings.openrouter.model}",
-                component="llm_manager",
-            )
+            if jayguard_enabled and jayguard_url and jayguard_key:
+                self._openrouter_llm = ChatOpenAI(
+                    api_key=jayguard_key,
+                    base_url=jayguard_url,
+                    model=settings.openrouter.model,
+                    temperature=settings.openrouter.temperature,
+                    max_tokens=settings.openrouter.max_tokens,
+                    timeout=settings.jayguard.timeout,
+                    default_headers={
+                        "HTTP-Referer": "https://client-analysis-system.com",
+                        "X-Title": "Client Analysis System",
+                    },
+                )
+
+                logger.info(
+                    f"OpenRouter LLM via Jay Guard proxy: {settings.openrouter.model}",
+                    component="llm_manager",
+                )
+            else:
+                if not settings.openrouter.api_key:
+                    raise ValueError("OpenRouter API key not configured")
+
+                self._openrouter_llm = ChatOpenAI(
+                    api_key=settings.openrouter.api_key,
+                    base_url=settings.openrouter.api_url,
+                    model=settings.openrouter.model,
+                    temperature=settings.openrouter.temperature,
+                    max_tokens=settings.openrouter.max_tokens,
+                    timeout=settings.openrouter.timeout,
+                    default_headers={
+                        "HTTP-Referer": "https://client-analysis-system.com",
+                        "X-Title": "Client Analysis System",
+                    },
+                )
+
+                logger.info(
+                    f"OpenRouter LLM initialized: {settings.openrouter.model}",
+                    component="llm_manager",
+                )
 
         return self._openrouter_llm
 
-    def _get_huggingface_llm(self) -> LLM:
+    def _get_huggingface_llm(self) -> Any:
         """
         Получить HuggingFace LLM (fallback #1).
 
@@ -166,7 +197,7 @@ class LLMManager:
 
         return self._huggingface_llm
 
-    def _get_gigachat_llm(self) -> LLM:
+    def _get_gigachat_llm(self) -> Any:
         """
         Получить GigaChat LLM (fallback #2).
 
@@ -195,7 +226,31 @@ class LLMManager:
 
         return self._gigachat_llm
 
-    def _get_llm_by_provider(self, provider: LLMProvider) -> LLM:
+    def _get_yandexgpt_llm(self) -> Any:
+        """
+        Получить YandexGPT LLM (fallback #3).
+
+        Returns:
+            LLM: Настроенный LLM для YandexGPT
+        """
+        if self._yandexgpt_llm is None:
+            if not settings.yandexgpt.api_key:
+                raise ValueError("YandexGPT IAM token not configured")
+            from langchain_community.llms import YandexGPT
+
+            self._yandexgpt_llm = YandexGPT(
+                iam_token=settings.yandexgpt.api_key,
+                folder_id=settings.yandexgpt.folder_id,
+                model_uri=settings.yandexgpt.model_uri,
+                temperature=settings.yandexgpt.temperature,
+                max_tokens=settings.yandexgpt.max_tokens,
+            )
+
+            logger.info("YandexGPT LLM initialized", component="llm_manager")
+
+        return self._yandexgpt_llm
+
+    def _get_llm_by_provider(self, provider: LLMProvider) -> Any:
         """
         Получить LLM по имени провайдера.
 
@@ -214,6 +269,8 @@ class LLMManager:
             return self._get_huggingface_llm()
         elif provider == LLMProvider.GIGACHAT:
             return self._get_gigachat_llm()
+        elif provider == LLMProvider.YANDEXGPT:
+            return self._get_yandexgpt_llm()
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
@@ -245,7 +302,7 @@ class LLMManager:
                 response = await llm.ainvoke(prompt, **kwargs)
                 return response.content if hasattr(response, "content") else str(response)
             else:
-                # HuggingFace и GigaChat возвращают строку
+                # HuggingFace, GigaChat и YandexGPT возвращают строку
                 response = await llm.ainvoke(prompt, **kwargs)
                 return str(response)
 
@@ -419,7 +476,7 @@ class LLMManager:
         Returns:
             Dict[str, bool]: Статус каждого провайдера
         """
-        return self._provider_status.copy()
+        return {p.value: v for p, v in self._provider_status.items()}
 
     def reset_provider_status(self, provider: Optional[LLMProvider] = None):
         """

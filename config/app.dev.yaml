@@ -143,6 +143,32 @@ openrouter:
   top_p: 1.0
   timeout: 60.0
 
+huggingface:
+  model: "meta-llama/Meta-Llama-3.1-70B-Instruct"
+  temperature: 0.2
+  max_tokens: 4096
+  top_p: 0.95
+  timeout: 120.0
+
+gigachat:
+  model: "GigaChat-Pro"
+  temperature: 0.2
+  max_tokens: 4096
+  top_p: 0.95
+  timeout: 120.0
+  verify_ssl_certs: false
+
+yandexgpt:
+  model_uri: "gpt://folder_id/yandexgpt-lite"
+  temperature: 0.3
+  max_tokens: 2000
+  timeout: 60
+
+jayguard:
+  enabled: false
+  api_url: null
+  timeout: 120.0
+
 mail:
   smtp_host: ""
   smtp_port: 587
