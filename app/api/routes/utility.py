@@ -1,16 +1,16 @@
 """
-Utility API routes.
+Утилитарные API маршруты.
 
-Consolidated module containing all utility endpoints grouped by functionality:
-- Health & Status
-- Authentication
-- Cache & Tarantool
-- Circuit Breakers & Metrics
-- Configuration
-- Services (Perplexity, Tavily, OpenRouter, Email)
-- Reports (PDF generation)
-- Telemetry (Traces, Logs)
-- Queue (RabbitMQ monitoring)
+Консолидированный модуль, содержащий все утилитарные эндпоинты по функциональности:
+- Здоровье и статус
+- Аутентификация
+- Кэш и Tarantool
+- Circuit Breakers и метрики
+- Конфигурация
+- Сервисы (Perplexity, Tavily, OpenRouter, Email)
+- Отчёты (генерация PDF)
+- Телеметрия (трейсы, логи)
+- Очереди (мониторинг RabbitMQ)
 - AsyncAPI
 """
 
@@ -65,7 +65,7 @@ __all__ = ["utility_router"]
 
 
 # =============================================================================
-# HEALTH & STATUS ENDPOINTS
+# ЭНДПОИНТЫ ЗДОРОВЬЯ И СТАТУСА
 # =============================================================================
 
 
@@ -149,14 +149,14 @@ async def health_check(deep: bool = False) -> HealthResponse:
 
 
 # =============================================================================
-# AUTHENTICATION ENDPOINTS
+# ЭНДПОИНТЫ АУТЕНТИФИКАЦИИ
 # =============================================================================
 
 
 @utility_router.get("/auth/role")
 async def get_auth_role(role: str = Depends(get_current_role)) -> Dict[str, Any]:
     """
-    Get current authentication role.
+    Получить текущую роль аутентификации.
     """
     return {
         "role": role,
@@ -165,7 +165,7 @@ async def get_auth_role(role: str = Depends(get_current_role)) -> Dict[str, Any]
 
 
 # =============================================================================
-# CACHE & TARANTOOL ENDPOINTS
+# ЭНДПОИНТЫ КЭША И TARANTOOL
 # =============================================================================
 
 
@@ -173,7 +173,7 @@ async def get_auth_role(role: str = Depends(get_current_role)) -> Dict[str, Any]
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def validate_cache(request: Request, confirm: bool, role: str = Depends(require_admin)):
     """
-    Invalidate all cache keys. Requires admin role.
+    Инвалидировать все ключи кэша. Требуется роль администратора.
     """
     client = await TarantoolClient.get_instance()
     await client.invalidate_all_keys(confirm)
@@ -205,7 +205,7 @@ async def get_cache_metrics(request: Request) -> Dict[str, Any]:
 @utility_router.post("/cache/metrics/reset")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def reset_cache_metrics(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
-    """Reset cache metrics. Requires admin role."""
+    """Сбросить метрики кэша. Требуется роль администратора."""
     try:
         tarantool = await TarantoolClient.get_instance()
         tarantool.reset_metrics()
@@ -219,7 +219,7 @@ async def reset_cache_metrics(request: Request, role: str = Depends(require_admi
 @utility_router.delete("/cache/prefix/{prefix}")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def delete_cache_by_prefix(request: Request, prefix: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
-    """Delete cache keys by prefix. Requires admin role."""
+    """Удалить ключи кэша по префиксу. Требуется роль администратора."""
     try:
         tarantool = await TarantoolClient.get_instance()
         await tarantool.delete_by_prefix(prefix)
@@ -237,7 +237,7 @@ async def get_cache_entries(
     limit: int = 10,
     role: str = Depends(require_admin),
 ) -> Dict[str, Any]:
-    """Get first N cache entries. Requires admin role."""
+    """Получить первые N записей кэша. Требуется роль администратора."""
     client = await TarantoolClient.get_instance()
     entries = await client.get_entries(limit=limit)
     return {
@@ -291,7 +291,7 @@ async def tarantool_status(request: Request) -> Dict[str, Any]:
 
 
 # =============================================================================
-# CIRCUIT BREAKERS & METRICS ENDPOINTS
+# ЭНДПОИНТЫ CIRCUIT BREAKERS И МЕТРИК
 # =============================================================================
 
 
@@ -342,7 +342,7 @@ async def get_circuit_breakers(request: Request, service: Optional[str] = None) 
 @utility_router.post("/circuit-breakers/{service}/reset")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def reset_circuit_breaker(request: Request, service: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
-    """Reset circuit breaker for a service. Requires admin role."""
+    """Сбросить circuit breaker для сервиса. Требуется роль администратора."""
     try:
         http_client = await AsyncHttpClient.get_instance()
         success = http_client.reset_circuit_breaker(service)
@@ -375,7 +375,7 @@ async def get_metrics(request: Request, service: Optional[str] = None) -> Dict[s
 async def reset_metrics(
     request: Request, service: Optional[str] = None, role: str = Depends(require_admin)
 ) -> Dict[str, Any]:
-    """Reset HTTP metrics. Requires admin role."""
+    """Сбросить HTTP метрики. Требуется роль администратора."""
     try:
         http_client = await AsyncHttpClient.get_instance()
         http_client.reset_metrics(service)
@@ -397,19 +397,19 @@ async def get_app_metrics(request: Request, role: str = Depends(require_admin)) 
 @utility_router.post("/app-metrics/reset")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def reset_app_metrics(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
-    """Reset in-process application request metrics. Requires admin role."""
+    """Сбросить внутрипроцессные метрики запросов приложения. Требуется роль администратора."""
     app_metrics.reset()
     return {"status": "success", "message": "App metrics reset"}
 
 
 # =============================================================================
-# CONFIGURATION ENDPOINTS
+# ЭНДПОИНТЫ КОНФИГУРАЦИИ
 # =============================================================================
 
 
 def _redact(obj: Any) -> Any:
     """
-    Best-effort redaction for config snapshots.
+    Попытка скрытия чувствительных данных в снапшотах конфигурации.
     """
     sensitive = ("password", "token", "secret", "api_key", "key", "dsn")
     if isinstance(obj, dict):
@@ -430,8 +430,8 @@ def _redact(obj: Any) -> Any:
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def get_config_snapshot(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """
-    Get current effective settings snapshot (redacted) + last reload info.
-    Requires admin role.
+    Получить текущий снапшот настроек (скрытый) + информацию о последней перезагрузке.
+    Требуется роль администратора.
     """
     snapshot = {
         "app": settings.app.model_dump(),
@@ -469,13 +469,13 @@ async def get_config_snapshot(request: Request, role: str = Depends(require_admi
 @utility_router.post("/config/reload")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def force_config_reload(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
-    """Force config reload immediately. Requires admin role."""
+    """Принудительная перезагрузка конфигурации немедленно. Требуется роль администратора."""
     reload_settings(reason="manual_api")
     return {"status": "success", "reload": get_reload_state()}
 
 
 # =============================================================================
-# SERVICES STATUS ENDPOINTS (Perplexity, Tavily, OpenRouter, Email)
+# ЭНДПОИНТЫ СТАТУСА СЕРВИСОВ (Perplexity, Tavily, OpenRouter, Email)
 # =============================================================================
 
 
@@ -494,7 +494,7 @@ async def tavily_status():
 @utility_router.post("/tavily/cache/clear")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def clear_tavily_cache(request: Request, role: str = Depends(require_admin)):
-    """Clear Tavily cache. Requires admin role."""
+    """Очистить кэш Tavily. Требуется роль администратора."""
     client = TavilyClient.get_instance()
     client.clear_cache()
     return {"status": "success", "message": "Tavily cache cleared"}
@@ -503,7 +503,7 @@ async def clear_tavily_cache(request: Request, role: str = Depends(require_admin
 @utility_router.post("/perplexity/cache/clear")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def clear_perplexity_cache(request: Request, role: str = Depends(require_admin)):
-    """Clear Perplexity cache. Requires admin role."""
+    """Очистить кэш Perplexity. Требуется роль администратора."""
     client = PerplexityClient.get_instance()
     client.clear_cache()
     return {"status": "success", "message": "Perplexity cache cleared"}
@@ -523,30 +523,30 @@ async def openrouter_status() -> Dict[str, Any]:
 
 @utility_router.get("/email/status")
 async def email_status() -> Dict[str, Any]:
-    """Get email service status and health check."""
+    """Получить статус и проверку здоровья email сервиса."""
     client = EmailClient.get_instance()
     return client.get_status()
 
 
 @utility_router.get("/email/healthcheck")
 async def email_healthcheck() -> Dict[str, Any]:
-    """Perform SMTP server health check."""
+    """Выполнить проверку здоровья SMTP сервера."""
     client = EmailClient.get_instance()
     return client.check_health()
 
 
 # =============================================================================
-# REPORTS ENDPOINTS (PDF generation)
+# ЭНДПОИНТЫ ОТЧЁТОВ (генерация PDF)
 # =============================================================================
 
 
 def _relative_path_for(request: Request, *, route_name: str, **params: Any) -> str:
     """
-    Return a URL path relative to current API root (without root_path).
+    Вернуть путь URL относительно текущего корня API (без root_path).
 
-    - For legacy (unversioned) routes: root_path == "" → returned path is unchanged
-    - For versioned sub-app (/api/v1): root_path == "/api/v1" → strip it so clients
-      that already use a versioned base URL don't end up with a double prefix.
+    - Для legacy (неверсионированных) маршрутов: root_path == "" → путь не меняется
+    - Для версионированного под-приложения (/api/v1): root_path == "/api/v1" → удаляем его,
+      чтобы клиенты с версионированным базовым URL не получили двойной префикс.
     """
     absolute = str(request.url_for(route_name, **params))
     path = urlparse(absolute).path
@@ -558,7 +558,7 @@ def _relative_path_for(request: Request, *, route_name: str, **params: Any) -> s
 
 @utility_router.post("/reports/pdf")
 async def generate_pdf_report(http_request: Request, payload: PDFReportRequest) -> Dict[str, Any]:
-    """Generate PDF report from analysis data."""
+    """Сгенерировать PDF отчёт из данных анализа."""
     try:
         filepath = save_pdf_report(
             report_data=payload.report_data,
@@ -582,7 +582,7 @@ async def generate_pdf_report(http_request: Request, payload: PDFReportRequest) 
 
 @utility_router.get("/reports/download/{filename}")
 async def download_report(filename: str):
-    """Download PDF report file."""
+    """Скачать файл PDF отчёта."""
     filepath = os.path.join("reports", filename)
 
     if not os.path.exists(filepath):
@@ -597,7 +597,7 @@ async def download_report(filename: str):
 
 @utility_router.get("/reports/list")
 async def list_reports(http_request: Request) -> Dict[str, Any]:
-    """List all available reports."""
+    """Список всех доступных отчётов."""
     reports_dir = "reports"
 
     if not os.path.exists(reports_dir):
@@ -624,7 +624,7 @@ async def list_reports(http_request: Request) -> Dict[str, Any]:
 @utility_router.delete("/reports/{filename}")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def delete_report(request: Request, filename: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
-    """Delete a report file. Requires admin role."""
+    """Удалить файл отчёта. Требуется роль администратора."""
     filepath = os.path.join("reports", filename)
 
     if not os.path.exists(filepath):
@@ -640,7 +640,7 @@ async def delete_report(request: Request, filename: str, role: str = Depends(req
 
 
 # =============================================================================
-# TELEMETRY ENDPOINTS (Traces, Logs)
+# ЭНДПОИНТЫ ТЕЛЕМЕТРИИ (Трейсы, Логи)
 # =============================================================================
 
 
@@ -652,7 +652,7 @@ async def get_traces(
     since_minutes: Optional[int] = None,
     role: str = Depends(require_admin),
 ) -> Dict[str, Any]:
-    """Get recent traces. Requires admin role."""
+    """Получить последние трейсы. Требуется роль администратора."""
     exporter = get_span_exporter()
     if not exporter:
         return fail_code(
@@ -676,7 +676,7 @@ async def get_traces(
 @utility_router.get("/traces/stats")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def get_trace_stats(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
-    """Get trace statistics. Requires admin role."""
+    """Получить статистику трейсов. Требуется роль администратора."""
     exporter = get_span_exporter()
     if not exporter:
         return fail_code(
@@ -692,7 +692,7 @@ async def get_trace_stats(request: Request, role: str = Depends(require_admin)) 
 @utility_router.post("/traces/clear")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def clear_traces(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
-    """Clear all stored traces. Requires admin role."""
+    """Очистить все сохранённые трейсы. Требуется роль администратора."""
     exporter = get_span_exporter()
     if not exporter:
         return fail_code(
@@ -715,7 +715,7 @@ async def get_logs(
     level: Optional[str] = None,
     role: str = Depends(require_admin),
 ) -> Dict[str, Any]:
-    """Get application logs. Requires admin role."""
+    """Получить логи приложения. Требуется роль администратора."""
     log_store = get_log_store()
     if not log_store:
         return fail_code(
@@ -739,7 +739,7 @@ async def get_logs(
 @utility_router.get("/logs/stats")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def get_log_stats(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
-    """Get log statistics. Requires admin role."""
+    """Получить статистику логов. Требуется роль администратора."""
     log_store = get_log_store()
     if not log_store:
         return fail_code(
@@ -755,7 +755,7 @@ async def get_log_stats(request: Request, role: str = Depends(require_admin)) ->
 @utility_router.post("/logs/clear")
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def clear_logs(request: Request, role: str = Depends(require_admin)) -> Dict[str, Any]:
-    """Clear all stored logs. Requires admin role."""
+    """Очистить все сохранённые логи. Требуется роль администратора."""
     log_store = get_log_store()
     if not log_store:
         return fail_code(
@@ -770,7 +770,7 @@ async def clear_logs(request: Request, role: str = Depends(require_admin)) -> Di
 
 
 # =============================================================================
-# QUEUE ENDPOINTS (RabbitMQ monitoring) - P1-2
+# ЭНДПОИНТЫ ОЧЕРЕДЕЙ (мониторинг RabbitMQ) - P1-2
 # =============================================================================
 
 
@@ -951,7 +951,7 @@ async def get_dlq_stats(request: Request, role: str = Depends(require_admin)) ->
 
 
 # =============================================================================
-# ASYNCAPI ENDPOINTS
+# ЭНДПОИНТЫ ASYNCAPI
 # =============================================================================
 
 
@@ -975,7 +975,7 @@ async def get_asyncapi_spec(request: Request) -> Dict[str, Any]:
 
 @utility_router.get("/asyncapi")
 async def get_asyncapi_html() -> HTMLResponse:
-    """HTML-представление AsyncAPI."""
+    """HTML представление AsyncAPI."""
     from faststream.specification import (
         AsyncAPI,
     )
