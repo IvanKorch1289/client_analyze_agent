@@ -10,7 +10,7 @@ Administrative API Endpoints
 
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.utility.auth import require_admin_token
@@ -412,6 +412,106 @@ async def get_system_metrics() -> Dict[str, Any]:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+
+
+# ============================================================================
+# LLM AUDIT
+# ============================================================================
+
+
+@admin_router.get("/audit/llm", dependencies=[Depends(require_admin_token)])
+async def get_llm_audit(
+    period: int = Query(24, description="Период в часах", ge=1, le=720),
+    limit: int = Query(100, description="Лимит записей", ge=1, le=1000),
+) -> Dict[str, Any]:
+    """
+    Получает audit trail LLM вызовов для compliance и мониторинга.
+
+    Endpoint для детального просмотра всех LLM вызовов:
+    - Хэши промптов/ответов (не сами тексты для безопасности)
+    - Detected PII types
+    - Privacy mode
+    - Duration, success rate, fallback usage
+    - Провайдеры и модели
+
+    Args:
+        period: Период в часах (default: 24, max: 720 = 30 дней)
+        limit: Количество записей (default: 100, max: 1000)
+
+    Returns:
+        Dict с statistics и recent_calls
+
+    Example:
+        GET /admin/audit/llm?period=24&limit=50
+    """
+    try:
+        from app.shared.llm_audit import get_audit_logger
+
+        audit_logger = get_audit_logger()
+
+        # Получаем статистику за период
+        statistics = await audit_logger.get_statistics(hours=period)
+
+        # Получаем недавние вызовы
+        recent_calls_records = await audit_logger.get_recent_calls(limit=limit)
+
+        # Фильтруем по периоду
+        from datetime import datetime, timedelta, timezone
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=period)
+
+        recent_calls = []
+        for record in recent_calls_records:
+            try:
+                timestamp = datetime.fromisoformat(
+                    record.timestamp.replace("Z", "+00:00")
+                )
+                if timestamp < cutoff:
+                    continue
+            except Exception:
+                # Если ошибка парсинга timestamp, включаем запись
+                pass
+
+            recent_calls.append(
+                {
+                    "timestamp": record.timestamp,
+                    "request_id": record.request_id,
+                    "provider": record.provider,
+                    "model": record.model,
+                    "operation": record.operation,
+                    "duration_ms": record.duration_ms,
+                    "success": record.success,
+                    "error": record.error,
+                    "pii_detected": record.pii_detected,
+                    "pii_types": record.pii_types,
+                    "prompt_hash": record.prompt_hash,
+                    "response_hash": record.response_hash,
+                    "privacy_mode": record.privacy_mode,
+                    "tokens": record.total_tokens,
+                    "temperature": record.temperature,
+                    "fallback_used": record.fallback_used,
+                }
+            )
+
+        return {
+            "status": "success",
+            "period_hours": period,
+            "limit": limit,
+            "statistics": statistics,
+            "recent_calls_count": len(recent_calls),
+            "recent_calls": recent_calls,
+        }
+
+    except Exception as e:
+        logger.error(
+            f"LLM Audit retrieval failed: {e}", exc_info=True, component="admin_api"
+        )
+        return {
+            "status": "error",
+            "message": str(e),
+            "statistics": None,
+            "recent_calls": [],
+        }
 
 
 __all__ = ["admin_router"]
