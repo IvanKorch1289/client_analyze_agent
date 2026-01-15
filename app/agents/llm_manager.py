@@ -23,9 +23,10 @@ from typing import Any, Dict, Optional
 from app.config import settings
 from app.utility.logging_client import logger
 
-# Lazy imports для PII и audit (импортируются при первом использовании)
+# Lazy imports для PII, audit и cache (импортируются при первом использовании)
 _pii_protection = None
 _llm_audit = None
+_llm_cache = None
 
 
 def _get_pii_protection():
@@ -46,6 +47,16 @@ def _get_llm_audit():
 
         _llm_audit = audit_mod
     return _llm_audit
+
+
+def _get_llm_cache():
+    """Lazy import LLM cache module."""
+    global _llm_cache
+    if _llm_cache is None:
+        from app.shared import llm_cache as cache_mod
+
+        _llm_cache = cache_mod
+    return _llm_cache
 
 
 def _run_coroutine_sync(coro):
@@ -340,14 +351,18 @@ class LLMManager:
             self._provider_status[provider] = False
             raise
 
-    async def ainvoke(self, prompt: str, **kwargs) -> str:
+    async def ainvoke(self, prompt: str, cache_enabled: bool = True, **kwargs) -> str:
         """
-        Вызов LLM с автоматическим fallback, PII защитой и аудитом.
+        Вызов LLM с автоматическим fallback, кэшированием, PII защитой и аудитом.
 
         Пытается вызвать провайдеры в порядке:
         1. OpenRouter
         2. HuggingFace (если OpenRouter недоступен)
         3. GigaChat (если оба недоступны)
+
+        LLM Cache:
+        - Проверяет кэш перед вызовом LLM (экономия 30-40 сек)
+        - Кэширует успешные ответы с TTL 1 час
 
         PII Protection:
         - Маскирует PII перед отправкой в LLM
@@ -358,7 +373,10 @@ class LLMManager:
 
         Args:
             prompt: Запрос для LLM
+            cache_enabled: Использовать кэш (default: True)
             **kwargs: Дополнительные параметры для LLM
+                - temperature: float
+                - max_tokens: int
 
         Returns:
             str: Ответ от LLM
@@ -372,6 +390,59 @@ class LLMManager:
         success = False
         response_text = ""
         used_provider = None
+
+        # ============================================================
+        # LLM CACHE: Проверяем кэш перед вызовом
+        # ============================================================
+        if cache_enabled:
+            try:
+                cache = _get_llm_cache()
+                cache_result = await cache.get_cached_response(
+                    prompt=prompt,
+                    provider=self._fallback_order[0].value,  # Используем primary provider для ключа
+                    temperature=kwargs.get("temperature", 0.7),
+                    max_tokens=kwargs.get("max_tokens", 4000),
+                )
+
+                if cache_result.hit:
+                    # Cache HIT - возвращаем из кэша
+                    total_duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+                    logger.info(
+                        f"LLM Cache HIT - saved {total_duration_ms}ms (estimated 30-40s API call)",
+                        component="llm_manager",
+                    )
+
+                    # Логируем в audit (cache hit)
+                    if settings.secure.llm_audit_enabled:
+                        try:
+                            audit = _get_llm_audit()
+                            audit_logger = audit.get_audit_logger()
+                            await audit_logger.log_llm_call(
+                                provider="cache",
+                                model="cached",
+                                operation="ainvoke_cached",
+                                prompt=prompt,
+                                response=cache_result.response,
+                                duration_ms=total_duration_ms,
+                                success=True,
+                                pii_detected=False,
+                                metadata={
+                                    "cache_key": cache_result.cache_key,
+                                    "cache_hit": True,
+                                },
+                            )
+                        except Exception as e:
+                            logger.error(f"Audit logging failed: {e}", component="llm_manager")
+
+                    return cache_result.response
+
+            except Exception as e:
+                logger.error(
+                    f"LLM Cache check failed: {e}, proceeding without cache",
+                    component="llm_manager",
+                )
+                # Продолжаем без кэша при ошибке
 
         # ============================================================
         # PII PROTECTION: Маскируем конфиденциальные данные
@@ -504,6 +575,24 @@ class LLMManager:
             except Exception as e:
                 logger.error(f"Audit logging failed: {e}", component="llm_manager", exc_info=True)
                 # Не прерываем выполнение при ошибке аудита
+
+        # ============================================================
+        # CACHE SAVE: Сохраняем успешный ответ в кэш
+        # ============================================================
+        if success and cache_enabled and final_response:
+            try:
+                cache = _get_llm_cache()
+                await cache.set_cached_response(
+                    prompt=prompt,
+                    response=final_response,
+                    provider=used_provider.value if used_provider else "default",
+                    temperature=kwargs.get("temperature", 0.7),
+                    max_tokens=kwargs.get("max_tokens", 4000),
+                    ttl=3600,  # 1 час
+                )
+            except Exception as e:
+                logger.error(f"LLM Cache save failed: {e}", component="llm_manager")
+                # Не прерываем выполнение при ошибке сохранения в кэш
 
         # ============================================================
         # FINAL RESULT OR ERROR

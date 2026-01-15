@@ -25,8 +25,8 @@ from app.shared.toolkit.helpers import (
     get_client_ip,
     retry_async,
     safe_dict_get,
-    validate_inn,
 )
+from app.shared.security import validate_inn
 from app.shared.toolkit.logging import (
     AppLogger,
     TimedOperation,
