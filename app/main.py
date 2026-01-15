@@ -33,6 +33,9 @@ from app.utility.helpers import get_client_ip
 from app.utility.logging_client import get_request_id, logger, set_request_id
 from app.utility.telemetry import init_telemetry
 
+# Prometheus metrics
+from prometheus_fastapi_instrumentator import Instrumentator
+
 # Get backend port from environment or use default
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
 
@@ -528,6 +531,27 @@ install_error_handlers(app)
 
 _otel_excluded_urls = "/utility/health,/utility/metrics,/api/v1/utility/health,/api/v1/utility/metrics"
 FastAPIInstrumentor.instrument_app(app, excluded_urls=_otel_excluded_urls)
+
+# =======================
+# Prometheus Metrics
+# =======================
+# Instrumentator автоматически собирает метрики HTTP запросов
+# Метрики доступны на /metrics endpoint
+instrumentator = Instrumentator(
+    should_group_status_codes=False,  # Детальные status codes
+    should_ignore_untemplated=False,  # Не игнорируем нетемплейтные пути
+    should_respect_env_var=True,  # Учитываем ENABLE_METRICS env var
+    should_instrument_requests_inprogress=True,  # Метрики in-progress requests
+    excluded_handlers=["/metrics"],  # Исключаем сам /metrics endpoint
+    env_var_name="ENABLE_METRICS",
+    inprogress_name="http_requests_inprogress",
+    inprogress_labels=True,
+)
+
+# Добавляем стандартные метрики
+instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+logger.info("Prometheus metrics enabled at /metrics")
 
 # Сжатие больших ответов (отчёты/метрики/история). Минимальный размер — чтобы
 # не тратить CPU на мелкие ответы.

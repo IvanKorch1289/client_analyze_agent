@@ -1,0 +1,111 @@
+{
+  "dashboard": {
+    "title": "Client Analysis Agent - System Overview",
+    "tags": ["client-analysis", "fastapi", "monitoring"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "HTTP Requests Rate (req/s)",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{job=\"fastapi\"}[5m])",
+            "legendFormat": "{{method}} {{handler}}"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "HTTP Errors Rate (5xx)",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{job=\"fastapi\",status=~\"5..\"}[5m])",
+            "legendFormat": "Errors"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Request Duration (p95)",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"fastapi\"}[5m]))",
+            "legendFormat": "p95 latency"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Circuit Breakers Open",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+        "targets": [
+          {
+            "expr": "sum(circuit_breaker_state{state=\"open\"})",
+            "legendFormat": "Open CBs"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Cache Hit Rate (%)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+        "targets": [
+          {
+            "expr": "rate(cache_hits_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) * 100",
+            "legendFormat": "Hit Rate"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Memory Usage (MB)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+        "targets": [
+          {
+            "expr": "process_resident_memory_bytes{job=\"fastapi\"} / 1024 / 1024",
+            "legendFormat": "RSS Memory"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "HTTP Requests by Status",
+        "type": "table",
+        "gridPos": {"h": 10, "w": 24, "x": 0, "y": 14},
+        "targets": [
+          {
+            "expr": "sum by (status, method) (rate(http_requests_total{job=\"fastapi\"}[5m]))",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {"Time": true},
+              "indexByName": {},
+              "renameByName": {
+                "status": "Status",
+                "method": "Method",
+                "Value": "Rate (req/s)"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
