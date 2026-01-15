@@ -218,6 +218,23 @@ class TarantoolClient:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(_executor, do_call)
 
+    async def call(self, func_name: str, args: tuple = ()):
+        """
+        Публичный метод для вызова Lua-функций в Tarantool.
+
+        Usage:
+            result = await client.call("box.space.llm_audit:insert", (data1, data2, ...))
+            result = await client.call("box.space.llm_audit:select", (None, {"limit": 100}))
+
+        Args:
+            func_name: Имя Lua-функции (может быть space:method)
+            args: Tuple с аргументами для функции
+
+        Returns:
+            Результат выполнения функции
+        """
+        return await self._call(func_name, *args)
+
     def _compress(self, data: bytes) -> bytes:
         if data and len(data) >= self._config.compression_threshold:
             compressed = gzip.compress(data, compresslevel=self._config.compression_level)

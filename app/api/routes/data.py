@@ -15,7 +15,7 @@ from app.services.fetch_data import (
 )
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
-from app.utility.helpers import validate_inn
+from app.shared.security import validate_inn
 
 data_router = APIRouter(
     prefix="/data",
