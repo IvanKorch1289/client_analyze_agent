@@ -116,8 +116,12 @@ async def clear_cache(source: Optional[str] = None) -> MessageResponse:
         return MessageResponse(success=True, message=message)
 
     except Exception as e:
-        logger.error(f"Admin cache clear error: {e}", component="admin_api", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        logger.error(
+            f"Admin cache clear error: {e}", component="admin_api", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
 
 
 @admin_router.get(
@@ -160,8 +164,12 @@ async def get_cache_stats() -> CacheStatsResponse:
         )
 
     except Exception as e:
-        logger.error(f"Admin cache stats error: {e}", component="admin_api", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        logger.error(
+            f"Admin cache stats error: {e}", component="admin_api", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
 
 
 # ============================================================================
@@ -197,8 +205,12 @@ async def get_llm_stats(hours: int = 24) -> LLMStatsResponse:
         return LLMStatsResponse(**stats)
 
     except Exception as e:
-        logger.error(f"Admin LLM stats error: {e}", component="admin_api", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        logger.error(
+            f"Admin LLM stats error: {e}", component="admin_api", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
 
 
 @admin_router.get("/llm/recent", dependencies=[Depends(require_admin_token)])
@@ -247,8 +259,12 @@ async def get_recent_llm_calls(limit: int = 50) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(f"Admin recent LLM calls error: {e}", component="admin_api", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        logger.error(
+            f"Admin recent LLM calls error: {e}", component="admin_api", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
 
 
 # ============================================================================
@@ -301,7 +317,9 @@ async def get_detailed_health() -> HealthDetailedResponse:
         breaker_stats = http_client.get_circuit_breaker_stats()
         components["http_client"] = {
             "status": "healthy",
-            "circuit_breakers": {name: stats.state for name, stats in breaker_stats.items()},
+            "circuit_breakers": {
+                name: stats.state for name, stats in breaker_stats.items()
+            },
         }
     except Exception as e:
         components["http_client"] = {"status": "unhealthy", "error": str(e)}
@@ -316,8 +334,26 @@ async def get_detailed_health() -> HealthDetailedResponse:
     except Exception as e:
         components["llm"] = {"status": "unhealthy", "error": str(e)}
 
+    # Memory Monitor
+    try:
+        from app.shared.memory_monitor import get_memory_monitor
+
+        memory_monitor = get_memory_monitor()
+        memory_status = memory_monitor.get_status()
+
+        if memory_status["status"] == "healthy":
+            components["memory_monitor"] = memory_status
+        elif memory_status["status"] == "warning":
+            components["memory_monitor"] = {**memory_status, "status": "degraded"}
+        else:
+            components["memory_monitor"] = memory_status
+    except Exception as e:
+        components["memory_monitor"] = {"status": "error", "error": str(e)}
+
     # Определяем общий статус
-    unhealthy_count = sum(1 for c in components.values() if c.get("status") == "unhealthy")
+    unhealthy_count = sum(
+        1 for c in components.values() if c.get("status") == "unhealthy"
+    )
 
     if unhealthy_count == 0:
         overall_status = "healthy"
@@ -370,8 +406,12 @@ async def get_system_metrics() -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(f"Admin system metrics error: {e}", component="admin_api", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        logger.error(
+            f"Admin system metrics error: {e}", component="admin_api", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
 
 
 __all__ = ["admin_router"]

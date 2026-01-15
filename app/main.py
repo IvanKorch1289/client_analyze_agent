@@ -117,9 +117,44 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     logger.info("Scheduler запущен для отложенных задач")
 
+    # Запускаем Memory Monitor для защиты от утечек памяти
+    from app.shared.memory_monitor import get_memory_monitor
+
+    memory_monitor = get_memory_monitor(
+        check_interval=60,  # Проверка каждую минуту
+        auto_gc=True,
+    )
+
+    # Background task для периодической проверки памяти
+    async def memory_check_task():
+        """Фоновая задача мониторинга памяти."""
+        while True:
+            try:
+                await memory_monitor.check_and_protect()
+            except Exception as e:
+                logger.error(f"Memory monitor error: {e}", exc_info=True)
+            await asyncio.sleep(60)  # Проверка каждую минуту
+
+    memory_task = asyncio.create_task(memory_check_task())
+    app.state.memory_task = memory_task
+    logger.info("Memory Monitor запущен для защиты от утечек памяти")
+
     logger.info("Клиенты инициализированы")
     yield
     logger.info("Завершение работы приложения...")
+
+    # Останавливаем Memory Monitor task
+    try:
+        memory_task = getattr(app.state, "memory_task", None)
+        if memory_task and not memory_task.done():
+            memory_task.cancel()
+            try:
+                await memory_task
+            except asyncio.CancelledError:
+                pass
+        logger.info("Memory Monitor остановлен")
+    except Exception as e:
+        logger.error(f"Error stopping memory monitor: {e}")
 
     # Останавливаем watchdog
     try:
@@ -212,12 +247,16 @@ class RequestTraceMiddleware(BaseHTTPMiddleware):
         self._max_body = int(os.getenv("HTTP_TRACE_MAX_BODY_BYTES", "4096"))
 
     async def dispatch(self, request: Request, call_next):
-        enabled = bool(getattr(settings.app, "debug", False)) or _bool_env("HTTP_TRACE_ENABLED", False)
+        enabled = bool(getattr(settings.app, "debug", False)) or _bool_env(
+            "HTTP_TRACE_ENABLED", False
+        )
         if not enabled:
             return await call_next(request)
 
         log_body = _bool_env("HTTP_TRACE_BODY", False)
-        request_id = request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
+        request_id = (
+            request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
+        )
         set_request_id(request_id)
 
         body_preview = None
@@ -225,7 +264,9 @@ class RequestTraceMiddleware(BaseHTTPMiddleware):
             try:
                 body = await request.body()
                 if body:
-                    body_preview = body[: self._max_body].decode("utf-8", errors="replace")
+                    body_preview = body[: self._max_body].decode(
+                        "utf-8", errors="replace"
+                    )
             except Exception:
                 body_preview = None
 
@@ -297,7 +338,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
-        response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        response.headers.setdefault(
+            "Permissions-Policy", "geolocation=(), microphone=(), camera=()"
+        )
 
         if bool(secure.hsts_enabled):
             # HSTS имеет смысл только под HTTPS, но выставление под HTTP не критично.
@@ -344,7 +387,9 @@ class IpFilterMiddleware(BaseHTTPMiddleware):
         deny_rules = _parse_ip_list_cached(tuple(bl))
 
         ip = get_client_ip(request)
-        rid = request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
+        rid = (
+            request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
+        )
         set_request_id(rid)
 
         if _ip_in_rules(ip, deny_rules):
@@ -444,7 +489,11 @@ class DynamicTrustedHostMiddleware(BaseHTTPMiddleware):
             )
 
         if not _host_allowed(host, allowed):
-            rid = request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
+            rid = (
+                request.headers.get("X-Request-ID")
+                or get_request_id()
+                or set_request_id()
+            )
             set_request_id(rid)
             return JSONResponse(
                 status_code=400,
@@ -529,7 +578,9 @@ app.state.limiter = limiter
 # Centralized error shape (includes RateLimitExceeded).
 install_error_handlers(app)
 
-_otel_excluded_urls = "/utility/health,/utility/metrics,/api/v1/utility/health,/api/v1/utility/metrics"
+_otel_excluded_urls = (
+    "/utility/health,/utility/metrics,/api/v1/utility/health,/api/v1/utility/metrics"
+)
 FastAPIInstrumentor.instrument_app(app, excluded_urls=_otel_excluded_urls)
 
 # =======================
@@ -618,7 +669,9 @@ async def root_openapi_redirect() -> RedirectResponse:
 # -----------------------
 # v1: primary, versioned API (recommended for integrations).
 v1_app.state.app_circuit_breaker = app_circuit_breaker
-FastAPIInstrumentor.instrument_app(v1_app, excluded_urls="/utility/health,/utility/metrics")
+FastAPIInstrumentor.instrument_app(
+    v1_app, excluded_urls="/utility/health,/utility/metrics"
+)
 app.mount("/api/v1", v1_app)
 
 # Legacy (unversioned) endpoints: kept for backward compatibility,
