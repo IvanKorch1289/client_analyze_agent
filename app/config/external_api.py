@@ -31,11 +31,15 @@ class HttpBaseSettings(BaseSettingsWithLoader):
 
     # Retry
     max_retries: int = Field(default=3, description="Максимум повторных попыток")
-    retry_backoff_factor: float = Field(default=0.5, description="Фактор экспоненциального отката")
+    retry_backoff_factor: float = Field(
+        default=0.5, description="Фактор экспоненциального отката"
+    )
 
     # Connection pooling
     max_connections: int = Field(default=50, description="Максимум соединений")
-    max_keepalive_connections: int = Field(default=20, description="Максимум keep-alive соединений")
+    max_keepalive_connections: int = Field(
+        default=20, description="Максимум keep-alive соединений"
+    )
 
     # HTTP/2
     http2_enabled: bool = Field(default=True, description="Включить HTTP/2")
@@ -62,7 +66,9 @@ class DadataAPISettings(BaseSettingsWithLoader):
     cache_ttl: int = Field(default=7200, description="TTL кеша (сек)")
 
     # Rate limiting
-    rate_limit_per_second: int = Field(default=10, description="Лимит запросов в секунду")
+    rate_limit_per_second: int = Field(
+        default=10, description="Лимит запросов в секунду"
+    )
 
     model_config = ConfigDict(env_prefix="DADATA_")
 
@@ -99,7 +105,9 @@ class InfoSphereAPISettings(BaseSettingsWithLoader):
 
     login: Optional[str] = Field(default=None, description="Логин InfoSphere")
     password: Optional[str] = Field(default=None, description="Пароль InfoSphere")
-    api_url: str = Field(default="https://i-sphere.ru/2.00/", description="URL InfoSphere API")
+    api_url: str = Field(
+        default="https://i-sphere.ru/2.00/", description="URL InfoSphere API"
+    )
 
     # Таймауты
     timeout: float = Field(default=45.0, description="Таймаут запроса (сек)")
@@ -123,19 +131,25 @@ class PerplexityAPISettings(BaseSettingsWithLoader):
     vault_path = "secret/data/app/perplexity"
 
     api_key: Optional[str] = Field(default=None, description="API ключ Perplexity")
-    api_url: str = Field(default="https://api.perplexity.ai", description="URL Perplexity API")
+    api_url: str = Field(
+        default="https://api.perplexity.ai", description="URL Perplexity API"
+    )
     model: str = Field(default="sonar-pro", description="Модель Perplexity")
 
     # Параметры запросов
     temperature: float = Field(default=0.2, description="Temperature для генерации")
-    max_tokens: Optional[int] = Field(default=None, description="Максимум токенов в ответе")
-    search_recency_filter: str = Field(default="month", description="Фильтр давности поиска")
+    max_tokens: Optional[int] = Field(
+        default=None, description="Максимум токенов в ответе"
+    )
+    search_recency_filter: str = Field(
+        default="month", description="Фильтр давности поиска"
+    )
 
     # Таймауты
     timeout: float = Field(default=60.0, description="Таймаут запроса (сек)")
 
-    # Кеш
-    cache_ttl: int = Field(default=300, description="TTL кеша (сек)")
+    # Кеш (было 300s = 5 минут, увеличено до 3600s = 1 час для better cache hit rate)
+    cache_ttl: int = Field(default=3600, description="TTL кеша (сек)")
     cache_enabled: bool = Field(default=True, description="Включить кеш")
 
     model_config = ConfigDict(env_prefix="PERPLEXITY_")
@@ -147,19 +161,27 @@ class TavilyAPISettings(BaseSettingsWithLoader):
     yaml_group = "tavily"
     vault_path = "secret/data/app/tavily"
 
-    api_key: Optional[str] = Field(default=None, description="API ключ Tavily", alias="TAVILY_TOKEN")
+    api_key: Optional[str] = Field(
+        default=None, description="API ключ Tavily", alias="TAVILY_TOKEN"
+    )
 
     # Параметры поиска
-    search_depth: str = Field(default="advanced", description="Глубина поиска (basic/advanced)")
+    search_depth: str = Field(
+        default="advanced", description="Глубина поиска (basic/advanced)"
+    )
     max_results: int = Field(default=10, description="Максимум результатов")
-    include_answer: bool = Field(default=True, description="Включить сгенерированный ответ")
-    include_raw_content: bool = Field(default=False, description="Включить сырой контент")
+    include_answer: bool = Field(
+        default=True, description="Включить сгенерированный ответ"
+    )
+    include_raw_content: bool = Field(
+        default=False, description="Включить сырой контент"
+    )
 
     # Таймауты
     timeout: float = Field(default=60.0, description="Таймаут запроса (сек)")
 
-    # Кеш
-    cache_ttl: int = Field(default=300, description="TTL кеша (сек)")
+    # Кеш (было 300s = 5 минут, увеличено до 3600s = 1 час для better cache hit rate)
+    cache_ttl: int = Field(default=3600, description="TTL кеша (сек)")
     cache_enabled: bool = Field(default=True, description="Включить кеш")
 
     model_config = ConfigDict(env_prefix="TAVILY_")
@@ -172,7 +194,9 @@ class OpenRouterAPISettings(BaseSettingsWithLoader):
     vault_path = "secret/data/app/openrouter"
 
     api_key: Optional[str] = Field(default=None, description="API ключ OpenRouter")
-    api_url: str = Field(default="https://openrouter.ai/api/v1", description="URL OpenRouter API")
+    api_url: str = Field(
+        default="https://openrouter.ai/api/v1", description="URL OpenRouter API"
+    )
     model: str = Field(default="anthropic/claude-3.5-sonnet", description="Модель LLM")
 
     # Параметры генерации
@@ -244,8 +268,12 @@ class YandexGPTAPISettings(BaseSettingsWithLoader):
     yaml_group = "yandexgpt"
     vault_path = "secret/data/app/yandexgpt"
 
-    api_key: str = Field(default="", description="IAM токен YandexGPT", alias="YANDEXGPT_IAM_TOKEN")
-    folder_id: str = Field(default="", description="ID папки в Yandex Cloud", alias="YANDEXGPT_FOLDER_ID")
+    api_key: str = Field(
+        default="", description="IAM токен YandexGPT", alias="YANDEXGPT_IAM_TOKEN"
+    )
+    folder_id: str = Field(
+        default="", description="ID папки в Yandex Cloud", alias="YANDEXGPT_FOLDER_ID"
+    )
     model_uri: str = Field(
         default="gpt://folder_id/yandexgpt-lite",
         description="URI модели YandexGPT",

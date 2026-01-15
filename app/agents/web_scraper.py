@@ -29,7 +29,7 @@ except ImportError:
 # Конфигурация
 MAX_PAGE_CONTENT_LENGTH = 10000  # 10k символов на страницу
 SCRAPE_TIMEOUT_SECONDS = 15  # Таймаут на одну страницу
-MAX_CONCURRENT_SCRAPES = 3  # Максимум параллельных запросов
+MAX_CONCURRENT_SCRAPES = 5  # Максимум параллельных запросов (было 3, увеличено до 5)
 USER_AGENT = "Mozilla/5.0 (compatible; AnalyzeAgent/1.0; +https://example.com/bot)"
 
 
@@ -59,7 +59,9 @@ async def scrape_top_tavily_links(
         return []
 
     # Фильтруем и сортируем по score
-    valid_results = [r for r in tavily_results if r.get("url") and isinstance(r.get("url"), str)]
+    valid_results = [
+        r for r in tavily_results if r.get("url") and isinstance(r.get("url"), str)
+    ]
 
     # Сортировка по релевантности (score)
     valid_results.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -88,13 +90,17 @@ async def scrape_top_tavily_links(
             )
 
     # Параллельный скрейпинг
-    full_texts = await asyncio.gather(*[_scrape_with_semaphore(r) for r in top_links], return_exceptions=True)
+    full_texts = await asyncio.gather(
+        *[_scrape_with_semaphore(r) for r in top_links], return_exceptions=True
+    )
 
     # Фильтруем исключения
     valid_texts = []
     for item in full_texts:
         if isinstance(item, Exception):
-            logger.error(f"Web scraper: exception during scrape: {item}", component="web_scraper")
+            logger.error(
+                f"Web scraper: exception during scrape: {item}", component="web_scraper"
+            )
             continue
         if isinstance(item, dict):
             valid_texts.append(item)
@@ -151,7 +157,9 @@ async def _scrape_single_page(
                 soup = BeautifulSoup(response.text, "html.parser")
 
                 # Удаляем script, style, nav, footer
-                for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                for tag in soup(
+                    ["script", "style", "nav", "footer", "header", "aside"]
+                ):
                     tag.decompose()
 
                 # Извлекаем текст
@@ -189,7 +197,9 @@ async def _scrape_single_page(
             "error": "Timeout",
         }
     except httpx.HTTPError as e:
-        logger.warning(f"Web scraper: HTTP error for {url}: {e}", component="web_scraper")
+        logger.warning(
+            f"Web scraper: HTTP error for {url}: {e}", component="web_scraper"
+        )
         return {
             "url": url,
             "title": title,
@@ -197,7 +207,9 @@ async def _scrape_single_page(
             "error": f"HTTP {e.response.status_code if hasattr(e, 'response') else 'error'}",
         }
     except Exception as e:
-        logger.error(f"Web scraper: unexpected error for {url}: {e}", component="web_scraper")
+        logger.error(
+            f"Web scraper: unexpected error for {url}: {e}", component="web_scraper"
+        )
         return {
             "url": url,
             "title": title,
@@ -229,7 +241,9 @@ async def scrape_urls_batch(
         async with semaphore:
             return await _scrape_single_page(url, "", max_content_length)
 
-    results = await asyncio.gather(*[_scrape_with_sem(url) for url in urls], return_exceptions=True)
+    results = await asyncio.gather(
+        *[_scrape_with_sem(url) for url in urls], return_exceptions=True
+    )
 
     # Фильтруем исключения
     return [r for r in results if isinstance(r, dict)]
@@ -242,7 +256,9 @@ def _clean_html_regex(html: str) -> str:
     Менее качественно, но работает без зависимостей.
     """
     # Удаляем script и style теги с содержимым
-    html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(
+        r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE
+    )
     html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL | re.IGNORECASE)
 
     # Удаляем HTML теги
