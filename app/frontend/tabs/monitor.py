@@ -252,15 +252,15 @@ def _render_llm_statistics(api: ApiClient, admin_token: str) -> None:
 
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.metric("Calls", p_calls)
+                    st.metric("Вызовов", p_calls)
                 with col2:
-                    st.metric("Success", p_success)
+                    st.metric("Успешно", p_success)
                 with col3:
-                    st.metric("Avg Duration", f"{p_avg:.0f} ms")
+                    st.metric("Средняя длительность", f"{p_avg:.0f} ms")
 
     # Recent calls
     st.divider()
-    st.markdown("### 📝 Recent Calls")
+    st.markdown("### 📝 Последние вызовы")
 
     limit = st.slider(
         "Количество записей", min_value=5, max_value=100, value=20, step=5
@@ -365,17 +365,17 @@ def _render_cache_statistics(api: ApiClient, admin_token: str) -> None:
 
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("Entries", s_entries)
+                    st.metric("Записей", s_entries)
                 with col2:
-                    st.metric("Hits", s_hits)
+                    st.metric("Попаданий", s_hits)
                 with col3:
-                    st.metric("Misses", s_misses)
+                    st.metric("Промахов", s_misses)
                 with col4:
-                    st.metric("Hit Rate", f"{s_hit_rate:.1f}%")
+                    st.metric("Процент попаданий", f"{s_hit_rate:.1f}%")
 
     # Cache management
     st.divider()
-    st.markdown("### 🗑️ Cache Management")
+    st.markdown("### 🗑️ Управление кэшем")
 
     source_to_clear = st.selectbox(
         "Выберите source для очистки",

@@ -31,34 +31,34 @@ def render(api: ApiClient, *, admin_token: str) -> None:
     section = st.selectbox(
         "Выберите секцию",
         options=[
-            "Health & Config",
-            "Circuit Breakers & Metrics",
-            "Cache & Tarantool",
-            "External Services",
-            "Logs & Traces",
-            "Reports Management",
+            "Здоровье и конфигурация",
+            "Автоматы защиты и метрики",
+            "Кэш и Tarantool",
+            "Внешние сервисы",
+            "Логи и трассировки",
+            "Управление отчётами",
         ],
         index=0,
     )
 
     st.divider()
 
-    if section == "Health & Config":
+    if section == "Здоровье и конфигурация":
         _render_health_config(api, admin_token)
-    elif section == "Circuit Breakers & Metrics":
+    elif section == "Автоматы защиты и метрики":
         _render_circuit_metrics(api, admin_token)
-    elif section == "Cache & Tarantool":
+    elif section == "Кэш и Tarantool":
         _render_cache_tarantool(api, admin_token)
-    elif section == "External Services":
+    elif section == "Внешние сервисы":
         _render_external_services(api, admin_token)
-    elif section == "Logs & Traces":
+    elif section == "Логи и трассировки":
         _render_logs_traces(api, admin_token)
-    elif section == "Reports Management":
+    elif section == "Управление отчётами":
         _render_reports_management(api, admin_token)
 
 
 def _render_health_config(api: ApiClient, admin_token: str) -> None:
-    st.subheader("🏥 Health & Config")
+    st.subheader("🏥 Здоровье и конфигурация")
 
     deep = st.checkbox("deep=true (реальные проверки внешних сервисов)", value=False)
     if st.button("🔍 Проверить /utility/health", type="primary"):
@@ -107,9 +107,9 @@ def _render_health_config(api: ApiClient, admin_token: str) -> None:
 
 
 def _render_circuit_metrics(api: ApiClient, admin_token: str) -> None:
-    st.subheader("🔌 Circuit Breakers & Metrics")
+    st.subheader("🔌 Автоматы защиты и метрики")
 
-    st.markdown("### 🔌 Главный Circuit Breaker")
+    st.markdown("### 🔌 Главный автомат защиты")
     c1, c2 = st.columns(2)
     with c1:
         if st.button("📊 Статус главного CB"):
@@ -126,10 +126,10 @@ def _render_circuit_metrics(api: ApiClient, admin_token: str) -> None:
         if st.button("🔄 Сбросить главный CB", disabled=not confirm_reset_app):
             payload = api.post("/utility/app-circuit-breaker/reset", admin_token=admin_token)
             if payload is not None:
-                st.success("App Circuit Breaker сброшен")
+                st.success("Главный автомат защиты сброшен")
                 st.json(payload)
 
-    st.markdown("### 🔌 Service Circuit Breakers")
+    st.markdown("### 🔌 Автоматы защиты сервисов")
     if st.button("📊 Загрузить статус всех CB"):
         cb = api.get("/utility/circuit-breakers", admin_token=admin_token)
         if cb is not None:
@@ -165,11 +165,11 @@ def _render_circuit_metrics(api: ApiClient, admin_token: str) -> None:
                     admin_token=admin_token,
                 )
                 if payload is not None:
-                    st.success(f"Circuit breaker для {service} сброшен")
+                    st.success(f"Автомат защиты для {service} сброшен")
                     st.json(payload)
 
     st.divider()
-    st.markdown("### 📊 Metrics")
+    st.markdown("### 📊 Метрики")
 
     colm1, colm2, colm3 = st.columns(3)
     with colm1:
@@ -211,7 +211,7 @@ def _render_circuit_metrics(api: ApiClient, admin_token: str) -> None:
 
 
 def _render_cache_tarantool(api: ApiClient, admin_token: str) -> None:
-    st.subheader("💾 Cache & Tarantool")
+    st.subheader("💾 Кэш и Tarantool")
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -275,7 +275,7 @@ def _render_cache_tarantool(api: ApiClient, admin_token: str) -> None:
 
 
 def _render_external_services(api: ApiClient, admin_token: str) -> None:
-    st.subheader("🌐 External Services")
+    st.subheader("🌐 Внешние сервисы")
 
     section_header("Статус сервисов", emoji="📊")
     s1, s2, s3, s4 = st.columns(4)
@@ -343,7 +343,7 @@ def _render_external_services(api: ApiClient, admin_token: str) -> None:
 
 
 def _render_logs_traces(api: ApiClient, admin_token: str) -> None:
-    st.subheader("📝 Logs & Traces")
+    st.subheader("📝 Логи и трассировки")
 
     section_header("Logs", emoji="📝")
     c1, c2, c3, c4 = st.columns(4)
@@ -438,7 +438,7 @@ def _render_logs_traces(api: ApiClient, admin_token: str) -> None:
 
 
 def _render_reports_management(api: ApiClient, admin_token: str) -> None:
-    st.subheader("📄 Reports Management")
+    st.subheader("📄 Управление отчётами")
 
     st.markdown("### 📁 Reports (Filesystem ./reports)")
     if st.button("📋 Список PDF отчётов"):

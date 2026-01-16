@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from app.utility.auth import require_admin_token
+from app.utility.auth import require_admin
 from app.utility.logging_client import logger
 
 # Lazy imports для админских операций
@@ -81,7 +81,7 @@ class MessageResponse(BaseModel):
 @admin_router.post(
     "/cache/clear",
     response_model=MessageResponse,
-    dependencies=[Depends(require_admin_token)],
+    dependencies=[Depends(require_admin)],
 )
 async def clear_cache(source: Optional[str] = None) -> MessageResponse:
     """
@@ -127,7 +127,7 @@ async def clear_cache(source: Optional[str] = None) -> MessageResponse:
 @admin_router.get(
     "/cache/stats",
     response_model=CacheStatsResponse,
-    dependencies=[Depends(require_admin_token)],
+    dependencies=[Depends(require_admin)],
 )
 async def get_cache_stats() -> CacheStatsResponse:
     """
@@ -180,7 +180,7 @@ async def get_cache_stats() -> CacheStatsResponse:
 @admin_router.get(
     "/llm/stats",
     response_model=LLMStatsResponse,
-    dependencies=[Depends(require_admin_token)],
+    dependencies=[Depends(require_admin)],
 )
 async def get_llm_stats(hours: int = 24) -> LLMStatsResponse:
     """
@@ -213,7 +213,7 @@ async def get_llm_stats(hours: int = 24) -> LLMStatsResponse:
         )
 
 
-@admin_router.get("/llm/recent", dependencies=[Depends(require_admin_token)])
+@admin_router.get("/llm/recent", dependencies=[Depends(require_admin)])
 async def get_recent_llm_calls(limit: int = 50) -> Dict[str, Any]:
     """
     Получает последние N вызовов LLM.
@@ -275,7 +275,7 @@ async def get_recent_llm_calls(limit: int = 50) -> Dict[str, Any]:
 @admin_router.get(
     "/health/detailed",
     response_model=HealthDetailedResponse,
-    dependencies=[Depends(require_admin_token)],
+    dependencies=[Depends(require_admin)],
 )
 async def get_detailed_health() -> HealthDetailedResponse:
     """
@@ -375,7 +375,7 @@ async def get_detailed_health() -> HealthDetailedResponse:
 # ============================================================================
 
 
-@admin_router.get("/metrics/system", dependencies=[Depends(require_admin_token)])
+@admin_router.get("/metrics/system", dependencies=[Depends(require_admin)])
 async def get_system_metrics() -> Dict[str, Any]:
     """
     Получает системные метрики (память, CPU, disk).
@@ -419,7 +419,7 @@ async def get_system_metrics() -> Dict[str, Any]:
 # ============================================================================
 
 
-@admin_router.get("/audit/llm", dependencies=[Depends(require_admin_token)])
+@admin_router.get("/audit/llm", dependencies=[Depends(require_admin)])
 async def get_llm_audit(
     period: int = Query(24, description="Период в часах", ge=1, le=720),
     limit: int = Query(100, description="Лимит записей", ge=1, le=1000),
@@ -512,6 +512,325 @@ async def get_llm_audit(
             "statistics": None,
             "recent_calls": [],
         }
+
+
+# ============================================================================
+# NEW ENDPOINTS - Sprint 3
+# ============================================================================
+
+
+@admin_router.post(
+    "/llm/test-provider/{provider}", dependencies=[Depends(require_admin)]
+)
+async def test_llm_provider(provider: str) -> Dict[str, Any]:
+    """
+    Тестирование конкретного LLM провайдера.
+
+    Отправляет тестовый запрос в указанный LLM и возвращает результат.
+    Полезно для диагностики проблем с fallback цепочкой.
+
+    Args:
+        provider: Имя провайдера (openrouter, huggingface, gigachat, yandexgpt)
+
+    Returns:
+        {
+            "provider": str,
+            "status": "success" | "error",
+            "response_preview": str,
+            "duration_ms": float,
+            "error": str | None
+        }
+
+    Example:
+        POST /admin/llm/test-provider/openrouter
+        → {"provider": "openrouter", "status": "success", "duration_ms": 1250.5}
+    """
+    import time
+
+    from app.agents.llm_manager import LLMProvider, get_llm_manager
+
+    # Проверка валидности провайдера
+    try:
+        provider_enum = LLMProvider(provider)
+    except ValueError:
+        available = [p.value for p in LLMProvider]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Неизвестный провайдер: {provider}. Доступные: {available}",
+        )
+
+    manager = get_llm_manager()
+
+    start_time = time.time()
+    try:
+        # Простой тестовый запрос
+        test_prompt = "Ответь 'OK' если получил это сообщение"
+        response = await manager.ainvoke_with_provider(
+            prompt=test_prompt, provider=provider_enum, mask_pii=False
+        )
+
+        duration_ms = (time.time() - start_time) * 1000
+
+        logger.info(
+            f"LLM provider test successful: {provider}",
+            component="admin_api",
+            duration_ms=duration_ms,
+        )
+
+        return {
+            "provider": provider,
+            "status": "success",
+            "response_preview": response[:200] if response else "[пустой ответ]",
+            "duration_ms": round(duration_ms, 2),
+            "error": None,
+        }
+
+    except Exception as e:
+        duration_ms = (time.time() - start_time) * 1000
+
+        logger.error(
+            f"LLM provider test failed: {provider} - {e}",
+            exc_info=True,
+            component="admin_api",
+        )
+
+        return {
+            "provider": provider,
+            "status": "error",
+            "response_preview": None,
+            "duration_ms": round(duration_ms, 2),
+            "error": str(e),
+        }
+
+
+@admin_router.get("/storage/disk-usage", dependencies=[Depends(require_admin)])
+async def get_disk_usage() -> Dict[str, Any]:
+    """
+    Использование дискового пространства.
+
+    Мониторинг размера отчетов, логов, временных файлов.
+
+    Returns:
+        {
+            "reports": {"path": str, "size_mb": float, "file_count": int},
+            "logs": {"path": str, "size_mb": float, "file_count": int},
+            "temp": {"path": str, "size_mb": float, "file_count": int}
+        }
+
+    Example:
+        GET /admin/storage/disk-usage
+        → {"reports": {"size_mb": 125.5, "file_count": 350}, ...}
+    """
+    from pathlib import Path
+
+    def get_dir_size(path: Path) -> int:
+        """Рекурсивный подсчет размера директории в байтах."""
+        total = 0
+        try:
+            for entry in path.rglob("*"):
+                if entry.is_file():
+                    total += entry.stat().st_size
+        except PermissionError:
+            logger.warning(f"Permission denied accessing {path}", component="admin_api")
+        return total
+
+    def get_file_count(path: Path) -> int:
+        """Подсчет количества файлов в директории."""
+        try:
+            return len([f for f in path.rglob("*") if f.is_file()])
+        except PermissionError:
+            return 0
+
+    # Директории для проверки
+    reports_dir = Path("./reports")
+    logs_dir = Path("./logs")
+    temp_dir = Path("./temp")
+
+    result = {}
+
+    for name, directory in [
+        ("reports", reports_dir),
+        ("logs", logs_dir),
+        ("temp", temp_dir),
+    ]:
+        if directory.exists():
+            size_bytes = get_dir_size(directory)
+            result[name] = {
+                "path": str(directory.absolute()),
+                "exists": True,
+                "size_bytes": size_bytes,
+                "size_mb": round(size_bytes / 1024 / 1024, 2),
+                "file_count": get_file_count(directory),
+            }
+        else:
+            result[name] = {
+                "path": str(directory.absolute()),
+                "exists": False,
+                "size_bytes": 0,
+                "size_mb": 0.0,
+                "file_count": 0,
+            }
+
+    # Общая статистика
+    total_size_mb = sum(d["size_mb"] for d in result.values())
+    total_files = sum(d["file_count"] for d in result.values())
+
+    return {
+        "status": "success",
+        "total_size_mb": round(total_size_mb, 2),
+        "total_file_count": total_files,
+        "directories": result,
+    }
+
+
+@admin_router.post("/storage/cleanup", dependencies=[Depends(require_admin)])
+async def cleanup_old_files(days: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
+    """
+    Очистка файлов старше N дней.
+
+    Удаляет старые файлы из директорий reports, logs, temp.
+
+    Args:
+        days: Удалить файлы старше указанного количества дней (1-365)
+
+    Returns:
+        {
+            "status": "completed",
+            "deleted_files_count": int,
+            "cutoff_days": int,
+            "deleted_by_directory": Dict[str, int]
+        }
+
+    Example:
+        POST /admin/storage/cleanup?days=30
+        → {"status": "completed", "deleted_files_count": 42, ...}
+    """
+    import time
+    from pathlib import Path
+
+    cutoff_time = time.time() - (days * 86400)
+    deleted_files = []
+    deleted_by_dir = {"reports": 0, "logs": 0, "temp": 0}
+
+    for dir_name in ["reports", "logs", "temp"]:
+        directory = Path(f"./{dir_name}")
+
+        if not directory.exists():
+            logger.info(
+                f"Directory {directory} does not exist, skipping", component="admin_api"
+            )
+            continue
+
+        for file_path in directory.rglob("*"):
+            if not file_path.is_file():
+                continue
+
+            try:
+                # Проверка возраста файла
+                if file_path.stat().st_mtime < cutoff_time:
+                    file_path.unlink()
+                    deleted_files.append(str(file_path))
+                    deleted_by_dir[dir_name] += 1
+
+                    logger.debug(
+                        f"Deleted old file: {file_path}", component="admin_api"
+                    )
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to delete {file_path}: {e}",
+                    exc_info=True,
+                    component="admin_api",
+                )
+
+    logger.info(
+        f"Storage cleanup completed: {len(deleted_files)} files deleted (>{days} days old)",
+        component="admin_api",
+        deleted_by_dir=deleted_by_dir,
+    )
+
+    return {
+        "status": "completed",
+        "deleted_files_count": len(deleted_files),
+        "cutoff_days": days,
+        "deleted_by_directory": deleted_by_dir,
+    }
+
+
+@admin_router.post("/cache/warmup", dependencies=[Depends(require_admin)])
+async def warmup_cache() -> Dict[str, Any]:
+    """
+    Прогрев кэша популярными запросами.
+
+    Полезно после рестарта сервиса или очистки кэша.
+    Загружает в кэш данные для часто запрашиваемых компаний.
+
+    Returns:
+        {
+            "status": "completed",
+            "queries_warmed": int,
+            "details": List[Dict[str, Any]]
+        }
+
+    Example:
+        POST /admin/cache/warmup
+        → {"status": "completed", "queries_warmed": 5, ...}
+    """
+    # Популярные ИНН для прогрева (примеры крупных компаний РФ)
+    popular_inns = [
+        "7707083893",  # Сбербанк
+        "7736050003",  # ВТБ
+        "7702070139",  # Газпром
+        "7717329710",  # Яндекс
+        "7729563872",  # Mail.ru Group (VK)
+    ]
+
+    results = []
+
+    for inn in popular_inns:
+        try:
+            # Пробуем загрузить из кэша или сделать запрос
+            from app.services.external_api.dadata import fetch_from_dadata
+
+            result = await fetch_from_dadata(inn=inn)
+
+            if result.get("success"):
+                results.append(
+                    {
+                        "inn": inn,
+                        "status": "success",
+                        "company_name": result.get("data", {})
+                        .get("name", {})
+                        .get("short_with_opf", "N/A"),
+                    }
+                )
+                logger.debug(f"Cache warmed for INN: {inn}", component="admin_api")
+            else:
+                results.append(
+                    {"inn": inn, "status": "not_found", "company_name": None}
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to warm cache for INN {inn}: {e}",
+                exc_info=True,
+                component="admin_api",
+            )
+            results.append({"inn": inn, "status": "error", "error": str(e)})
+
+    successful_count = sum(1 for r in results if r["status"] == "success")
+
+    logger.info(
+        f"Cache warmup completed: {successful_count}/{len(popular_inns)} successful",
+        component="admin_api",
+    )
+
+    return {
+        "status": "completed",
+        "queries_warmed": successful_count,
+        "total_attempted": len(popular_inns),
+        "details": results,
+    }
 
 
 __all__ = ["admin_router"]
