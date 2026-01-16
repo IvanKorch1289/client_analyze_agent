@@ -99,7 +99,7 @@ def _render_async_request(api: ApiClient) -> None:
         # Настройка callback
         st.subheader("Настройка Callback")
         callback_url = st.text_input(
-            "Callback URL",
+            "URL обратного вызова",
             placeholder="https://your-service.com/webhook/llm-response",
             help="URL, на который будет отправлен ответ LLM через POST",
             key="llm_callback_url",

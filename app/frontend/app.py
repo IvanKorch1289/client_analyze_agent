@@ -132,7 +132,7 @@ def _render_sidebar() -> None:
                 set_tab(t.key)
 
         st.divider()
-        st.subheader("Admin token")
+        st.subheader("Токен администратора")
 
         st.text_input(
             "Введите ADMIN_TOKEN",
