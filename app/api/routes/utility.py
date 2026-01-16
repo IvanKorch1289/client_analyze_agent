@@ -988,3 +988,31 @@ async def get_asyncapi_html() -> HTMLResponse:
     spec = AsyncAPI(broker, title="Client Analysis Messaging", version="1.0.0").to_specification()
     html = _get_asyncapi_html(spec)
     return HTMLResponse(content=html)
+
+
+# =============================================================================
+# PROMETHEUS METRICS
+# =============================================================================
+
+
+@utility_router.get("/metrics")
+async def get_prometheus_metrics(request: Request):
+    """
+    Prometheus metrics endpoint.
+
+    Returns metrics in Prometheus text format for scraping.
+    """
+    from fastapi.responses import Response
+
+    from app.shared.prometheus_metrics import metrics
+
+    if not metrics.enabled:
+        return Response(
+            content="# Prometheus client not available\n",
+            media_type="text/plain",
+        )
+
+    return Response(
+        content=metrics.get_metrics(),
+        media_type=metrics.get_content_type(),
+    )
