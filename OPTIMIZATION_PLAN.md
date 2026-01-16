@@ -2463,13 +2463,968 @@ openrouter:
 
 ---
 
-**Статус документа:** ✅ **Sprint 3 COMPLETED + Deep Analysis + Workflow Verification DONE**
+## 🚀 SPRINT 5: ПРОДВИНУТЫЙ АНАЛИЗ И ДОПОЛНИТЕЛЬНЫЕ ИСТОЧНИКИ
+
+> **Дата добавления**: 2026-01-16
+> **Приоритет**: P1 (Высокий)
+> **Статус**: 📋 ПЛАНИРУЕТСЯ
+
+---
+
+### 5.1 Улучшение Tavily - Извлечение данных (P1)
+
+#### Текущее состояние:
+```python
+# app/services/tavily_client.py:74
+include_raw_content: bool = False  # ❌ Только сниппеты, не полный контент
+```
+
+**Проблема:**
+- Tavily возвращает только URL + короткие сниппеты (500 символов)
+- Perplexity извлекает и анализирует полный контент страниц
+- Теряется 80-90% полезной информации с веб-страниц
+
+#### Решение 5.1.1: Включить извлечение полного контента
+
+```python
+# app/services/tavily_client.py
+
+def _get_tool(
+    self,
+    max_results: int = 5,
+    include_answer: bool = True,
+    include_raw_content: bool = True,  # ✅ ИЗМЕНИТЬ на True
+) -> TavilySearchResults:
+    return TavilySearchResults(
+        max_results=max_results,
+        include_answer=include_answer,
+        include_raw_content=include_raw_content,
+    )
+```
+
+#### Решение 5.1.2: Добавить метод extract_content
+
+```python
+# app/services/tavily_client.py (НОВОЕ)
+
+async def extract_content(
+    self,
+    urls: List[str],
+    max_chars_per_page: int = 10000,
+    timeout_per_url: float = 15.0,
+) -> List[Dict[str, Any]]:
+    """
+    Извлекает полный контент из списка URL.
+
+    Аналог того, что делает Perplexity AI при анализе.
+
+    Returns:
+        [
+            {
+                "url": "https://example.com",
+                "title": "Заголовок",
+                "content": "Полный текст страницы...",
+                "char_count": 8500,
+                "success": True,
+                "extracted_at": "2026-01-16T12:00:00"
+            }
+        ]
+    """
+    import aiohttp
+    from bs4 import BeautifulSoup
+
+    async def fetch_url(url: str) -> Dict[str, Any]:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    timeout=aiohttp.ClientTimeout(total=timeout_per_url),
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; ClientAnalyzer/1.0)"}
+                ) as response:
+                    html = await response.text()
+                    soup = BeautifulSoup(html, "html.parser")
+
+                    # Удаляем скрипты и стили
+                    for tag in soup(["script", "style", "nav", "footer", "header"]):
+                        tag.decompose()
+
+                    text = soup.get_text(separator=" ", strip=True)
+                    text = " ".join(text.split())  # Нормализация пробелов
+
+                    return {
+                        "url": url,
+                        "title": soup.title.string if soup.title else "",
+                        "content": text[:max_chars_per_page],
+                        "char_count": len(text),
+                        "success": True,
+                        "extracted_at": datetime.now().isoformat()
+                    }
+        except Exception as e:
+            return {
+                "url": url,
+                "error": str(e),
+                "success": False
+            }
+
+    tasks = [fetch_url(url) for url in urls[:10]]  # Max 10 URLs
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    return [r for r in results if isinstance(r, dict)]
+```
+
+#### Решение 5.1.3: Интеграция с data_collector
+
+```python
+# app/agents/data_collector.py
+
+async def _fetch_tavily_with_extraction(
+    query: str,
+    client_name: str
+) -> Dict[str, Any]:
+    """Tavily поиск + извлечение полного контента."""
+    client = TavilyClient.get_instance()
+
+    # 1. Поиск
+    search_result = await client.search(
+        query=query,
+        max_results=10,
+        include_raw_content=True,  # Полный контент
+    )
+
+    if not search_result.get("success"):
+        return search_result
+
+    # 2. Извлечение контента из TOP-5 URL
+    urls = [r["url"] for r in search_result.get("results", [])[:5] if r.get("url")]
+
+    if urls:
+        extracted = await client.extract_content(urls)
+        search_result["extracted_content"] = extracted
+        search_result["total_extracted_chars"] = sum(
+            e.get("char_count", 0) for e in extracted if e.get("success")
+        )
+
+    return search_result
+```
+
+**Ожидаемый результат:**
+- ✅ +80% информации из веб-источников
+- ✅ Паритет с Perplexity по глубине анализа
+- ✅ Более точная оценка рисков
+
+**Оценка трудозатрат:** 4-6 часов
+
+---
+
+### 5.2 LLM Анализ с рассуждениями (Chain-of-Thought) (P1)
+
+#### Текущее состояние:
+```python
+# app/mcp_server/prompts/system_prompts.py:92
+REPORT_ANALYZER_PROMPT_CONTENT = """Ты — эксперт по комплаенсу...
+# ❌ Нет явного требования показывать рассуждения
+```
+
+**Проблема:**
+- LLM выдаёт только итоговый результат без обоснования
+- Невозможно проверить логику оценки риска
+- Сложно понять, почему выставлен конкретный балл
+
+#### Решение 5.2.1: Добавить Chain-of-Thought промпт
+
+```python
+# app/mcp_server/prompts/system_prompts.py (ОБНОВЛЕНИЕ)
+
+REPORT_ANALYZER_COT_PROMPT = """Ты — эксперт по комплаенсу и оценке рисков контрагентов.
+
+ВАЖНО: Перед выдачей итогового JSON, выполни пошаговый анализ (chain-of-thought).
+
+📋 ШАГ 1: АНАЛИЗ ИСТОЧНИКОВ
+Перечисли, какие данные получены из каждого источника:
+- DaData: [что найдено]
+- Casebook: [что найдено]
+- InfoSphere: [что найдено]
+- Perplexity: [что найдено]
+- Tavily: [что найдено]
+
+🔍 ШАГ 2: ВЫЯВЛЕНИЕ РИСКОВЫХ СИГНАЛОВ
+Для каждого сигнала укажи:
+1. Факт: [конкретный факт из источника]
+2. Категория: [legal/financial/reputation/operational]
+3. Влияние на риск: [+X баллов, почему]
+
+Пример:
+1. Факт: Компания ликвидирована (status=LIQUIDATED из DaData)
+2. Категория: legal
+3. Влияние: +40 баллов (критический статус по правилам)
+
+⚖️ ШАГ 3: РАСЧЁТ ИТОГОВОГО СКОРА
+Базовый скор: 0
++ [фактор 1]: +X баллов
++ [фактор 2]: +Y баллов
+- [позитивный фактор]: -Z баллов
+= ИТОГО: [сумма] баллов
+
+📊 ШАГ 4: ОПРЕДЕЛЕНИЕ УРОВНЯ
+- 0-24: LOW
+- 25-49: MEDIUM
+- 50-74: HIGH
+- 75-100: CRITICAL
+
+Скор [X] → Уровень: [LEVEL]
+
+✅ ШАГ 5: ИТОГОВЫЙ JSON
+После рассуждений верни JSON в формате:
+{
+  "reasoning": {
+    "sources_analyzed": ["dadata", "casebook", ...],
+    "risk_factors": [
+      {"factor": "...", "category": "...", "impact": +20, "source": "casebook"}
+    ],
+    "positive_factors": [
+      {"factor": "...", "impact": -5}
+    ],
+    "calculation": "0 + 40 + 20 - 5 = 55"
+  },
+  "risk_assessment": {
+    "score": 55,
+    "level": "high",
+    "factors": ["Компания ликвидирована", "5 судебных дел"],
+    "categories": {
+      "legal_risk": 60,
+      "financial_risk": 45,
+      ...
+    }
+  },
+  "summary": "...",
+  "findings": [...],
+  "recommendations": [...]
+}
+"""
+```
+
+#### Решение 5.2.2: Добавить режим verbose reasoning
+
+```python
+# app/agents/report_analyzer.py
+
+async def report_analyzer_agent(
+    state: Dict[str, Any],
+    verbose_reasoning: bool = True  # ✅ НОВЫЙ параметр
+) -> Dict[str, Any]:
+    """
+    Агент-анализатор с опциональным chain-of-thought.
+
+    Args:
+        verbose_reasoning: Если True, LLM показывает пошаговые рассуждения
+    """
+
+    prompt_role = (
+        AnalyzerRole.REPORT_ANALYZER_COT
+        if verbose_reasoning
+        else AnalyzerRole.REPORT_ANALYZER
+    )
+
+    llm_report = await llm_generate_json(
+        system_prompt=get_system_prompt(prompt_role),
+        user_message=user_message,
+        temperature=0.1 if verbose_reasoning else 0.2,  # Меньше creativity
+        max_tokens=6000 if verbose_reasoning else 4000,  # Больше токенов для рассуждений
+    )
+
+    # Сохраняем reasoning для аудита
+    if verbose_reasoning and "reasoning" in llm_report:
+        state["reasoning_trace"] = llm_report["reasoning"]
+```
+
+#### Решение 5.2.3: UI для отображения рассуждений
+
+```python
+# app/frontend/pages/analysis.py (РАСШИРЕНИЕ)
+
+def render_reasoning_section(report: Dict):
+    """Отображает рассуждения LLM в expandable секции."""
+
+    if reasoning := report.get("reasoning_trace"):
+        with st.expander("🧠 Как LLM оценил риски (Chain-of-Thought)", expanded=False):
+            st.markdown("### Проанализированные источники")
+            for source in reasoning.get("sources_analyzed", []):
+                st.markdown(f"- ✅ {source}")
+
+            st.markdown("### Факторы риска")
+            for factor in reasoning.get("risk_factors", []):
+                st.markdown(
+                    f"- **{factor['factor']}** ({factor['category']}): "
+                    f"+{factor['impact']} баллов *({factor['source']})*"
+                )
+
+            st.markdown("### Расчёт")
+            st.code(reasoning.get("calculation", "N/A"))
+```
+
+**Ожидаемый результат:**
+- ✅ Прозрачность оценки риска
+- ✅ Аудируемость решений LLM
+- ✅ Возможность оспорить/скорректировать оценку
+
+**Оценка трудозатрат:** 4-5 часов
+
+---
+
+### 5.3 Дополнительные источники данных о клиенте (P1)
+
+#### 5.3.1 Бесплатные российские API
+
+| API | Данные | Бесплатный лимит | URL |
+|-----|--------|------------------|-----|
+| **ФНС API** | Выписка ЕГРЮЛ/ЕГРИП, налоговая задолженность | Бесплатно | egrul.nalog.ru |
+| **ФССП API** | Исполнительные производства | Бесплатно | fssp.gov.ru/iss/ip |
+| **Росстат** | Финансовая отчётность | Бесплатно | rosstat.gov.ru |
+| **Реестр банкротств** | ЕФРСБ | Бесплатно | bankrot.fedresurs.ru |
+| **Реестр залогов** | Уведомления о залогах | Бесплатно | reestr-zalogov.ru |
+| **Список недобросовестных поставщиков** | РНП | Бесплатно | zakupki.gov.ru |
+| **Реестр лицензий** | Разрешительные документы | Бесплатно | Зависит от отрасли |
+
+#### Решение 5.3.1: FNS (ФНС) Collector
+
+```python
+# app/agents/collectors/fns.py (НОВОЕ)
+
+from app.agents.collectors.base import BaseCollector, CollectorResult
+
+class FNSCollector(BaseCollector):
+    """
+    Сборщик данных из ФНС (egrul.nalog.ru).
+
+    Бесплатный API для:
+    - Выписка из ЕГРЮЛ/ЕГРИП
+    - Проверка налоговой задолженности
+    - Статус организации
+    """
+
+    source_name = "fns"
+    default_timeout = 30
+
+    BASE_URL = "https://egrul.nalog.ru/api"
+
+    async def _collect(self, inn: str, **kwargs) -> CollectorResult:
+        """
+        Запрос данных из ФНС по ИНН.
+
+        Args:
+            inn: ИНН организации (10 цифр) или ИП (12 цифр)
+        """
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session:
+            # 1. Инициировать поиск
+            search_url = f"{self.BASE_URL}/search"
+            async with session.post(search_url, json={"query": inn}) as resp:
+                if resp.status != 200:
+                    return CollectorResult(
+                        source=self.source_name,
+                        success=False,
+                        error=f"FNS API error: {resp.status}"
+                    )
+                search_data = await resp.json()
+                token = search_data.get("token")
+
+            if not token:
+                return CollectorResult(
+                    source=self.source_name,
+                    success=False,
+                    error="No search token returned"
+                )
+
+            # 2. Получить результаты
+            import asyncio
+            await asyncio.sleep(1)  # FNS требует паузу
+
+            results_url = f"{self.BASE_URL}/{token}"
+            async with session.get(results_url) as resp:
+                if resp.status != 200:
+                    return CollectorResult(
+                        source=self.source_name,
+                        success=False,
+                        error=f"FNS results error: {resp.status}"
+                    )
+                results = await resp.json()
+
+            return CollectorResult(
+                source=self.source_name,
+                success=True,
+                data={
+                    "egrul_data": results.get("rows", []),
+                    "total_found": results.get("cnt", 0),
+                    "source_url": "https://egrul.nalog.ru"
+                }
+            )
+```
+
+#### Решение 5.3.2: FSSP (ФССП) Collector
+
+```python
+# app/agents/collectors/fssp.py (НОВОЕ)
+
+class FSSPCollector(BaseCollector):
+    """
+    Сборщик данных из ФССП (fssp.gov.ru).
+
+    Бесплатный API для:
+    - Исполнительные производства
+    - Задолженности по исполнительным листам
+    """
+
+    source_name = "fssp"
+    default_timeout = 30
+
+    BASE_URL = "https://api-ip.fssprus.ru/api/v1.0"
+
+    async def _collect(
+        self,
+        inn: str = None,
+        company_name: str = None,
+        region: str = None,
+        **kwargs
+    ) -> CollectorResult:
+        """
+        Поиск исполнительных производств.
+
+        Требуется API token (бесплатный, получить на fssp.gov.ru).
+        """
+        import aiohttp
+        from app.config import settings
+
+        token = settings.fssp.api_token if hasattr(settings, 'fssp') else None
+        if not token:
+            return CollectorResult(
+                source=self.source_name,
+                success=False,
+                error="FSSP API token not configured"
+            )
+
+        headers = {"Authorization": f"Bearer {token}"}
+        params = {}
+
+        if inn:
+            params["inn"] = inn
+        elif company_name:
+            params["name"] = company_name
+
+        if region:
+            params["region"] = region
+
+        async with aiohttp.ClientSession() as session:
+            url = f"{self.BASE_URL}/search/legal"
+            async with session.get(url, params=params, headers=headers) as resp:
+                if resp.status != 200:
+                    return CollectorResult(
+                        source=self.source_name,
+                        success=False,
+                        error=f"FSSP API error: {resp.status}"
+                    )
+
+                data = await resp.json()
+
+                return CollectorResult(
+                    source=self.source_name,
+                    success=True,
+                    data={
+                        "executions": data.get("result", []),
+                        "total_debt": sum(
+                            float(e.get("ip_sum", 0) or 0)
+                            for e in data.get("result", [])
+                        ),
+                        "active_count": len([
+                            e for e in data.get("result", [])
+                            if e.get("ip_end") is None
+                        ])
+                    }
+                )
+```
+
+#### Решение 5.3.3: Bankrot (ЕФРСБ) Collector
+
+```python
+# app/agents/collectors/bankrot.py (НОВОЕ)
+
+class BankrotCollector(BaseCollector):
+    """
+    Сборщик данных из ЕФРСБ (bankrot.fedresurs.ru).
+
+    Проверка:
+    - Банкротство должника
+    - Сообщения о банкротстве
+    - Стадии процедуры
+    """
+
+    source_name = "bankrot"
+    default_timeout = 45
+
+    BASE_URL = "https://bankrot.fedresurs.ru/api"
+
+    async def _collect(self, inn: str, **kwargs) -> CollectorResult:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session:
+            # Поиск по ИНН
+            url = f"{self.BASE_URL}/search"
+            params = {"searchString": inn, "type": "Debtor"}
+
+            async with session.get(url, params=params) as resp:
+                if resp.status != 200:
+                    return CollectorResult(
+                        source=self.source_name,
+                        success=False,
+                        error=f"Bankrot API error: {resp.status}"
+                    )
+
+                data = await resp.json()
+                debtors = data.get("pageData", [])
+
+                if not debtors:
+                    return CollectorResult(
+                        source=self.source_name,
+                        success=True,
+                        data={
+                            "is_bankrupt": False,
+                            "messages": [],
+                            "stage": None
+                        }
+                    )
+
+                # Получить сообщения по первому должнику
+                debtor_id = debtors[0].get("id")
+                messages_url = f"{self.BASE_URL}/debtors/{debtor_id}/messages"
+
+                async with session.get(messages_url) as msg_resp:
+                    messages = []
+                    if msg_resp.status == 200:
+                        msg_data = await msg_resp.json()
+                        messages = msg_data.get("pageData", [])
+
+                return CollectorResult(
+                    source=self.source_name,
+                    success=True,
+                    data={
+                        "is_bankrupt": True,
+                        "debtor_info": debtors[0],
+                        "messages_count": len(messages),
+                        "latest_stage": messages[0].get("type") if messages else None,
+                        "risk_signal": "CRITICAL: Компания в процедуре банкротства"
+                    }
+                )
+```
+
+#### Решение 5.3.4: Интеграция всех источников
+
+```python
+# app/agents/collectors/__init__.py (ОБНОВЛЕНИЕ)
+
+from .fns import FNSCollector
+from .fssp import FSSPCollector
+from .bankrot import BankrotCollector
+
+# Реестр всех collectors
+COLLECTOR_REGISTRY = {
+    # Существующие
+    "dadata": DaDataCollector,
+    "casebook": CasebookCollector,
+    "infosphere": InfoSphereCollector,
+    "perplexity": PerplexityCollector,
+    "tavily": TavilyCollector,
+
+    # НОВЫЕ бесплатные источники
+    "fns": FNSCollector,
+    "fssp": FSSPCollector,
+    "bankrot": BankrotCollector,
+}
+
+async def collect_all_sources(inn: str, client_name: str) -> Dict[str, CollectorResult]:
+    """
+    Собирает данные из ВСЕХ доступных источников параллельно.
+    """
+    tasks = {}
+    for name, collector_cls in COLLECTOR_REGISTRY.items():
+        collector = collector_cls()
+        tasks[name] = collector.collect(inn=inn, client_name=client_name)
+
+    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+    return dict(zip(tasks.keys(), results))
+```
+
+**Ожидаемый результат:**
+- ✅ +3 бесплатных источника данных
+- ✅ Официальные государственные данные
+- ✅ Улучшенная точность оценки рисков
+
+**Оценка трудозатрат:** 8-12 часов
+
+---
+
+### 5.4 Утилитарные фичи (P2)
+
+#### 5.4.1 Сравнение компаний
+
+```python
+# app/api/routes/analysis.py (РАСШИРЕНИЕ)
+
+@analysis_router.post("/compare")
+async def compare_companies(
+    companies: List[CompanyInput],  # До 5 компаний
+) -> ComparisonResult:
+    """
+    Сравнительный анализ нескольких компаний.
+
+    Возвращает:
+    - Риск-скоры всех компаний
+    - Рейтинг от лучшего к худшему
+    - Сравнительную таблицу по категориям рисков
+    """
+    if len(companies) > 5:
+        raise HTTPException(400, "Maximum 5 companies for comparison")
+
+    # Параллельный анализ
+    tasks = [analyze_client(c.name, c.inn) for c in companies]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Сравнение
+    comparison = {
+        "companies": [],
+        "ranking": [],
+        "comparison_matrix": {}
+    }
+
+    for company, result in zip(companies, results):
+        if isinstance(result, Exception):
+            continue
+        comparison["companies"].append({
+            "name": company.name,
+            "inn": company.inn,
+            "risk_score": result.get("risk_assessment", {}).get("score", 0),
+            "risk_level": result.get("risk_assessment", {}).get("level", "unknown")
+        })
+
+    # Сортировка по риск-скору
+    comparison["ranking"] = sorted(
+        comparison["companies"],
+        key=lambda x: x["risk_score"]
+    )
+
+    return comparison
+```
+
+#### 5.4.2 Экспорт в разные форматы
+
+```python
+# app/api/routes/export.py (НОВОЕ)
+
+from fastapi import APIRouter
+from fastapi.responses import FileResponse, StreamingResponse
+
+export_router = APIRouter(prefix="/export", tags=["export"])
+
+@export_router.get("/{report_id}/excel")
+async def export_to_excel(report_id: str) -> FileResponse:
+    """Экспорт отчёта в Excel (.xlsx)"""
+    import pandas as pd
+    from io import BytesIO
+
+    report = await get_report(report_id)
+
+    # Создаём Excel с несколькими листами
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Лист 1: Основная информация
+        df_main = pd.DataFrame([{
+            "Компания": report["metadata"]["client_name"],
+            "ИНН": report["metadata"]["inn"],
+            "Риск-скор": report["risk_assessment"]["score"],
+            "Уровень риска": report["risk_assessment"]["level"],
+            "Дата анализа": report["metadata"]["analysis_date"]
+        }])
+        df_main.to_excel(writer, sheet_name="Основное", index=False)
+
+        # Лист 2: Факторы риска
+        df_factors = pd.DataFrame(
+            {"Фактор": report["risk_assessment"]["factors"]}
+        )
+        df_factors.to_excel(writer, sheet_name="Факторы", index=False)
+
+        # Лист 3: Рекомендации
+        df_recommendations = pd.DataFrame(
+            {"Рекомендация": report["recommendations"]}
+        )
+        df_recommendations.to_excel(writer, sheet_name="Рекомендации", index=False)
+
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={report_id}.xlsx"}
+    )
+
+@export_router.get("/{report_id}/word")
+async def export_to_word(report_id: str) -> FileResponse:
+    """Экспорт отчёта в Word (.docx)"""
+    from docx import Document
+    from io import BytesIO
+
+    report = await get_report(report_id)
+
+    doc = Document()
+    doc.add_heading(f"Отчёт по анализу: {report['metadata']['client_name']}", 0)
+
+    doc.add_paragraph(f"ИНН: {report['metadata']['inn']}")
+    doc.add_paragraph(f"Дата анализа: {report['metadata']['analysis_date']}")
+
+    doc.add_heading("Оценка рисков", level=1)
+    doc.add_paragraph(f"Риск-скор: {report['risk_assessment']['score']}/100")
+    doc.add_paragraph(f"Уровень: {report['risk_assessment']['level'].upper()}")
+
+    doc.add_heading("Факторы риска", level=2)
+    for factor in report["risk_assessment"]["factors"]:
+        doc.add_paragraph(factor, style="List Bullet")
+
+    doc.add_heading("Рекомендации", level=1)
+    for rec in report["recommendations"]:
+        doc.add_paragraph(rec, style="List Number")
+
+    output = BytesIO()
+    doc.save(output)
+    output.seek(0)
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename={report_id}.docx"}
+    )
+```
+
+#### 5.4.3 Шаблоны отчётов
+
+```python
+# app/services/templates.py (НОВОЕ)
+
+from enum import Enum
+from typing import Dict, Any
+
+class ReportTemplate(str, Enum):
+    """Шаблоны отчётов для разных use cases."""
+
+    FULL = "full"           # Полный отчёт (все данные)
+    BRIEF = "brief"         # Краткий отчёт (только риск-скор и рекомендации)
+    COMPLIANCE = "compliance"  # Для комплаенс-офицеров (акцент на legal)
+    FINANCIAL = "financial"    # Для финансистов (акцент на financial_risk)
+    DUE_DILIGENCE = "due_diligence"  # Для M&A (все источники, максимум данных)
+
+TEMPLATE_CONFIG = {
+    ReportTemplate.FULL: {
+        "sources": ["dadata", "casebook", "infosphere", "perplexity", "tavily", "fns", "fssp", "bankrot"],
+        "sections": ["company_info", "risk_assessment", "legal_cases", "financial", "recommendations"],
+        "llm_tokens": 6000,
+    },
+    ReportTemplate.BRIEF: {
+        "sources": ["dadata", "casebook"],
+        "sections": ["risk_assessment", "recommendations"],
+        "llm_tokens": 2000,
+    },
+    ReportTemplate.COMPLIANCE: {
+        "sources": ["dadata", "casebook", "fssp", "bankrot"],
+        "sections": ["company_info", "risk_assessment", "legal_cases", "sanctions"],
+        "llm_tokens": 4000,
+        "focus_categories": ["legal_risk", "sanctions_risk"]
+    },
+    ReportTemplate.FINANCIAL: {
+        "sources": ["dadata", "infosphere", "fns"],
+        "sections": ["company_info", "financial", "risk_assessment"],
+        "llm_tokens": 4000,
+        "focus_categories": ["financial_risk"]
+    },
+    ReportTemplate.DUE_DILIGENCE: {
+        "sources": ["all"],
+        "sections": ["all"],
+        "llm_tokens": 8000,
+        "include_reasoning": True,
+    }
+}
+
+async def generate_report_with_template(
+    client_name: str,
+    inn: str,
+    template: ReportTemplate = ReportTemplate.FULL
+) -> Dict[str, Any]:
+    """Генерирует отчёт по выбранному шаблону."""
+    config = TEMPLATE_CONFIG[template]
+
+    # Собираем данные только из нужных источников
+    sources = config["sources"]
+    if "all" in sources:
+        sources = list(COLLECTOR_REGISTRY.keys())
+
+    # ... сбор данных и генерация отчёта
+```
+
+#### 5.4.4 История анализов с diff
+
+```python
+# app/api/routes/history.py (НОВОЕ)
+
+@history_router.get("/{inn}/timeline")
+async def get_analysis_timeline(inn: str) -> List[AnalysisSnapshot]:
+    """
+    История всех анализов компании с изменениями.
+
+    Показывает:
+    - Все анализы за всё время
+    - Изменения риск-скора
+    - Новые/исчезнувшие факторы риска
+    """
+    from app.storage.tarantool import TarantoolClient
+
+    client = await TarantoolClient.get_instance()
+    reports = await client.get_reports_repository().get_by_inn(inn)
+
+    timeline = []
+    prev_report = None
+
+    for report in sorted(reports, key=lambda r: r["created_at"]):
+        snapshot = {
+            "report_id": report["id"],
+            "date": report["created_at"],
+            "risk_score": report["risk_assessment"]["score"],
+            "risk_level": report["risk_assessment"]["level"],
+            "factors_count": len(report["risk_assessment"]["factors"])
+        }
+
+        if prev_report:
+            # Вычисляем diff
+            snapshot["score_change"] = (
+                report["risk_assessment"]["score"] -
+                prev_report["risk_assessment"]["score"]
+            )
+
+            # Новые факторы
+            old_factors = set(prev_report["risk_assessment"]["factors"])
+            new_factors = set(report["risk_assessment"]["factors"])
+            snapshot["new_factors"] = list(new_factors - old_factors)
+            snapshot["removed_factors"] = list(old_factors - new_factors)
+
+        timeline.append(snapshot)
+        prev_report = report
+
+    return timeline
+```
+
+#### 5.4.5 Webhook уведомления
+
+```python
+# app/services/webhooks.py (НОВОЕ)
+
+from pydantic import BaseModel, HttpUrl
+from typing import Literal
+
+class WebhookConfig(BaseModel):
+    """Конфигурация webhook."""
+    url: HttpUrl
+    events: List[Literal["analysis_complete", "high_risk_detected", "data_updated"]]
+    secret: str  # Для HMAC подписи
+
+class WebhookService:
+    """Сервис отправки webhook уведомлений."""
+
+    async def send_notification(
+        self,
+        webhook: WebhookConfig,
+        event: str,
+        payload: Dict[str, Any]
+    ) -> bool:
+        import aiohttp
+        import hmac
+        import hashlib
+        import json
+
+        body = json.dumps(payload)
+        signature = hmac.new(
+            webhook.secret.encode(),
+            body.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-Webhook-Signature": signature,
+            "X-Event-Type": event
+        }
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(
+                    str(webhook.url),
+                    data=body,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as resp:
+                    return resp.status == 200
+            except Exception:
+                return False
+
+    async def notify_analysis_complete(
+        self,
+        report_id: str,
+        risk_level: str,
+        webhooks: List[WebhookConfig]
+    ):
+        """Уведомление о завершении анализа."""
+        payload = {
+            "event": "analysis_complete",
+            "report_id": report_id,
+            "risk_level": risk_level,
+            "timestamp": datetime.now().isoformat()
+        }
+
+        # Отправляем только подписчикам на это событие
+        for webhook in webhooks:
+            if "analysis_complete" in webhook.events:
+                await self.send_notification(webhook, "analysis_complete", payload)
+
+            # Дополнительно если high/critical risk
+            if risk_level in ["high", "critical"] and "high_risk_detected" in webhook.events:
+                await self.send_notification(webhook, "high_risk_detected", payload)
+```
+
+**Ожидаемый результат:**
+- ✅ Сравнение нескольких контрагентов
+- ✅ Экспорт в Excel/Word
+- ✅ Гибкие шаблоны отчётов
+- ✅ История изменений
+- ✅ Интеграция через webhooks
+
+**Оценка трудозатрат:** 12-16 часов
+
+---
+
+### 5.5 Сводка Sprint 5
+
+| Задача | Приоритет | Трудозатраты | Ожидаемый результат |
+|--------|-----------|--------------|---------------------|
+| 5.1 Tavily extraction | P1 | 4-6 ч | +80% данных из веб |
+| 5.2 LLM Chain-of-Thought | P1 | 4-5 ч | Прозрачность оценки |
+| 5.3 Бесплатные API (ФНС, ФССП, ЕФРСБ) | P1 | 8-12 ч | +3 официальных источника |
+| 5.4 Утилитарные фичи | P2 | 12-16 ч | Сравнение, экспорт, webhooks |
+| **ИТОГО** | | **28-39 ч** | |
+
+---
+
+**Статус документа:** ✅ **Sprint 3 COMPLETED + Deep Analysis + Workflow Verification DONE + Sprint 5 PLANNED**
 
 **Production Status:** ✅ **READY FOR PRODUCTION** (но требуется Sprint 4 P0!)
 
 **⚠️ ВАЖНО:** Система готова к production, но **настоятельно рекомендуется** выполнить Sprint 4 P0 задачи для исправления memory leak и security vulnerability перед запуском под высокой нагрузкой.
 
-**СЛЕДУЮЩИЙ ШАГ:** Выполнение Sprint 4 P0 задач (8-9 часов)
+**СЛЕДУЮЩИЕ ШАГИ:**
+1. Sprint 4 P0 (8-9 часов) - критичные исправления
+2. Sprint 5 (28-39 часов) - продвинутый анализ
 
 ---
 
