@@ -23,10 +23,11 @@ from typing import Any, Dict, Optional
 from app.config import settings
 from app.utility.logging_client import logger
 
-# Lazy imports для PII, audit и cache (импортируются при первом использовании)
+# Lazy imports для PII, audit, cache и metrics
 _pii_protection = None
 _llm_audit = None
 _llm_cache = None
+_prometheus_metrics = None
 
 
 def _get_pii_protection():
@@ -57,6 +58,19 @@ def _get_llm_cache():
 
         _llm_cache = cache_mod
     return _llm_cache
+
+
+def _get_metrics():
+    """Lazy import Prometheus metrics."""
+    global _prometheus_metrics
+    if _prometheus_metrics is None:
+        try:
+            from app.shared.prometheus_metrics import metrics
+
+            _prometheus_metrics = metrics
+        except ImportError:
+            _prometheus_metrics = None
+    return _prometheus_metrics
 
 
 def _run_coroutine_sync(coro):
@@ -514,6 +528,15 @@ class LLMManager:
                     pii_masked=bool(pii_result and pii_result.pii_detected),
                 )
 
+                # Record Prometheus metrics
+                prom = _get_metrics()
+                if prom and prom.enabled:
+                    prom.record_llm_request(
+                        provider=provider.value,
+                        success=True,
+                        latency=provider_duration,
+                    )
+
                 # Помечаем провайдер как доступный при успехе
                 self._provider_status[provider] = True
                 used_provider = provider
@@ -524,6 +547,21 @@ class LLMManager:
                 last_error = e
                 logger.error(f"LLM call failed with {provider}: {e}", component="llm_manager")
                 self._provider_status[provider] = False
+
+                # Record failed attempt in Prometheus
+                prom = _get_metrics()
+                if prom and prom.enabled:
+                    prom.record_llm_request(
+                        provider=provider.value,
+                        success=False,
+                        latency=time.perf_counter() - provider_start,
+                    )
+                    # Record fallback if moving to next provider
+                    if attempts < len(self._fallback_order):
+                        next_provider = self._fallback_order[attempts] if attempts < len(self._fallback_order) else None
+                        if next_provider:
+                            prom.record_llm_fallback(provider.value, next_provider.value)
+
                 continue
 
         # ============================================================
