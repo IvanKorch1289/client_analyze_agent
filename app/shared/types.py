@@ -4,7 +4,7 @@ Typed dictionaries for better type safety.
 Replaces Dict[str, Any] with specific typed structures.
 """
 
-from typing import Any, Dict, List, Literal, Optional, TypedDict, Union
+from typing import Any, Dict, List, Literal, Optional, TypedDict
 
 
 # ============================================================

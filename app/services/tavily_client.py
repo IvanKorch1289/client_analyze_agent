@@ -1,12 +1,19 @@
 import asyncio
 import hashlib
 import os
+import time
+from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional
 
 from langchain_community.tools.tavily_search import TavilySearchResults
 
 from app.config import settings
 from app.utility.logging_client import logger
+
+# Constants for content extraction
+MAX_CONTENT_CHARS = 10000
+MAX_URLS_TO_EXTRACT = 10
+EXTRACTION_TIMEOUT = 15.0
 
 
 class TavilyClient:
@@ -32,7 +39,7 @@ class TavilyClient:
         self,
         max_results: int = 5,
         include_answer: bool = True,
-        include_raw_content: bool = False,
+        include_raw_content: bool = True,  # Changed: extract full content by default
     ) -> TavilySearchResults:
         return TavilySearchResults(
             max_results=max_results,
@@ -49,7 +56,7 @@ class TavilyClient:
         search_depth: str,
         max_results: int,
         include_answer: bool = True,
-        include_raw_content: bool = False,
+        include_raw_content: bool = True,
         include_domains: Optional[List[str]] = None,
         exclude_domains: Optional[List[str]] = None,
     ) -> str:
@@ -71,7 +78,7 @@ class TavilyClient:
         search_depth: Literal["basic", "advanced", "fast", "ultra-fast"] = "basic",
         max_results: int = 5,
         include_answer: bool = True,
-        include_raw_content: bool = False,
+        include_raw_content: bool = True,  # Changed: extract full content by default
         include_domains: Optional[List[str]] = None,
         exclude_domains: Optional[List[str]] = None,
         use_cache: bool = True,
@@ -166,13 +173,16 @@ class TavilyClient:
                 for item in results:
                     if isinstance(item, dict):
                         content = item.get("content", "")
+                        raw_content = item.get("raw_content", "")
                         formatted_results.append(
                             {
                                 "title": item.get("title", ""),
                                 "url": item.get("url", ""),
                                 "content": content,
+                                "raw_content": raw_content,  # Full page content
                                 "snippet": content[:500] if content else "",
                                 "score": item.get("score", 0),
+                                "char_count": (len(raw_content) if raw_content else len(content)),
                             }
                         )
                     else:
@@ -181,6 +191,7 @@ class TavilyClient:
                                 "content": str(item),
                                 "url": "",
                                 "snippet": str(item)[:500],
+                                "char_count": len(str(item)),
                             }
                         )
 
@@ -262,6 +273,201 @@ class TavilyClient:
             return await fallback_handler(query, **kwargs)
 
         return result
+
+    async def extract_content(
+        self,
+        urls: List[str],
+        max_chars_per_page: int = MAX_CONTENT_CHARS,
+        timeout_per_url: float = EXTRACTION_TIMEOUT,
+    ) -> List[Dict[str, Any]]:
+        """
+        Extract full content from a list of URLs.
+
+        Similar to what Perplexity AI does when analyzing pages.
+        Uses aiohttp for async fetching and BeautifulSoup for HTML parsing.
+
+        Args:
+            urls: List of URLs to extract content from
+            max_chars_per_page: Maximum characters to extract per page
+            timeout_per_url: Timeout in seconds for each URL
+
+        Returns:
+            List of extraction results with url, title, content, char_count, success
+        """
+        import aiohttp
+
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError:
+            logger.warning(
+                "BeautifulSoup not installed, skipping content extraction",
+                component="tavily",
+            )
+            return []
+
+        async def fetch_url(url: str) -> Dict[str, Any]:
+            """Fetch and parse a single URL."""
+            start_time = time.perf_counter()
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        url,
+                        timeout=aiohttp.ClientTimeout(total=timeout_per_url),
+                        headers={
+                            "User-Agent": "Mozilla/5.0 (compatible; ClientAnalyzer/1.0; +https://example.com/bot)",
+                            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                            "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+                        },
+                        allow_redirects=True,
+                        ssl=False,  # Skip SSL verification for problematic sites
+                    ) as response:
+                        if response.status != 200:
+                            return {
+                                "url": url,
+                                "success": False,
+                                "error": f"HTTP {response.status}",
+                                "elapsed_ms": round((time.perf_counter() - start_time) * 1000, 2),
+                            }
+
+                        html = await response.text()
+                        soup = BeautifulSoup(html, "html.parser")
+
+                        # Remove non-content elements
+                        for tag in soup(
+                            [
+                                "script",
+                                "style",
+                                "nav",
+                                "footer",
+                                "header",
+                                "aside",
+                                "noscript",
+                                "iframe",
+                            ]
+                        ):
+                            tag.decompose()
+
+                        # Extract title
+                        title = ""
+                        if soup.title and soup.title.string:
+                            title = soup.title.string.strip()
+
+                        # Extract main content text
+                        text = soup.get_text(separator=" ", strip=True)
+                        text = " ".join(text.split())  # Normalize whitespace
+
+                        # Truncate if needed
+                        full_length = len(text)
+                        text = text[:max_chars_per_page]
+
+                        return {
+                            "url": url,
+                            "title": title,
+                            "content": text,
+                            "full_content": text,  # Alias for compatibility
+                            "char_count": full_length,
+                            "truncated": full_length > max_chars_per_page,
+                            "success": True,
+                            "extracted_at": datetime.now().isoformat(),
+                            "elapsed_ms": round((time.perf_counter() - start_time) * 1000, 2),
+                        }
+
+            except asyncio.TimeoutError:
+                return {
+                    "url": url,
+                    "success": False,
+                    "error": "Timeout",
+                    "elapsed_ms": round((time.perf_counter() - start_time) * 1000, 2),
+                }
+            except Exception as e:
+                return {
+                    "url": url,
+                    "success": False,
+                    "error": str(e)[:200],
+                    "elapsed_ms": round((time.perf_counter() - start_time) * 1000, 2),
+                }
+
+        # Limit URLs and run in parallel
+        urls_to_fetch = urls[:MAX_URLS_TO_EXTRACT]
+        tasks = [fetch_url(url) for url in urls_to_fetch]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Filter and log results
+        extracted = []
+        for result in results:
+            if isinstance(result, dict):
+                extracted.append(result)
+            elif isinstance(result, Exception):
+                extracted.append(
+                    {
+                        "url": "unknown",
+                        "success": False,
+                        "error": str(result)[:200],
+                    }
+                )
+
+        success_count = sum(1 for r in extracted if r.get("success"))
+        total_chars = sum(r.get("char_count", 0) for r in extracted if r.get("success"))
+
+        logger.info(
+            f"Content extraction completed: {success_count}/{len(urls_to_fetch)} URLs, {total_chars} chars",
+            component="tavily",
+        )
+
+        return extracted
+
+    async def search_with_extraction(
+        self,
+        query: str,
+        max_results: int = 10,
+        extract_top_n: int = 5,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Perform search and automatically extract content from top results.
+
+        Combines search() and extract_content() for convenience.
+
+        Args:
+            query: Search query
+            max_results: Maximum search results
+            extract_top_n: Number of top results to extract full content from
+            **kwargs: Additional arguments for search()
+
+        Returns:
+            Search result with additional 'extracted_content' field
+        """
+        # 1. Perform search
+        search_result = await self.search(
+            query=query,
+            max_results=max_results,
+            include_raw_content=True,
+            **kwargs,
+        )
+
+        if not search_result.get("success"):
+            return search_result
+
+        # 2. Extract content from top URLs (if raw_content not available)
+        results = search_result.get("results", [])
+        urls_to_extract = []
+
+        for r in results[:extract_top_n]:
+            url = r.get("url")
+            raw_content = r.get("raw_content", "")
+            # Only extract if raw_content is missing or too short
+            if url and (not raw_content or len(raw_content) < 500):
+                urls_to_extract.append(url)
+
+        if urls_to_extract:
+            extracted = await self.extract_content(urls_to_extract)
+            search_result["extracted_content"] = extracted
+            search_result["total_extracted_chars"] = sum(e.get("char_count", 0) for e in extracted if e.get("success"))
+        else:
+            search_result["extracted_content"] = []
+            search_result["total_extracted_chars"] = sum(r.get("char_count", 0) for r in results[:extract_top_n])
+
+        return search_result
 
     def clear_cache(self):
         """

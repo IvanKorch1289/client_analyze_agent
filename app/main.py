@@ -247,16 +247,12 @@ class RequestTraceMiddleware(BaseHTTPMiddleware):
         self._max_body = int(os.getenv("HTTP_TRACE_MAX_BODY_BYTES", "4096"))
 
     async def dispatch(self, request: Request, call_next):
-        enabled = bool(getattr(settings.app, "debug", False)) or _bool_env(
-            "HTTP_TRACE_ENABLED", False
-        )
+        enabled = bool(getattr(settings.app, "debug", False)) or _bool_env("HTTP_TRACE_ENABLED", False)
         if not enabled:
             return await call_next(request)
 
         log_body = _bool_env("HTTP_TRACE_BODY", False)
-        request_id = (
-            request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
-        )
+        request_id = request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
         set_request_id(request_id)
 
         body_preview = None
@@ -264,9 +260,7 @@ class RequestTraceMiddleware(BaseHTTPMiddleware):
             try:
                 body = await request.body()
                 if body:
-                    body_preview = body[: self._max_body].decode(
-                        "utf-8", errors="replace"
-                    )
+                    body_preview = body[: self._max_body].decode("utf-8", errors="replace")
             except Exception:
                 body_preview = None
 
@@ -338,9 +332,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
-        response.headers.setdefault(
-            "Permissions-Policy", "geolocation=(), microphone=(), camera=()"
-        )
+        response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 
         if bool(secure.hsts_enabled):
             # HSTS имеет смысл только под HTTPS, но выставление под HTTP не критично.
@@ -387,9 +379,7 @@ class IpFilterMiddleware(BaseHTTPMiddleware):
         deny_rules = _parse_ip_list_cached(tuple(bl))
 
         ip = get_client_ip(request)
-        rid = (
-            request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
-        )
+        rid = request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
         set_request_id(rid)
 
         if _ip_in_rules(ip, deny_rules):
@@ -489,11 +479,7 @@ class DynamicTrustedHostMiddleware(BaseHTTPMiddleware):
             )
 
         if not _host_allowed(host, allowed):
-            rid = (
-                request.headers.get("X-Request-ID")
-                or get_request_id()
-                or set_request_id()
-            )
+            rid = request.headers.get("X-Request-ID") or get_request_id() or set_request_id()
             set_request_id(rid)
             return JSONResponse(
                 status_code=400,
@@ -578,9 +564,7 @@ app.state.limiter = limiter
 # Centralized error shape (includes RateLimitExceeded).
 install_error_handlers(app)
 
-_otel_excluded_urls = (
-    "/utility/health,/utility/metrics,/api/v1/utility/health,/api/v1/utility/metrics"
-)
+_otel_excluded_urls = "/utility/health,/utility/metrics,/api/v1/utility/health,/api/v1/utility/metrics"
 FastAPIInstrumentor.instrument_app(app, excluded_urls=_otel_excluded_urls)
 
 # =======================
@@ -669,9 +653,7 @@ async def root_openapi_redirect() -> RedirectResponse:
 # -----------------------
 # v1: primary, versioned API (recommended for integrations).
 v1_app.state.app_circuit_breaker = app_circuit_breaker
-FastAPIInstrumentor.instrument_app(
-    v1_app, excluded_urls="/utility/health,/utility/metrics"
-)
+FastAPIInstrumentor.instrument_app(v1_app, excluded_urls="/utility/health,/utility/metrics")
 app.mount("/api/v1", v1_app)
 
 # Legacy (unversioned) endpoints: kept for backward compatibility,

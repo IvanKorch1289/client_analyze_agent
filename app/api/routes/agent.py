@@ -64,9 +64,7 @@ async def get_thread_history(request: Request, thread_id: str):
 
 @agent_router.post("/analyze-client")
 @limiter.limit(f"{RATE_LIMIT_ANALYZE_CLIENT_PER_MINUTE}/minute")
-async def analyze_client(
-    request: Request, data: ClientAnalysisRequest, stream: bool = False
-):
+async def analyze_client(request: Request, data: ClientAnalysisRequest, stream: bool = False):
     """
     Анализирует клиента через Perplexity AI.
     Выполняет параллельный поиск и создаёт отчёт с оценкой рисков.
@@ -150,9 +148,7 @@ async def prompt_agent(request: Request, data: PromptRequest) -> Dict[str, Any]:
     client_name = prompt
     if inn:
         client_name = re.sub(rf"\b{re.escape(inn)}\b", "", client_name).strip()
-    client_name = re.sub(
-        r"^\s*(проанализируй|анализ|проверь|проверка)\s+", "", client_name, flags=re.I
-    ).strip()
+    client_name = re.sub(r"^\s*(проанализируй|анализ|проверь|проверка)\s+", "", client_name, flags=re.I).strip()
     if not client_name:
         client_name = prompt
 
@@ -173,9 +169,7 @@ async def prompt_agent(request: Request, data: PromptRequest) -> Dict[str, Any]:
     }
 
 
-async def _stream_client_analysis(
-    client_name: str, inn: str, additional_notes: str
-) -> AsyncGenerator[str, None]:
+async def _stream_client_analysis(client_name: str, inn: str, additional_notes: str) -> AsyncGenerator[str, None]:
     """Генератор SSE событий для streaming анализа."""
     # P2: UUID для уникальности session_id (предотвращение коллизий при параллельных запусках)
     session_id = f"analysis_{uuid.uuid4().hex[:12]}_{int(time.time())}"
@@ -215,9 +209,7 @@ async def _stream_client_analysis(
 
     except asyncio.CancelledError:
         logger.info(f"Analysis cancelled via API: {session_id}", component="agent_api")
-        yield format_sse(
-            "cancelled", {"session_id": session_id, "message": "Анализ отменён"}
-        )
+        yield format_sse("cancelled", {"session_id": session_id, "message": "Анализ отменён"})
         if generator:
             await generator.aclose()
     except Exception as e:
@@ -270,15 +262,11 @@ async def list_threads(request: Request) -> Dict[str, Any]:
         ]
         return {
             "total": len(threads),
-            "threads": sorted(
-                threads, key=lambda x: x.get("created_at", ""), reverse=True
-            ),
+            "threads": sorted(threads, key=lambda x: x.get("created_at", ""), reverse=True),
         }
     except Exception as e:
         logger.error(f"Ошибка получения тредов: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail="Ошибка получения списка тредов"
-        ) from e
+        raise HTTPException(status_code=500, detail="Ошибка получения списка тредов") from e
 
 
 # P2: Cancellation support для долгих анализов
@@ -315,9 +303,7 @@ async def cancel_analysis(request: Request, session_id: str) -> Dict[str, Any]:
     except asyncio.CancelledError:
         pass
     except asyncio.TimeoutError:
-        logger.warning(
-            f"Task {session_id} cancellation timed out", component="agent_api"
-        )
+        logger.warning(f"Task {session_id} cancellation timed out", component="agent_api")
     except Exception as e:
         logger.error(f"Error during task cancellation: {e}", component="agent_api")
     finally:
@@ -400,11 +386,7 @@ async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, 
 
     client_name = original_report.get("client_name", "")
     inn = original_report.get("inn", "")
-    original_notes = (
-        (original_report.get("report_data") or {})
-        .get("metadata", {})
-        .get("additional_notes", "")
-    )
+    original_notes = (original_report.get("report_data") or {}).get("metadata", {}).get("additional_notes", "")
 
     feedback_instructions = _build_feedback_instructions(data, original_report)
 
@@ -457,11 +439,7 @@ async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, 
             "feedback": feedback_record,
         }
 
-    combined_notes = (
-        f"{original_notes}\n\n{feedback_instructions}"
-        if original_notes
-        else feedback_instructions
-    )
+    combined_notes = f"{original_notes}\n\n{feedback_instructions}" if original_notes else feedback_instructions
 
     try:
         result = await execute_client_analysis(
@@ -490,14 +468,10 @@ async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, 
 
     except Exception as e:
         logger.error(f"Feedback reanalysis error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Ошибка при переанализе: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Ошибка при переанализе: {str(e)}") from e
 
 
-def _build_feedback_instructions(
-    data: FeedbackRequest, original_report: Dict[str, Any]
-) -> str:
+def _build_feedback_instructions(data: FeedbackRequest, original_report: Dict[str, Any]) -> str:
     """
     Сформировать инструкции для LLM на основе фидбека пользователя.
 
@@ -531,9 +505,7 @@ def _build_feedback_instructions(
         instructions.append("-" * 40)
         instructions.append(data.comment)
         instructions.append("")
-        instructions.append(
-            "ИНСТРУКЦИЯ: ВНИМАТЕЛЬНО изучи комментарий выше и учти ВСЕ замечания!"
-        )
+        instructions.append("ИНСТРУКЦИЯ: ВНИМАТЕЛЬНО изучи комментарий выше и учти ВСЕ замечания!")
         instructions.append("")
 
     if data.focus_areas:
@@ -541,9 +513,7 @@ def _build_feedback_instructions(
         instructions.append("-" * 40)
         instructions.append(f"ОБЛАСТИ ДЛЯ ОСОБОГО ВНИМАНИЯ: {areas_str}")
         instructions.append("-" * 40)
-        instructions.append(
-            "ИНСТРУКЦИЯ: Эти области должны быть ДЕТАЛЬНО проанализированы и отражены в отчёте."
-        )
+        instructions.append("ИНСТРУКЦИЯ: Эти области должны быть ДЕТАЛЬНО проанализированы и отражены в отчёте.")
         instructions.append("")
 
     # Добавляем контекст предыдущего отчёта
@@ -560,9 +530,7 @@ def _build_feedback_instructions(
     if previous_summary:
         instructions.append(f"Резюме: {previous_summary[:500]}...")
     if previous_findings:
-        instructions.append(
-            f"Ключевые находки: {', '.join(str(f)[:100] for f in previous_findings[:3])}"
-        )
+        instructions.append(f"Ключевые находки: {', '.join(str(f)[:100] for f in previous_findings[:3])}")
     instructions.append("")
 
     if data.rating in ("partially_accurate", "inaccurate"):

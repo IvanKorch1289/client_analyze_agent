@@ -26,7 +26,6 @@ try:
 except ImportError:
     PROMETHEUS_AVAILABLE = False
 
-from app.utility.logging_client import logger
 
 # Default registry
 REGISTRY = CollectorRegistry() if PROMETHEUS_AVAILABLE else None
@@ -215,10 +214,12 @@ class MetricsCollector:
     def set_app_info(self, version: str, environment: str) -> None:
         """Set application info."""
         if APP_INFO:
-            APP_INFO.info({
-                "version": version,
-                "environment": environment,
-            })
+            APP_INFO.info(
+                {
+                    "version": version,
+                    "environment": environment,
+                }
+            )
 
     # ===== Analysis =====
 

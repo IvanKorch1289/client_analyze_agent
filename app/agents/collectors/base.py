@@ -80,16 +80,8 @@ class BaseCollector(ABC):
             "source": self.source_name,
             "requests": self._request_count,
             "successes": self._success_count,
-            "success_rate": (
-                self._success_count / self._request_count * 100
-                if self._request_count > 0
-                else 0
-            ),
-            "avg_time_ms": (
-                self._total_time_ms / self._request_count
-                if self._request_count > 0
-                else 0
-            ),
+            "success_rate": (self._success_count / self._request_count * 100 if self._request_count > 0 else 0),
+            "avg_time_ms": (self._total_time_ms / self._request_count if self._request_count > 0 else 0),
         }
 
     @abstractmethod
@@ -217,7 +209,4 @@ class CompositeCollector:
 
     def get_stats(self) -> Dict[str, Any]:
         """Get combined statistics from all collectors."""
-        return {
-            collector.source_name: collector.stats
-            for collector in self._collectors
-        }
+        return {collector.source_name: collector.stats for collector in self._collectors}

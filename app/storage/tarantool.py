@@ -16,10 +16,20 @@ from typing import Any, Dict, List, Optional, Tuple
 import msgpack
 
 from app.config import settings
-from app.storage.compression import CompressionHandler, CompressionConfig, COMPRESSION_MARKER
+from app.storage.compression import (
+    CompressionHandler,
+    CompressionConfig,
+)
 from app.storage.metrics import CacheMetrics
-from app.storage.connection import ConnectionManager, get_executor, TARANTOOL_AVAILABLE
+from app.storage.connection import (
+    get_executor,
+    get_tarantool_module,
+    TARANTOOL_AVAILABLE,
+)
 from app.utility.logging_client import logger
+
+# Get tarantool module from connection (handles import gracefully)
+tarantool = get_tarantool_module()
 
 # Lazy import repositories to avoid circular imports
 _cache_repo = None
