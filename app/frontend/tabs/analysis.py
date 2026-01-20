@@ -10,6 +10,7 @@ import streamlit as st
 
 from app.frontend.api_client import ApiClient
 from app.frontend.lib.formatters import format_ts, get_risk_emoji
+from app.frontend.lib.risk_charts import render_risk_summary
 from app.frontend.lib.ui import (
     render_metric_cards,
     safe_api_call,
@@ -540,7 +541,13 @@ def _render_report_details(api: ApiClient, opened: Dict[str, Any], selected_repo
 
     risk_assessment = report_data.get("risk_assessment") or {}
     if risk_assessment:
-        st.markdown("### ⚠️ Оценка рисков")
+        # Визуализация риск-скора (Plotly charts)
+        render_risk_summary(risk_assessment, show_factors_chart=True)
+
+        st.divider()
+
+        # Текстовые метрики
+        st.markdown("### ⚠️ Детали оценки рисков")
         col_ra1, col_ra2, col_ra3 = st.columns(3)
         with col_ra1:
             st.metric("Скор", risk_assessment.get("score", 0))
@@ -552,9 +559,16 @@ def _render_report_details(api: ApiClient, opened: Dict[str, Any], selected_repo
 
         factors = risk_assessment.get("factors") or []
         if factors:
-            with st.expander("📋 Факторы риска", expanded=False):
+            with st.expander("📋 Список факторов риска", expanded=False):
                 for f in factors:
-                    st.write(f"- {f}")
+                    if isinstance(f, dict):
+                        severity = f.get("severity", "")
+                        description = f.get("description", str(f))
+                        category = f.get("category", "")
+                        emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}.get(severity, "⚪")
+                        st.write(f"{emoji} **[{category}]** {description}")
+                    else:
+                        st.write(f"- {f}")
 
     with st.expander("📄 Генерация PDF отчёта", expanded=False):
         if st.button("🖨️ Сгенерировать PDF отчёт", key="generate_pdf_from_details"):

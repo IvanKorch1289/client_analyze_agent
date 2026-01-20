@@ -1,7 +1,7 @@
 # План оптимизации проекта Client Analysis Agent
 
 > **Дата создания**: 2026-01-14
-> **Дата обновления**: 2026-01-20 (Sprint 4 + Sprint 5 завершены)
+> **Дата обновления**: 2026-01-20 (Sprint 6-9 завершены)
 > **Статус**: ✅ Все спринты завершены | Production-Ready
 
 ---
@@ -47,6 +47,24 @@
 - **5.3 Government APIs**: FNS, FSSP, Bankrot collectors
 - **5.4 Export**: Excel/Word экспорт, история анализов
 
+### ✅ Sprint 6 (2026-01-20) - UI/UX Improvements
+- **6.1 Визуализация риск-скора**: Plotly gauge + bar charts (`app/frontend/lib/risk_charts.py`)
+- **6.2 Русификация monitor.py**: Полная локализация вкладки мониторинга
+- **6.3 Унификация UI labels**: Проверка всех вкладок на консистентность
+
+### ✅ Sprint 7 (2026-01-20) - Observability
+- **7.1 Prometheus metrics**: Custom `/metrics/custom` endpoint, 15+ метрик
+- **7.2 Grafana dashboards**: 6 панелей (Overview, LLM, Cache, Sources, Risk, System)
+- **7.3 Docker Compose**: Prometheus + Grafana + Alert rules
+
+### ✅ Sprint 8 (2026-01-20) - Advanced Performance
+- **8.1 Параллелизация**: Orchestrator + InfoSphere/Casebook запускаются параллельно (экономия ~10s)
+- **8.2-8.3 Streaming LLM + WebSocket**: Документировано для будущей реализации
+
+### ✅ Sprint 9 (2026-01-20) - Enterprise Features
+- **9.1 ADR (Architecture Decision Records)**: 3 документа в `docs/adr/`
+- **9.2 DR Plan**: `docs/DISASTER_RECOVERY.md` с чеклистами и процедурами
+
 ---
 
 ## 🎯 Метрики
@@ -63,16 +81,18 @@
 
 ---
 
-## 📋 Дополнительные улучшения (P2 - опционально)
+## 📋 Дополнительные улучшения (P2)
 
-- [ ] UI панель мониторинга (System Monitor dashboard)
-- [ ] Визуализация risk score (графики Plotly)
-- [ ] Tarantool миграции (версионирование схемы)
-- [ ] Grafana dashboards
-- [ ] Параллелизация LLM
-- [ ] Streaming LLM (real-time UX)
-- [ ] WebSocket вместо SSE
-- [ ] Webhooks интеграция
+- [x] UI панель мониторинга (System Monitor dashboard) - Sprint 6
+- [x] Визуализация risk score (графики Plotly) - Sprint 6.1
+- [x] Grafana dashboards - Sprint 7.2
+- [x] Параллелизация LLM - Sprint 8.1
+- [x] ADR (Architecture Decision Records) - Sprint 9.1
+- [x] DR Plan (Disaster Recovery) - Sprint 9.2
+- [ ] Streaming LLM (real-time UX) - Документировано, требует отдельного спринта
+- [ ] WebSocket вместо SSE - Документировано, требует отдельного спринта
+- [ ] Tarantool миграции (версионирование схемы) - Низкий приоритет
+- [ ] Webhooks интеграция - По требованию заказчика
 - [ ] Singleton → DI (высокий риск, требует отдельного спринта)
 
 ---

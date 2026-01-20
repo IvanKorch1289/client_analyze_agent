@@ -291,10 +291,15 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Агент сбора данных: параллельные запросы ко всем источникам.
 
+    Sprint 8.1 ОПТИМИЗАЦИЯ:
+    - Поддержка _early_inn_tasks из workflow (InfoSphere/Casebook запущены раньше)
+    - Если early tasks уже запущены, используем их вместо создания новых
+
     Входные данные:
         - client_name: str - название компании
         - inn: str - ИНН компании (опционально)
         - search_intents: List[Dict] - поисковые запросы от оркестратора
+        - _early_inn_tasks: Dict[str, Task] - опционально, задачи запущенные в workflow
 
     Выходные данные:
         - source_data: Dict - данные от всех источников
@@ -303,6 +308,9 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     client_name = state.get("client_name", "")
     inn = state.get("inn", "")
     search_intents = state.get("search_intents", [])
+
+    # Sprint 8.1: Проверяем наличие early_inn_tasks из workflow
+    early_inn_tasks = state.get("_early_inn_tasks", {})
 
     start_time = time.perf_counter()
 
@@ -313,16 +321,41 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         client_name=client_name[:50],
         inn=inn,
         intent_count=len(search_intents),
+        has_early_tasks=bool(early_inn_tasks),
     )
 
     # Фаза 1: параллельные источники по ИНН
+    # Sprint 8.1: Используем early tasks если они уже запущены
     inn_tasks: List[asyncio.Task] = []
+    inn_task_names: List[str] = []
+
     if inn and inn.isdigit() and len(inn) in (10, 12):
-        inn_tasks = [
-            asyncio.create_task(_fetch_dadata_wrapper(inn)),
-            asyncio.create_task(_fetch_infosphere_wrapper(inn)),
-            asyncio.create_task(_fetch_casebook_wrapper(inn)),
-        ]
+        # DaData всегда запускаем здесь (orchestrator уже вызвал его для canonical name)
+        inn_tasks.append(asyncio.create_task(_fetch_dadata_wrapper(inn)))
+        inn_task_names.append("dadata")
+
+        # InfoSphere и Casebook: используем early tasks если есть
+        if "infosphere" in early_inn_tasks:
+            logger.info(
+                "Data collector: using early-started InfoSphere task from workflow",
+                component="data_collector",
+            )
+            inn_tasks.append(early_inn_tasks["infosphere"])
+            inn_task_names.append("infosphere_early")
+        else:
+            inn_tasks.append(asyncio.create_task(_fetch_infosphere_wrapper(inn)))
+            inn_task_names.append("infosphere")
+
+        if "casebook" in early_inn_tasks:
+            logger.info(
+                "Data collector: using early-started Casebook task from workflow",
+                component="data_collector",
+            )
+            inn_tasks.append(early_inn_tasks["casebook"])
+            inn_task_names.append("casebook_early")
+        else:
+            inn_tasks.append(asyncio.create_task(_fetch_casebook_wrapper(inn)))
+            inn_task_names.append("casebook")
 
     inn_results: List[Any] = []
     if inn_tasks:

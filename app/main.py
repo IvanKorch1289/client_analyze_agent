@@ -577,16 +577,35 @@ instrumentator = Instrumentator(
     should_ignore_untemplated=False,  # Не игнорируем нетемплейтные пути
     should_respect_env_var=True,  # Учитываем ENABLE_METRICS env var
     should_instrument_requests_inprogress=True,  # Метрики in-progress requests
-    excluded_handlers=["/metrics"],  # Исключаем сам /metrics endpoint
+    excluded_handlers=["/metrics", "/metrics/custom"],  # Исключаем endpoints метрик
     env_var_name="ENABLE_METRICS",
     inprogress_name="http_requests_inprogress",
     inprogress_labels=True,
 )
 
-# Добавляем стандартные метрики
+# Добавляем стандартные HTTP метрики
 instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
-logger.info("Prometheus metrics enabled at /metrics")
+# Добавляем endpoint для кастомных application-level метрик
+from app.shared.prometheus_metrics import metrics as custom_metrics
+from starlette.responses import Response
+
+
+@app.get("/metrics/custom", include_in_schema=False)
+async def custom_metrics_endpoint():
+    """
+    Кастомные метрики приложения (LLM, cache, risk scores, etc.).
+
+    Используйте /metrics для HTTP метрик и /metrics/custom для application метрик.
+    Или объедините оба в вашем Prometheus scrape config.
+    """
+    return Response(
+        content=custom_metrics.get_metrics(),
+        media_type=custom_metrics.get_content_type(),
+    )
+
+
+logger.info("Prometheus metrics enabled at /metrics and /metrics/custom")
 
 # Сжатие больших ответов (отчёты/метрики/история). Минимальный размер — чтобы
 # не тратить CPU на мелкие ответы.
