@@ -10,6 +10,7 @@ Refactored to use modular components:
 import asyncio
 import hashlib
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -38,8 +39,35 @@ _threads_repo = None
 
 _executor = get_executor()
 
-_memory_cache: Dict[str, tuple] = {}
-_memory_persistent: Dict[str, Any] = {}
+# Memory cache size limits to prevent OOM (memory leak fix)
+MAX_MEMORY_CACHE_SIZE = 1000  # Maximum entries in main cache
+MAX_MEMORY_PERSISTENT_SIZE = 500  # Maximum entries in persistent cache
+
+# Use OrderedDict for LRU eviction
+_memory_cache: OrderedDict[str, tuple] = OrderedDict()
+_memory_persistent: OrderedDict[str, Any] = OrderedDict()
+
+
+def _evict_oldest_cache_entry() -> None:
+    """Evict oldest entry from memory cache if full."""
+    if len(_memory_cache) >= MAX_MEMORY_CACHE_SIZE:
+        oldest_key = next(iter(_memory_cache))
+        del _memory_cache[oldest_key]
+        logger.warning(
+            f"Memory cache full ({MAX_MEMORY_CACHE_SIZE}), evicted: {oldest_key[:50]}...",
+            component="tarantool",
+        )
+
+
+def _evict_oldest_persistent_entry() -> None:
+    """Evict oldest entry from persistent cache if full."""
+    if len(_memory_persistent) >= MAX_MEMORY_PERSISTENT_SIZE:
+        oldest_key = next(iter(_memory_persistent))
+        del _memory_persistent[oldest_key]
+        logger.warning(
+            f"Persistent cache full ({MAX_MEMORY_PERSISTENT_SIZE}), evicted: {oldest_key[:50]}...",
+            component="tarantool",
+        )
 
 
 @dataclass
@@ -316,6 +344,7 @@ class TarantoolClient:
             packed = msgpack.packb(value, use_bin_type=True, strict_types=False)
             if compress:
                 packed = self._compress(packed)
+            _evict_oldest_cache_entry()  # Prevent memory leak
             _memory_cache[key] = (packed, expires_at, created_at, source)
             self._metrics.sets += 1
             self._metrics.total_set_time_ms += (time.time() - start_time) * 1000
@@ -434,6 +463,7 @@ class TarantoolClient:
                 packed = msgpack.packb(value, use_bin_type=True, strict_types=False)
                 if compress:
                     packed = self._compress(packed)
+                _evict_oldest_cache_entry()  # Prevent memory leak
                 _memory_cache[key] = (packed, expires_at, created_at, "api")
             self._metrics.sets += len(items)
             elapsed = (time.time() - start_time) * 1000
@@ -658,6 +688,7 @@ class TarantoolClient:
 
         if self._use_memory:
             packed = msgpack.packb(value, use_bin_type=True, strict_types=False)
+            _evict_oldest_persistent_entry()  # Prevent memory leak
             _memory_persistent[key] = packed
             return
 

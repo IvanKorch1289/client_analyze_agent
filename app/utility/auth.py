@@ -1,97 +1,27 @@
 """
-Role-based access control for utility endpoints.
+Backward-compatible re-export of authentication utilities.
 
-Provides simple token-based authentication for admin-level operations
-like cache clearing and system configuration changes.
+DEPRECATED: Use app.shared.toolkit.auth directly for new code.
+This module exists only for backward compatibility.
+
+SECURITY NOTE: This module now uses the secure version from toolkit
+which does NOT have the dev bypass vulnerability.
 """
 
-import os
-import secrets
-from typing import Optional
+from app.shared.toolkit.auth import (
+    Role,
+    generate_token,
+    get_admin_token,
+    get_current_role,
+    is_admin,
+    require_admin,
+)
 
-from fastapi import Depends, Header, HTTPException, status
-
-
-def get_admin_token() -> str:
-    """Get admin token from environment (reads at request time)."""
-    return os.getenv("ADMIN_TOKEN", "")
-
-
-class Role:
-    """User roles for access control."""
-
-    ADMIN = "admin"
-    GUEST = "guest"
-
-
-def generate_token() -> str:
-    """
-    Generate a secure random token.
-
-    Returns:
-        str: A 32-character hexadecimal token.
-    """
-    return secrets.token_hex(16)
-
-
-def get_current_role(
-    x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token"),
-) -> str:
-    """
-    Determine user role based on authentication token.
-
-    Args:
-        x_auth_token: Authentication token from X-Auth-Token header.
-
-    Returns:
-        str: User role (admin or guest).
-    """
-    if not x_auth_token:
-        return Role.GUEST
-
-    admin_token = get_admin_token()
-    token = x_auth_token.strip()
-
-    if admin_token:
-        if token == admin_token.strip():
-            return Role.ADMIN
-    else:
-        is_dev = os.getenv("APP_ENV", "development").lower() in ("dev", "development")
-        if is_dev and token:
-            return Role.ADMIN
-
-    return Role.GUEST
-
-
-def require_admin(role: str = Depends(get_current_role)) -> str:
-    """
-    Dependency that requires admin role.
-
-    Args:
-        role: Current user role from get_current_role.
-
-    Returns:
-        str: The role if admin.
-
-    Raises:
-        HTTPException: 403 if not admin.
-    """
-    if role != Role.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Требуются права администратора. Укажите X-Auth-Token в заголовке.",
-        )
-    return role
-
-
-def is_admin(role: str) -> bool:
-    """
-    Check if role is admin.
-
-    Args:
-        role: User role string.
-
-    Returns:
-        bool: True if admin.
-    """
-    return role == Role.ADMIN
+__all__ = [
+    "Role",
+    "get_admin_token",
+    "generate_token",
+    "get_current_role",
+    "require_admin",
+    "is_admin",
+]
