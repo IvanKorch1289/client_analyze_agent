@@ -6,7 +6,7 @@ Provides async-safe connection handling with fallback to in-memory storage.
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Optional
+from typing import Any
 
 from app.config import settings
 from app.utility.logging_client import logger
@@ -238,3 +238,8 @@ class ConnectionManager:
 def get_executor() -> ThreadPoolExecutor:
     """Get the shared thread pool executor."""
     return _executor
+
+
+def get_tarantool_module():
+    """Get the tarantool module (None if not available)."""
+    return tarantool

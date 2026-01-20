@@ -4,7 +4,6 @@ Web search collectors (Perplexity, Tavily).
 These collectors perform AI-powered web searches for company information.
 """
 
-import asyncio
 from typing import Any, Dict, List, Optional
 
 from app.agents.collectors.base import BaseCollector, CollectorResult
@@ -76,8 +75,7 @@ class PerplexityCollector(BaseCollector):
 Период поиска: ПОСЛЕДНИЙ ГОД (актуальная информация)."""
 
         system_prompt = (
-            "Глубокий анализ за последний год. Ищи 20+ источников. "
-            "Только проверяемые факты. Пиши по-русски."
+            "Глубокий анализ за последний год. Ищи 20+ источников. Только проверяемые факты. Пиши по-русски."
         )
 
         result = await self._client.ask(
@@ -249,12 +247,34 @@ def analyze_sentiment(text: str) -> Dict[str, Any]:
     text_lower = text.lower()
 
     negative_words = [
-        "банкрот", "долг", "суд", "иск", "штраф", "нарушен", "проблем",
-        "риск", "опасн", "негатив", "плох", "ухудш", "кризис", "ликвидир",
+        "банкрот",
+        "долг",
+        "суд",
+        "иск",
+        "штраф",
+        "нарушен",
+        "проблем",
+        "риск",
+        "опасн",
+        "негатив",
+        "плох",
+        "ухудш",
+        "кризис",
+        "ликвидир",
     ]
     positive_words = [
-        "рост", "прибыл", "успех", "надежн", "стабильн", "лидер",
-        "качеств", "довольн", "рекоменд", "хорош", "отличн", "позитив",
+        "рост",
+        "прибыл",
+        "успех",
+        "надежн",
+        "стабильн",
+        "лидер",
+        "качеств",
+        "довольн",
+        "рекоменд",
+        "хорош",
+        "отличн",
+        "позитив",
     ]
 
     neg_count = sum(1 for word in negative_words if word in text_lower)

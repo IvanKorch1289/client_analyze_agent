@@ -197,11 +197,7 @@ def convert_registry_to_search_result(
         content += f"Адрес: {data.get('address', {}).get('value', 'Н/Д')}"
 
         status = data.get("state", {}).get("status", "")
-        sentiment = (
-            {"label": "negative", "score": -0.5}
-            if status == "LIQUIDATED"
-            else {"label": "neutral", "score": 0}
-        )
+        sentiment = {"label": "negative", "score": -0.5} if status == "LIQUIDATED" else {"label": "neutral", "score": 0}
 
         return {
             "intent_id": "dadata_info",

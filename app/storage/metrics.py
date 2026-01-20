@@ -4,7 +4,7 @@ Cache metrics for Tarantool storage.
 Provides tracking for hits, misses, latency, and compression stats.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict
 
 

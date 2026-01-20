@@ -123,9 +123,7 @@ def _render_system_metrics(api: ApiClient, admin_token: str) -> None:
 
     with col2:
         num_threads = cpu.get("num_threads", 0)
-        st.metric(
-            label="🧵 Threads", value=num_threads, help="Количество активных потоков"
-        )
+        st.metric(label="🧵 Threads", value=num_threads, help="Количество активных потоков")
 
     with col3:
         open_connections = connections_data.get("connections", 0)
@@ -165,9 +163,7 @@ def _render_llm_statistics(api: ApiClient, admin_token: str) -> None:
     # Выбор периода
     hours = st.slider("📅 Период (часы)", min_value=1, max_value=168, value=24, step=1)
 
-    stats = api.get(
-        "/admin/llm/stats", params={"hours": hours}, admin_token=admin_token
-    )
+    stats = api.get("/admin/llm/stats", params={"hours": hours}, admin_token=admin_token)
 
     if not stats:
         st.error("❌ Не удалось получить статистику LLM")
@@ -262,13 +258,9 @@ def _render_llm_statistics(api: ApiClient, admin_token: str) -> None:
     st.divider()
     st.markdown("### 📝 Последние вызовы")
 
-    limit = st.slider(
-        "Количество записей", min_value=5, max_value=100, value=20, step=5
-    )
+    limit = st.slider("Количество записей", min_value=5, max_value=100, value=20, step=5)
 
-    recent = api.get(
-        "/admin/llm/recent", params={"limit": limit}, admin_token=admin_token
-    )
+    recent = api.get("/admin/llm/recent", params={"limit": limit}, admin_token=admin_token)
 
     if recent and recent.get("calls"):
         for call in recent["calls"][:10]:  # Show max 10 in main view
@@ -281,9 +273,7 @@ def _render_llm_statistics(api: ApiClient, admin_token: str) -> None:
             status_emoji = "✅" if success else "❌"
             cache_emoji = "💾" if cache_hit else "🔍"
 
-            st.caption(
-                f"{status_emoji} {cache_emoji} [{timestamp}] {provider.upper()} - {duration:.0f}ms"
-            )
+            st.caption(f"{status_emoji} {cache_emoji} [{timestamp}] {provider.upper()} - {duration:.0f}ms")
 
         with st.expander("📋 All Recent Calls"):
             st.json(recent)
@@ -292,10 +282,7 @@ def _render_llm_statistics(api: ApiClient, admin_token: str) -> None:
 
     # Warnings
     if cache_hit_rate < 20 and total_calls > 10:
-        st.warning(
-            f"⚠️ Низкий cache hit rate ({cache_hit_rate:.1f}%). "
-            "Рассмотрите возможность увеличения TTL кэша."
-        )
+        st.warning(f"⚠️ Низкий cache hit rate ({cache_hit_rate:.1f}%). Рассмотрите возможность увеличения TTL кэша.")
 
     if failed_calls / total_calls > 0.1 if total_calls > 0 else False:
         st.error(
@@ -338,9 +325,7 @@ def _render_cache_statistics(api: ApiClient, admin_token: str) -> None:
         )
 
     with col3:
-        st.metric(
-            label="❌ Cache Misses", value=total_misses, help="Количество промахов"
-        )
+        st.metric(label="❌ Cache Misses", value=total_misses, help="Количество промахов")
 
     with col4:
         st.metric(
@@ -391,17 +376,11 @@ def _render_cache_statistics(api: ApiClient, admin_token: str) -> None:
         index=0,
     )
 
-    confirm_clear = st.checkbox(
-        f"✅ Подтвердить очистку кэша ({source_to_clear})", value=False
-    )
+    confirm_clear = st.checkbox(f"✅ Подтвердить очистку кэша ({source_to_clear})", value=False)
 
     if st.button("🗑️ Очистить кэш", disabled=not confirm_clear, type="secondary"):
-        clear_payload = {
-            "source": source_to_clear if source_to_clear != "all" else None
-        }
-        result = api.post(
-            "/admin/cache/clear", json=clear_payload, admin_token=admin_token
-        )
+        clear_payload = {"source": source_to_clear if source_to_clear != "all" else None}
+        result = api.post("/admin/cache/clear", json=clear_payload, admin_token=admin_token)
 
         if result:
             st.success(f"✅ Кэш {source_to_clear} успешно очищен!")
@@ -411,15 +390,11 @@ def _render_cache_statistics(api: ApiClient, admin_token: str) -> None:
 
     # Warnings
     if hit_rate < 30 and total_requests > 100:
-        st.warning(
-            f"⚠️ Низкий cache hit rate ({hit_rate:.1f}%). "
-            "Возможно, стоит увеличить TTL или объем кэша."
-        )
+        st.warning(f"⚠️ Низкий cache hit rate ({hit_rate:.1f}%). Возможно, стоит увеличить TTL или объем кэша.")
 
     if total_entries > 10000:
         st.warning(
-            f"⚠️ Большое количество записей в кэше ({total_entries}). "
-            "Рассмотрите возможность очистки старых записей."
+            f"⚠️ Большое количество записей в кэше ({total_entries}). Рассмотрите возможность очистки старых записей."
         )
 
 

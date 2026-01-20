@@ -188,10 +188,7 @@ class MemoryMonitor:
             return None
 
         # Проверка пороговых значений
-        is_critical = (
-            stats.rss_mb > self.limits.critical_mb
-            or stats.percent > self.limits.max_percent
-        )
+        is_critical = stats.rss_mb > self.limits.critical_mb or stats.percent > self.limits.max_percent
         is_warning = stats.rss_mb > self.limits.warning_mb
 
         if is_critical:
@@ -210,8 +207,7 @@ class MemoryMonitor:
             if after_gc:
                 freed_mb = stats.rss_mb - after_gc.rss_mb
                 logger.info(
-                    f"Memory after GC: {after_gc.rss_mb:.1f} MB "
-                    f"(freed: {freed_mb:.1f} MB)",
+                    f"Memory after GC: {after_gc.rss_mb:.1f} MB (freed: {freed_mb:.1f} MB)",
                     component="memory_monitor",
                 )
 
@@ -257,10 +253,7 @@ class MemoryMonitor:
                 "message": "Failed to get memory stats",
             }
 
-        is_critical = (
-            stats.rss_mb > self.limits.critical_mb
-            or stats.percent > self.limits.max_percent
-        )
+        is_critical = stats.rss_mb > self.limits.critical_mb or stats.percent > self.limits.max_percent
         is_warning = stats.rss_mb > self.limits.warning_mb
 
         if is_critical:

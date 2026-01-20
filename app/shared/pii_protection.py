@@ -315,9 +315,7 @@ def mask_pii(
 
     # Analyze text
     # Use "ru" for Russian recognizers, they support multiple languages
-    results = analyzer.analyze(
-        text=text, language=language, entities=entities_to_detect
-    )
+    results = analyzer.analyze(text=text, language=language, entities=entities_to_detect)
 
     if not results:
         return PIIMaskingResult(

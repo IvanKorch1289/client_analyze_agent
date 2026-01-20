@@ -95,24 +95,28 @@ def analyze_source_data(source_data: Dict[str, Any]) -> Dict[str, Any]:
     return analysis
 
 
-async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
+async def report_analyzer_agent(
+    state: Dict[str, Any],
+    verbose_reasoning: bool = True,  # Enable Chain-of-Thought by default
+) -> Dict[str, Any]:
     """
-    P0 REFACTORED: Агент-анализатор через LLM с системным промптом.
+    Агент-анализатор с поддержкой Chain-of-Thought рассуждений.
 
-    ИЗМЕНЕНИЯ:
-    - Убран ручной calculate_risk_score()
-    - Добавлен LLM анализ с документацией API
-    - Структурированный JSON output от LLM
-    - Fallback на старую логику если LLM недоступен
+    ИЗМЕНЕНИЯ (Sprint 5):
+    - Добавлен режим verbose_reasoning с пошаговым анализом
+    - LLM показывает рассуждения перед оценкой
+    - Сохранение reasoning_trace для аудита
 
     Входные данные:
         - search_results: List[Dict] - результаты поиска (Perplexity/Tavily)
         - source_data: Dict - данные от источников (DaData/InfoSphere/Casebook)
         - client_name: str - название клиента
         - inn: str - ИНН
+        - verbose_reasoning: bool - включить Chain-of-Thought (default: True)
 
     Выходные данные:
         - report: Dict - структурированный отчёт
+        - reasoning_trace: Dict - трассировка рассуждений (если verbose_reasoning=True)
         - current_step: str
     """
     search_results = state.get("search_results", [])
@@ -121,12 +125,19 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     inn = state.get("inn", "")
     additional_notes = state.get("additional_notes", "")
 
-    logger.info(f"Report Analyzer: создание отчёта для '{client_name}'", component="analyzer")
+    # Check if verbose_reasoning is passed in state (for workflow control)
+    if "verbose_reasoning" in state:
+        verbose_reasoning = state["verbose_reasoning"]
 
-    # P0: НОВОЕ - Подготовка данных для LLM
+    logger.info(
+        f"Report Analyzer: создание отчёта для '{client_name}' (CoT={'enabled' if verbose_reasoning else 'disabled'})",
+        component="analyzer",
+    )
+
+    # Подготовка данных для LLM
     source_summary = _prepare_source_data_for_llm(source_data, search_results)
 
-    # P0: НОВОЕ - Генерация отчёта через LLM
+    # Генерация отчёта через LLM
     additional_context = ""
     if additional_notes and additional_notes.strip():
         additional_context = f"""
@@ -147,20 +158,33 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
 {additional_context}
 Создай JSON отчёт с оценкой рисков по формату из системного промпта."""
 
+    # Select prompt based on verbose_reasoning mode
+    prompt_role = AnalyzerRole.REPORT_ANALYZER_COT if verbose_reasoning else AnalyzerRole.REPORT_ANALYZER
+
     llm_report = await llm_generate_json(
-        system_prompt=get_system_prompt(AnalyzerRole.REPORT_ANALYZER),
+        system_prompt=get_system_prompt(prompt_role),
         user_message=user_message,
-        temperature=0.2,
-        max_tokens=4000,
-        fallback_on_error=None,  # Будем использовать старую логику при ошибке
+        temperature=0.1 if verbose_reasoning else 0.2,  # Lower temperature for CoT
+        max_tokens=6000 if verbose_reasoning else 4000,  # More tokens for reasoning
+        fallback_on_error=None,  # Используем fallback логику при ошибке
     )
 
-    # P0: Проверка результата LLM
+    # Проверка результата LLM
+    reasoning_trace = None
+
     if llm_report and "risk_assessment" in llm_report and not llm_report.get("error"):
         # LLM успешно сгенерировал отчёт
         logger.info("Report Analyzer: using LLM-generated report", component="analyzer")
 
         risk_assessment = llm_report.get("risk_assessment", {})
+
+        # Extract reasoning trace if available (from CoT prompt)
+        if verbose_reasoning and "reasoning" in llm_report:
+            reasoning_trace = llm_report.get("reasoning")
+            logger.info(
+                f"Report Analyzer: reasoning trace captured (factors: {len(reasoning_trace.get('risk_factors', []))})",
+                component="analyzer",
+            )
 
         # Добавляем метаданные
         report = {
@@ -172,6 +196,8 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 "successful_sources": sum(1 for r in search_results if r.get("success"))
                 + sum(1 for v in source_data.values() if v and v.get("success")),
                 "llm_generated": True,
+                "verbose_reasoning": verbose_reasoning,
+                "has_reasoning_trace": reasoning_trace is not None,
             },
             "risk_assessment": risk_assessment,
             "summary": llm_report.get("summary", ""),
@@ -182,10 +208,14 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
             "citations": _extract_citations(search_results),
         }
 
+        # Include reasoning in report if available
+        if reasoning_trace:
+            report["reasoning"] = reasoning_trace
+
     else:
         # Fallback: используем старую логику если LLM недоступен
         logger.warning(
-            f"Report Analyzer: LLM failed, using fallback logic. Error: {llm_report.get('error')}",
+            f"Report Analyzer: LLM failed, using fallback logic. Error: {llm_report.get('error') if llm_report else 'No response'}",
             component="analyzer",
         )
         report = await _generate_report_fallback(search_results, source_data, client_name, inn)
@@ -203,12 +233,18 @@ async def report_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         component="analyzer",
     )
 
-    return {
+    result = {
         **state,
         "report": report,
         "analysis_result": report.get("summary", ""),
         "current_step": "completed",
     }
+
+    # Add reasoning trace to state for audit/display purposes
+    if reasoning_trace:
+        result["reasoning_trace"] = reasoning_trace
+
+    return result
 
 
 def generate_recommendations(risk: Dict[str, Any]) -> List[str]:

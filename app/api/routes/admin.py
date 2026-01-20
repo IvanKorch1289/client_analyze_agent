@@ -116,12 +116,8 @@ async def clear_cache(source: Optional[str] = None) -> MessageResponse:
         return MessageResponse(success=True, message=message)
 
     except Exception as e:
-        logger.error(
-            f"Admin cache clear error: {e}", component="admin_api", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
+        logger.error(f"Admin cache clear error: {e}", component="admin_api", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @admin_router.get(
@@ -164,12 +160,8 @@ async def get_cache_stats() -> CacheStatsResponse:
         )
 
     except Exception as e:
-        logger.error(
-            f"Admin cache stats error: {e}", component="admin_api", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
+        logger.error(f"Admin cache stats error: {e}", component="admin_api", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 # ============================================================================
@@ -205,12 +197,8 @@ async def get_llm_stats(hours: int = 24) -> LLMStatsResponse:
         return LLMStatsResponse(**stats)
 
     except Exception as e:
-        logger.error(
-            f"Admin LLM stats error: {e}", component="admin_api", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
+        logger.error(f"Admin LLM stats error: {e}", component="admin_api", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @admin_router.get("/llm/recent", dependencies=[Depends(require_admin)])
@@ -259,12 +247,8 @@ async def get_recent_llm_calls(limit: int = 50) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(
-            f"Admin recent LLM calls error: {e}", component="admin_api", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
+        logger.error(f"Admin recent LLM calls error: {e}", component="admin_api", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 # ============================================================================
@@ -317,9 +301,7 @@ async def get_detailed_health() -> HealthDetailedResponse:
         breaker_stats = http_client.get_circuit_breaker_stats()
         components["http_client"] = {
             "status": "healthy",
-            "circuit_breakers": {
-                name: stats.state for name, stats in breaker_stats.items()
-            },
+            "circuit_breakers": {name: stats.state for name, stats in breaker_stats.items()},
         }
     except Exception as e:
         components["http_client"] = {"status": "unhealthy", "error": str(e)}
@@ -351,9 +333,7 @@ async def get_detailed_health() -> HealthDetailedResponse:
         components["memory_monitor"] = {"status": "error", "error": str(e)}
 
     # Определяем общий статус
-    unhealthy_count = sum(
-        1 for c in components.values() if c.get("status") == "unhealthy"
-    )
+    unhealthy_count = sum(1 for c in components.values() if c.get("status") == "unhealthy")
 
     if unhealthy_count == 0:
         overall_status = "healthy"
@@ -406,12 +386,8 @@ async def get_system_metrics() -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(
-            f"Admin system metrics error: {e}", component="admin_api", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
+        logger.error(f"Admin system metrics error: {e}", component="admin_api", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 # ============================================================================
@@ -463,9 +439,7 @@ async def get_llm_audit(
         recent_calls = []
         for record in recent_calls_records:
             try:
-                timestamp = datetime.fromisoformat(
-                    record.timestamp.replace("Z", "+00:00")
-                )
+                timestamp = datetime.fromisoformat(record.timestamp.replace("Z", "+00:00"))
                 if timestamp < cutoff:
                     continue
             except Exception:
@@ -503,9 +477,7 @@ async def get_llm_audit(
         }
 
     except Exception as e:
-        logger.error(
-            f"LLM Audit retrieval failed: {e}", exc_info=True, component="admin_api"
-        )
+        logger.error(f"LLM Audit retrieval failed: {e}", exc_info=True, component="admin_api")
         return {
             "status": "error",
             "message": str(e),
@@ -519,9 +491,7 @@ async def get_llm_audit(
 # ============================================================================
 
 
-@admin_router.post(
-    "/llm/test-provider/{provider}", dependencies=[Depends(require_admin)]
-)
+@admin_router.post("/llm/test-provider/{provider}", dependencies=[Depends(require_admin)])
 async def test_llm_provider(provider: str) -> Dict[str, Any]:
     """
     Тестирование конкретного LLM провайдера.
@@ -565,9 +535,7 @@ async def test_llm_provider(provider: str) -> Dict[str, Any]:
     try:
         # Простой тестовый запрос
         test_prompt = "Ответь 'OK' если получил это сообщение"
-        response = await manager.ainvoke_with_provider(
-            prompt=test_prompt, provider=provider_enum, mask_pii=False
-        )
+        response = await manager.ainvoke_with_provider(prompt=test_prompt, provider=provider_enum, mask_pii=False)
 
         duration_ms = (time.time() - start_time) * 1000
 
@@ -716,9 +684,7 @@ async def cleanup_old_files(days: int = Query(30, ge=1, le=365)) -> Dict[str, An
         directory = Path(f"./{dir_name}")
 
         if not directory.exists():
-            logger.info(
-                f"Directory {directory} does not exist, skipping", component="admin_api"
-            )
+            logger.info(f"Directory {directory} does not exist, skipping", component="admin_api")
             continue
 
         for file_path in directory.rglob("*"):
@@ -732,9 +698,7 @@ async def cleanup_old_files(days: int = Query(30, ge=1, le=365)) -> Dict[str, An
                     deleted_files.append(str(file_path))
                     deleted_by_dir[dir_name] += 1
 
-                    logger.debug(
-                        f"Deleted old file: {file_path}", component="admin_api"
-                    )
+                    logger.debug(f"Deleted old file: {file_path}", component="admin_api")
 
             except Exception as e:
                 logger.error(
@@ -799,16 +763,12 @@ async def warmup_cache() -> Dict[str, Any]:
                     {
                         "inn": inn,
                         "status": "success",
-                        "company_name": result.get("data", {})
-                        .get("name", {})
-                        .get("short_with_opf", "N/A"),
+                        "company_name": result.get("data", {}).get("name", {}).get("short_with_opf", "N/A"),
                     }
                 )
                 logger.debug(f"Cache warmed for INN: {inn}", component="admin_api")
             else:
-                results.append(
-                    {"inn": inn, "status": "not_found", "company_name": None}
-                )
+                results.append({"inn": inn, "status": "not_found", "company_name": None})
 
         except Exception as e:
             logger.error(

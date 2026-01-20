@@ -11,7 +11,7 @@ Provides reusable decorators for:
 import asyncio
 import functools
 import time
-from typing import Any, Callable, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Optional, Tuple, Type, TypeVar
 
 from app.utility.logging_client import logger
 
