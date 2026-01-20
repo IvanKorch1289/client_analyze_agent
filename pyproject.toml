@@ -60,6 +60,9 @@ asyncer = "^0.0.8"                    # Async utilities
 pympler = "^1.1"                      # Memory profiling
 psutil = "^6.1.1"                     # System metrics (CPU, memory)
 
+# Sprint 6: UI/UX Improvements
+plotly = "^6.1.0"                     # Risk score visualization
+
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.12.11"
 pyright = "^1.1.404"

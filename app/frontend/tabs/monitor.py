@@ -9,20 +9,20 @@ from app.frontend.api_client import ApiClient
 
 def render(api: ApiClient, *, admin_token: str) -> None:
     """
-    System Monitor - real-time мониторинг производительности и здоровья системы.
+    Системный монитор - мониторинг производительности и здоровья системы в реальном времени.
 
     Использует admin endpoints:
-    - GET /admin/cache/stats - Cache statistics
-    - GET /admin/llm/stats - LLM call statistics
-    - GET /admin/health/detailed - Detailed health check
-    - GET /admin/metrics/system - System metrics (CPU, memory)
+    - GET /admin/cache/stats - Статистика кэша
+    - GET /admin/llm/stats - Статистика LLM вызовов
+    - GET /admin/health/detailed - Детальная проверка здоровья
+    - GET /admin/metrics/system - Системные метрики (CPU, память)
     """
-    st.header("📊 System Monitor")
+    st.header("📊 Системный монитор")
 
-    st.info("🔒 Real-time мониторинг системы. Обновление по запросу.")
+    st.info("🔒 Мониторинг системы в реальном времени. Обновление по запросу.")
 
     # Auto-refresh опция
-    auto_refresh = st.checkbox("🔄 Auto-refresh каждые 5 секунд", value=False)
+    auto_refresh = st.checkbox("🔄 Автообновление каждые 5 секунд", value=False)
 
     if auto_refresh:
         if "last_refresh" not in st.session_state:
@@ -33,7 +33,7 @@ def render(api: ApiClient, *, admin_token: str) -> None:
             st.session_state["last_refresh"] = time.time()
             st.rerun()
 
-        st.caption(f"⏱️ Next refresh in {5 - int(elapsed)}s")
+        st.caption(f"⏱️ Следующее обновление через {5 - int(elapsed)} сек")
 
     # Кнопка ручного обновления
     col1, col2 = st.columns([1, 4])
@@ -47,10 +47,10 @@ def render(api: ApiClient, *, admin_token: str) -> None:
     # Секции мониторинга
     tabs = st.tabs(
         [
-            "📈 System Metrics",
-            "🧠 LLM Statistics",
-            "💾 Cache Statistics",
-            "🏥 Health Status",
+            "📈 Системные метрики",
+            "🧠 Статистика LLM",
+            "💾 Статистика кэша",
+            "🏥 Статус здоровья",
         ]
     )
 
@@ -68,8 +68,8 @@ def render(api: ApiClient, *, admin_token: str) -> None:
 
 
 def _render_system_metrics(api: ApiClient, admin_token: str) -> None:
-    """Системные метрики: CPU, память, connections."""
-    st.subheader("💻 System Metrics")
+    """Системные метрики: CPU, память, соединения."""
+    st.subheader("💻 Системные метрики")
 
     metrics = api.get("/admin/metrics/system", admin_token=admin_token)
 
@@ -77,37 +77,37 @@ def _render_system_metrics(api: ApiClient, admin_token: str) -> None:
         st.error("❌ Не удалось получить системные метрики")
         return
 
-    # Memory metrics
+    # Метрики памяти
     memory = metrics.get("memory", {})
     col1, col2, col3 = st.columns(3)
 
     with col1:
         rss_mb = memory.get("rss_mb", 0)
         st.metric(
-            label="💾 RSS Memory",
-            value=f"{rss_mb:.1f} MB",
+            label="💾 Физическая память (RSS)",
+            value=f"{rss_mb:.1f} МБ",
             help="Resident Set Size - физическая память процесса",
         )
 
     with col2:
         vms_mb = memory.get("vms_mb", 0)
         st.metric(
-            label="🗂️ Virtual Memory",
-            value=f"{vms_mb:.1f} MB",
+            label="🗂️ Виртуальная память",
+            value=f"{vms_mb:.1f} МБ",
             help="Виртуальная память процесса",
         )
 
     with col3:
         mem_percent = memory.get("percent", 0)
         st.metric(
-            label="📊 Memory %",
+            label="📊 Использование памяти",
             value=f"{mem_percent:.1f}%",
             help="Процент использования памяти",
         )
 
     st.divider()
 
-    # CPU & Threads
+    # CPU и потоки
     cpu = metrics.get("cpu", {})
     connections_data = metrics.get("connections", {})
 
@@ -116,32 +116,32 @@ def _render_system_metrics(api: ApiClient, admin_token: str) -> None:
     with col1:
         cpu_percent = cpu.get("percent", 0)
         st.metric(
-            label="⚡ CPU Usage",
+            label="⚡ Использование CPU",
             value=f"{cpu_percent:.1f}%",
             help="Использование CPU процессом",
         )
 
     with col2:
         num_threads = cpu.get("num_threads", 0)
-        st.metric(label="🧵 Threads", value=num_threads, help="Количество активных потоков")
+        st.metric(label="🧵 Потоки", value=num_threads, help="Количество активных потоков")
 
     with col3:
         open_connections = connections_data.get("connections", 0)
         st.metric(
-            label="🔗 Open Connections",
+            label="🔗 Открытые соединения",
             value=open_connections,
             help="Количество открытых сетевых соединений",
         )
 
-    # Open files
+    # Открытые файлы
     open_files = connections_data.get("open_files", 0)
     st.metric(
-        label="📁 Open Files",
+        label="📁 Открытые файлы",
         value=open_files,
         help="Количество открытых файловых дескрипторов",
     )
 
-    # Warnings
+    # Предупреждения
     if mem_percent > 80:
         st.warning("⚠️ Высокое использование памяти (>80%)!")
 
@@ -152,13 +152,13 @@ def _render_system_metrics(api: ApiClient, admin_token: str) -> None:
         st.warning("⚠️ Много открытых файлов (>1000)! Возможна утечка дескрипторов.")
 
     # Детали в expander
-    with st.expander("📋 Raw Metrics"):
+    with st.expander("📋 Исходные данные"):
         st.json(metrics)
 
 
 def _render_llm_statistics(api: ApiClient, admin_token: str) -> None:
     """Статистика LLM вызовов."""
-    st.subheader("🧠 LLM Call Statistics")
+    st.subheader("🧠 Статистика LLM вызовов")
 
     # Выбор периода
     hours = st.slider("📅 Период (часы)", min_value=1, max_value=168, value=24, step=1)
@@ -179,7 +179,7 @@ def _render_llm_statistics(api: ApiClient, admin_token: str) -> None:
 
     with col1:
         st.metric(
-            label="📞 Total Calls",
+            label="📞 Всего вызовов",
             value=total_calls,
             help=f"Всего LLM вызовов за {hours}ч",
         )
@@ -187,58 +187,58 @@ def _render_llm_statistics(api: ApiClient, admin_token: str) -> None:
     with col2:
         success_rate = (successful_calls / total_calls * 100) if total_calls > 0 else 0
         st.metric(
-            label="✅ Success Rate",
+            label="✅ Успешность",
             value=f"{success_rate:.1f}%",
-            delta=f"{successful_calls} calls",
+            delta=f"{successful_calls} вызовов",
             help="Процент успешных вызовов",
         )
 
     with col3:
         cache_hit_rate = (cache_hits / total_calls * 100) if total_calls > 0 else 0
         st.metric(
-            label="💾 Cache Hit Rate",
+            label="💾 Попадания в кэш",
             value=f"{cache_hit_rate:.1f}%",
-            delta=f"{cache_hits} hits",
+            delta=f"{cache_hits} попаданий",
             help="Процент попаданий в кэш (экономия времени)",
         )
 
     with col4:
         st.metric(
-            label="❌ Failed Calls",
+            label="❌ Ошибки",
             value=failed_calls,
             delta=f"{(failed_calls / total_calls * 100) if total_calls > 0 else 0:.1f}%",
             delta_color="inverse",
             help="Количество неудачных вызовов",
         )
 
-    # Timing metrics
+    # Метрики производительности
     avg_duration = stats.get("avg_duration_ms", 0)
     max_duration = stats.get("max_duration_ms", 0)
 
     st.divider()
-    st.markdown("### ⏱️ Performance Metrics")
+    st.markdown("### ⏱️ Производительность")
 
     col1, col2 = st.columns(2)
 
     with col1:
         st.metric(
-            label="⏱️ Avg Duration",
-            value=f"{avg_duration:.0f} ms",
+            label="⏱️ Среднее время",
+            value=f"{avg_duration:.0f} мс",
             help="Среднее время LLM вызова",
         )
 
     with col2:
         st.metric(
-            label="🐌 Max Duration",
-            value=f"{max_duration:.0f} ms",
+            label="🐌 Максимальное время",
+            value=f"{max_duration:.0f} мс",
             help="Максимальное время LLM вызова",
         )
 
-    # Provider breakdown
+    # Статистика по провайдерам
     providers_stats = stats.get("by_provider", {})
     if providers_stats:
         st.divider()
-        st.markdown("### 🔌 By Provider")
+        st.markdown("### 🔌 По провайдерам")
 
         for provider, provider_stats in providers_stats.items():
             with st.expander(f"📊 {provider.upper()}"):
@@ -252,9 +252,9 @@ def _render_llm_statistics(api: ApiClient, admin_token: str) -> None:
                 with col2:
                     st.metric("Успешно", p_success)
                 with col3:
-                    st.metric("Средняя длительность", f"{p_avg:.0f} ms")
+                    st.metric("Среднее время", f"{p_avg:.0f} мс")
 
-    # Recent calls
+    # Последние вызовы
     st.divider()
     st.markdown("### 📝 Последние вызовы")
 
@@ -263,7 +263,7 @@ def _render_llm_statistics(api: ApiClient, admin_token: str) -> None:
     recent = api.get("/admin/llm/recent", params={"limit": limit}, admin_token=admin_token)
 
     if recent and recent.get("calls"):
-        for call in recent["calls"][:10]:  # Show max 10 in main view
+        for call in recent["calls"][:10]:  # Показываем max 10 в основном виде
             timestamp = call.get("timestamp", "")
             provider = call.get("provider", "unknown")
             duration = call.get("duration_ms", 0)
@@ -273,16 +273,16 @@ def _render_llm_statistics(api: ApiClient, admin_token: str) -> None:
             status_emoji = "✅" if success else "❌"
             cache_emoji = "💾" if cache_hit else "🔍"
 
-            st.caption(f"{status_emoji} {cache_emoji} [{timestamp}] {provider.upper()} - {duration:.0f}ms")
+            st.caption(f"{status_emoji} {cache_emoji} [{timestamp}] {provider.upper()} - {duration:.0f} мс")
 
-        with st.expander("📋 All Recent Calls"):
+        with st.expander("📋 Все недавние вызовы"):
             st.json(recent)
     else:
         st.info("📭 Нет недавних LLM вызовов")
 
-    # Warnings
+    # Предупреждения
     if cache_hit_rate < 20 and total_calls > 10:
-        st.warning(f"⚠️ Низкий cache hit rate ({cache_hit_rate:.1f}%). Рассмотрите возможность увеличения TTL кэша.")
+        st.warning(f"⚠️ Низкий процент попаданий в кэш ({cache_hit_rate:.1f}%). Рассмотрите возможность увеличения TTL кэша.")
 
     if failed_calls / total_calls > 0.1 if total_calls > 0 else False:
         st.error(
@@ -293,7 +293,7 @@ def _render_llm_statistics(api: ApiClient, admin_token: str) -> None:
 
 def _render_cache_statistics(api: ApiClient, admin_token: str) -> None:
     """Статистика кэша."""
-    st.subheader("💾 Cache Statistics")
+    st.subheader("💾 Статистика кэша")
 
     stats = api.get("/admin/cache/stats", admin_token=admin_token)
 
@@ -312,33 +312,33 @@ def _render_cache_statistics(api: ApiClient, admin_token: str) -> None:
 
     with col1:
         st.metric(
-            label="📦 Total Entries",
+            label="📦 Всего записей",
             value=total_entries,
             help="Общее количество записей в кэше",
         )
 
     with col2:
         st.metric(
-            label="✅ Cache Hits",
+            label="✅ Попадания",
             value=total_hits,
             help="Количество успешных попаданий",
         )
 
     with col3:
-        st.metric(label="❌ Cache Misses", value=total_misses, help="Количество промахов")
+        st.metric(label="❌ Промахи", value=total_misses, help="Количество промахов")
 
     with col4:
         st.metric(
-            label="📊 Hit Rate",
+            label="📊 Процент попаданий",
             value=f"{hit_rate:.1f}%",
             help="Процент попаданий в кэш",
         )
 
-    # Cache by source
+    # Кэш по источникам
     by_source = stats.get("by_source", {})
     if by_source:
         st.divider()
-        st.markdown("### 🗂️ By Source")
+        st.markdown("### 🗂️ По источникам")
 
         for source, source_stats in by_source.items():
             with st.expander(f"📂 {source}"):
@@ -358,39 +358,42 @@ def _render_cache_statistics(api: ApiClient, admin_token: str) -> None:
                 with col4:
                     st.metric("Процент попаданий", f"{s_hit_rate:.1f}%")
 
-    # Cache management
+    # Управление кэшем
     st.divider()
     st.markdown("### 🗑️ Управление кэшем")
 
+    source_options = {
+        "all": "Весь кэш",
+        "llm_cache": "LLM кэш",
+        "dadata": "DaData",
+        "infosphere": "InfoSphere",
+        "casebook": "Casebook",
+        "perplexity": "Perplexity",
+        "tavily": "Tavily",
+    }
+
     source_to_clear = st.selectbox(
-        "Выберите source для очистки",
-        options=[
-            "all",
-            "llm_cache",
-            "dadata",
-            "infosphere",
-            "casebook",
-            "perplexity",
-            "tavily",
-        ],
+        "Выберите источник для очистки",
+        options=list(source_options.keys()),
+        format_func=lambda x: source_options[x],
         index=0,
     )
 
-    confirm_clear = st.checkbox(f"✅ Подтвердить очистку кэша ({source_to_clear})", value=False)
+    confirm_clear = st.checkbox(f"✅ Подтвердить очистку кэша ({source_options[source_to_clear]})", value=False)
 
     if st.button("🗑️ Очистить кэш", disabled=not confirm_clear, type="secondary"):
         clear_payload = {"source": source_to_clear if source_to_clear != "all" else None}
         result = api.post("/admin/cache/clear", json=clear_payload, admin_token=admin_token)
 
         if result:
-            st.success(f"✅ Кэш {source_to_clear} успешно очищен!")
+            st.success(f"✅ Кэш {source_options[source_to_clear]} успешно очищен!")
             st.rerun()
         else:
             st.error("❌ Ошибка при очистке кэша")
 
-    # Warnings
+    # Предупреждения
     if hit_rate < 30 and total_requests > 100:
-        st.warning(f"⚠️ Низкий cache hit rate ({hit_rate:.1f}%). Возможно, стоит увеличить TTL или объем кэша.")
+        st.warning(f"⚠️ Низкий процент попаданий ({hit_rate:.1f}%). Возможно, стоит увеличить TTL или объём кэша.")
 
     if total_entries > 10000:
         st.warning(
@@ -400,7 +403,7 @@ def _render_cache_statistics(api: ApiClient, admin_token: str) -> None:
 
 def _render_health_status(api: ApiClient, admin_token: str) -> None:
     """Детальный статус здоровья системы."""
-    st.subheader("🏥 System Health Status")
+    st.subheader("🏥 Статус здоровья системы")
 
     health = api.get("/admin/health/detailed", admin_token=admin_token)
 
@@ -411,20 +414,38 @@ def _render_health_status(api: ApiClient, admin_token: str) -> None:
     # Общий статус
     overall_status = health.get("status", "unknown")
 
-    if overall_status == "healthy":
-        st.success("✅ Система работает нормально")
-    elif overall_status == "degraded":
-        st.warning("⚠️ Система работает в деградированном режиме")
-    else:
-        st.error("❌ Система неработоспособна")
+    status_messages = {
+        "healthy": ("✅ Система работает нормально", "success"),
+        "degraded": ("⚠️ Система работает в деградированном режиме", "warning"),
+        "unhealthy": ("❌ Система неработоспособна", "error"),
+    }
+
+    message, msg_type = status_messages.get(overall_status, ("❓ Статус неизвестен", "info"))
+    getattr(st, msg_type)(message)
 
     timestamp = health.get("timestamp", "")
     st.caption(f"🕐 Проверено: {timestamp}")
 
     st.divider()
 
-    # Components status
+    # Статус компонентов
     components = health.get("components", {})
+
+    component_names = {
+        "tarantool": "Tarantool (кэш)",
+        "http_client": "HTTP клиент",
+        "llm": "LLM провайдеры",
+        "memory_monitor": "Мониторинг памяти",
+        "rabbitmq": "RabbitMQ",
+        "email": "Email (SMTP)",
+    }
+
+    status_labels = {
+        "healthy": "работает",
+        "degraded": "деградация",
+        "unhealthy": "недоступен",
+        "error": "ошибка",
+    }
 
     for component_name, component_status in components.items():
         status = component_status.get("status", "unknown")
@@ -442,7 +463,10 @@ def _render_health_status(api: ApiClient, admin_token: str) -> None:
             emoji = "❌"
             color = "error"
 
-        with st.expander(f"{emoji} {component_name.upper()}: {status}"):
+        display_name = component_names.get(component_name, component_name.upper())
+        status_label = status_labels.get(status, status)
+
+        with st.expander(f"{emoji} {display_name}: {status_label}"):
             if message:
                 if color == "normal":
                     st.success(message)
@@ -454,14 +478,14 @@ def _render_health_status(api: ApiClient, admin_token: str) -> None:
             if details:
                 st.json(details)
 
-    # Issues summary
+    # Обнаруженные проблемы
     issues = health.get("issues", [])
     if issues:
         st.divider()
-        st.markdown("### ⚠️ Detected Issues")
+        st.markdown("### ⚠️ Обнаруженные проблемы")
         for issue in issues:
             st.error(f"❌ {issue}")
 
-    # Raw data
-    with st.expander("📋 Raw Health Data"):
+    # Исходные данные
+    with st.expander("📋 Исходные данные"):
         st.json(health)
