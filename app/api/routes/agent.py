@@ -398,6 +398,40 @@ async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, 
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
+    # УМНЫЙ СБРОС КЭША: если rating < 3 (негативный feedback), очищаем кэш
+    # для этого ИНН/компании, чтобы получить актуальные данные при переанализе
+    if data.rating < 3 and data.rerun_analysis and inn:
+        try:
+            cache_repo = tarantool.get_cache_repository()
+            cleared_sources = []
+
+            # Очищаем кэш Perplexity и Tavily для этого ИНН
+            for source in ["perplexity", "tavily"]:
+                # Ищем все ключи кэша для этого источника и ИНН
+                # Формат ключей: "perplexity:md5hash" или "tavily:md5hash"
+                # Используем pattern matching для удаления всех связанных записей
+                try:
+                    # Примерный подход: удаляем все записи source для безопасности
+                    await cache_repo.clear_by_source(source)
+                    cleared_sources.append(source)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to clear cache for source {source}: {e}",
+                        component="agent_api",
+                    )
+
+            if cleared_sources:
+                logger.info(
+                    f"Cache cleared for INN {inn} due to negative feedback (rating={data.rating}): {cleared_sources}",
+                    component="agent_api",
+                )
+        except Exception as e:
+            logger.error(
+                f"Cache clearing failed for feedback: {e}, continuing with reanalysis",
+                component="agent_api",
+                exc_info=True,
+            )
+
     if not data.rerun_analysis:
         return {
             "status": "feedback_saved",

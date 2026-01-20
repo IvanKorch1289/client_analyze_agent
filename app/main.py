@@ -33,6 +33,9 @@ from app.utility.helpers import get_client_ip
 from app.utility.logging_client import get_request_id, logger, set_request_id
 from app.utility.telemetry import init_telemetry
 
+# Prometheus metrics
+from prometheus_fastapi_instrumentator import Instrumentator
+
 # Get backend port from environment or use default
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
 
@@ -114,9 +117,44 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     logger.info("Scheduler запущен для отложенных задач")
 
+    # Запускаем Memory Monitor для защиты от утечек памяти
+    from app.shared.memory_monitor import get_memory_monitor
+
+    memory_monitor = get_memory_monitor(
+        check_interval=60,  # Проверка каждую минуту
+        auto_gc=True,
+    )
+
+    # Background task для периодической проверки памяти
+    async def memory_check_task():
+        """Фоновая задача мониторинга памяти."""
+        while True:
+            try:
+                await memory_monitor.check_and_protect()
+            except Exception as e:
+                logger.error(f"Memory monitor error: {e}", exc_info=True)
+            await asyncio.sleep(60)  # Проверка каждую минуту
+
+    memory_task = asyncio.create_task(memory_check_task())
+    app.state.memory_task = memory_task
+    logger.info("Memory Monitor запущен для защиты от утечек памяти")
+
     logger.info("Клиенты инициализированы")
     yield
     logger.info("Завершение работы приложения...")
+
+    # Останавливаем Memory Monitor task
+    try:
+        memory_task = getattr(app.state, "memory_task", None)
+        if memory_task and not memory_task.done():
+            memory_task.cancel()
+            try:
+                await memory_task
+            except asyncio.CancelledError:
+                pass
+        logger.info("Memory Monitor остановлен")
+    except Exception as e:
+        logger.error(f"Error stopping memory monitor: {e}")
 
     # Останавливаем watchdog
     try:
@@ -528,6 +566,46 @@ install_error_handlers(app)
 
 _otel_excluded_urls = "/utility/health,/utility/metrics,/api/v1/utility/health,/api/v1/utility/metrics"
 FastAPIInstrumentor.instrument_app(app, excluded_urls=_otel_excluded_urls)
+
+# =======================
+# Prometheus Metrics
+# =======================
+# Instrumentator автоматически собирает метрики HTTP запросов
+# Метрики доступны на /metrics endpoint
+instrumentator = Instrumentator(
+    should_group_status_codes=False,  # Детальные status codes
+    should_ignore_untemplated=False,  # Не игнорируем нетемплейтные пути
+    should_respect_env_var=True,  # Учитываем ENABLE_METRICS env var
+    should_instrument_requests_inprogress=True,  # Метрики in-progress requests
+    excluded_handlers=["/metrics", "/metrics/custom"],  # Исключаем endpoints метрик
+    env_var_name="ENABLE_METRICS",
+    inprogress_name="http_requests_inprogress",
+    inprogress_labels=True,
+)
+
+# Добавляем стандартные HTTP метрики
+instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+# Добавляем endpoint для кастомных application-level метрик
+from app.shared.prometheus_metrics import metrics as custom_metrics
+from starlette.responses import Response
+
+
+@app.get("/metrics/custom", include_in_schema=False)
+async def custom_metrics_endpoint():
+    """
+    Кастомные метрики приложения (LLM, cache, risk scores, etc.).
+
+    Используйте /metrics для HTTP метрик и /metrics/custom для application метрик.
+    Или объедините оба в вашем Prometheus scrape config.
+    """
+    return Response(
+        content=custom_metrics.get_metrics(),
+        media_type=custom_metrics.get_content_type(),
+    )
+
+
+logger.info("Prometheus metrics enabled at /metrics and /metrics/custom")
 
 # Сжатие больших ответов (отчёты/метрики/история). Минимальный размер — чтобы
 # не тратить CPU на мелкие ответы.

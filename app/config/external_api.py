@@ -134,8 +134,8 @@ class PerplexityAPISettings(BaseSettingsWithLoader):
     # Таймауты
     timeout: float = Field(default=60.0, description="Таймаут запроса (сек)")
 
-    # Кеш
-    cache_ttl: int = Field(default=300, description="TTL кеша (сек)")
+    # Кеш (было 300s = 5 минут, увеличено до 3600s = 1 час для better cache hit rate)
+    cache_ttl: int = Field(default=3600, description="TTL кеша (сек)")
     cache_enabled: bool = Field(default=True, description="Включить кеш")
 
     model_config = ConfigDict(env_prefix="PERPLEXITY_")
@@ -158,8 +158,8 @@ class TavilyAPISettings(BaseSettingsWithLoader):
     # Таймауты
     timeout: float = Field(default=60.0, description="Таймаут запроса (сек)")
 
-    # Кеш
-    cache_ttl: int = Field(default=300, description="TTL кеша (сек)")
+    # Кеш (было 300s = 5 минут, увеличено до 3600s = 1 час для better cache hit rate)
+    cache_ttl: int = Field(default=3600, description="TTL кеша (сек)")
     cache_enabled: bool = Field(default=True, description="Включить кеш")
 
     model_config = ConfigDict(env_prefix="TAVILY_")

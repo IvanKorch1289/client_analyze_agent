@@ -1,99 +1,85 @@
+"""
+Tarantool async client with caching, TTL, batch operations and compression.
+
+Refactored to use modular components:
+- compression.py: Data compression utilities
+- metrics.py: Performance tracking
+- connection.py: Connection management
+"""
+
 import asyncio
-import gzip
 import hashlib
 import time
-from concurrent.futures import ThreadPoolExecutor
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import msgpack
 
 from app.config import settings
+from app.storage.compression import (
+    CompressionHandler,
+    CompressionConfig,
+)
+from app.storage.metrics import CacheMetrics
+from app.storage.connection import (
+    get_executor,
+    get_tarantool_module,
+    TARANTOOL_AVAILABLE,
+)
 from app.utility.logging_client import logger
+
+# Get tarantool module from connection (handles import gracefully)
+tarantool = get_tarantool_module()
 
 # Lazy import repositories to avoid circular imports
 _cache_repo = None
 _reports_repo = None
 _threads_repo = None
 
-try:
-    import tarantool
+_executor = get_executor()
 
-    TARANTOOL_AVAILABLE = True
-except ImportError:
-    tarantool = None
-    TARANTOOL_AVAILABLE = False
-    logger.warning("Tarantool not available, using in-memory fallback", component="tarantool")
+# Memory cache size limits to prevent OOM (memory leak fix)
+MAX_MEMORY_CACHE_SIZE = 1000  # Maximum entries in main cache
+MAX_MEMORY_PERSISTENT_SIZE = 500  # Maximum entries in persistent cache
 
-_executor = ThreadPoolExecutor(max_workers=5)
-
-_memory_cache: Dict[str, tuple] = {}
-_memory_persistent: Dict[str, Any] = {}
+# Use OrderedDict for LRU eviction
+_memory_cache: OrderedDict[str, tuple] = OrderedDict()
+_memory_persistent: OrderedDict[str, Any] = OrderedDict()
 
 
-@dataclass
-class CacheMetrics:
-    hits: int = 0
-    misses: int = 0
-    sets: int = 0
-    deletes: int = 0
-    batch_operations: int = 0
-    compressed_saves: int = 0
-    bytes_saved_by_compression: int = 0
-    total_get_time_ms: float = 0.0
-    total_set_time_ms: float = 0.0
+def _evict_oldest_cache_entry() -> None:
+    """Evict oldest entry from memory cache if full."""
+    if len(_memory_cache) >= MAX_MEMORY_CACHE_SIZE:
+        oldest_key = next(iter(_memory_cache))
+        del _memory_cache[oldest_key]
+        logger.warning(
+            f"Memory cache full ({MAX_MEMORY_CACHE_SIZE}), evicted: {oldest_key[:50]}...",
+            component="tarantool",
+        )
 
-    @property
-    def hit_rate(self) -> float:
-        total = self.hits + self.misses
-        return (self.hits / total * 100) if total > 0 else 0.0
 
-    @property
-    def avg_get_time_ms(self) -> float:
-        total = self.hits + self.misses
-        return (self.total_get_time_ms / total) if total > 0 else 0.0
-
-    @property
-    def avg_set_time_ms(self) -> float:
-        return (self.total_set_time_ms / self.sets) if self.sets > 0 else 0.0
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "hits": self.hits,
-            "misses": self.misses,
-            "hit_rate_percent": round(self.hit_rate, 2),
-            "sets": self.sets,
-            "deletes": self.deletes,
-            "batch_operations": self.batch_operations,
-            "compressed_saves": self.compressed_saves,
-            "bytes_saved_by_compression": self.bytes_saved_by_compression,
-            "avg_get_time_ms": round(self.avg_get_time_ms, 2),
-            "avg_set_time_ms": round(self.avg_set_time_ms, 2),
-        }
-
-    def reset(self):
-        self.hits = 0
-        self.misses = 0
-        self.sets = 0
-        self.deletes = 0
-        self.batch_operations = 0
-        self.compressed_saves = 0
-        self.bytes_saved_by_compression = 0
-        self.total_get_time_ms = 0.0
-        self.total_set_time_ms = 0.0
+def _evict_oldest_persistent_entry() -> None:
+    """Evict oldest entry from persistent cache if full."""
+    if len(_memory_persistent) >= MAX_MEMORY_PERSISTENT_SIZE:
+        oldest_key = next(iter(_memory_persistent))
+        del _memory_persistent[oldest_key]
+        logger.warning(
+            f"Persistent cache full ({MAX_MEMORY_PERSISTENT_SIZE}), evicted: {oldest_key[:50]}...",
+            component="tarantool",
+        )
 
 
 @dataclass
 class CacheConfig:
+    """Configuration for cache behavior."""
+
     compression_threshold: int = 1024
     compression_level: int = 6
     default_ttl: int = 3600
     max_batch_size: int = 100
     search_cache_ttl: int = 300
     prefetch_enabled: bool = True
-
-
-COMPRESSION_MARKER = b"\x1f\x8b"
 
 
 class TarantoolClient:
@@ -153,6 +139,13 @@ class TarantoolClient:
         self._config = CacheConfig()
         self._metrics = CacheMetrics()
         self._search_cache: Dict[str, Tuple[Any, float]] = {}
+        # Use modular compression handler
+        self._compression = CompressionHandler(
+            CompressionConfig(
+                threshold=self._config.compression_threshold,
+                level=self._config.compression_level,
+            )
+        )
 
     async def _connect(self):
         """Асинхронное подключение через пул"""
@@ -218,19 +211,37 @@ class TarantoolClient:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(_executor, do_call)
 
+    async def call(self, func_name: str, args: tuple = ()):
+        """
+        Публичный метод для вызова Lua-функций в Tarantool.
+
+        Usage:
+            result = await client.call("box.space.llm_audit:insert", (data1, data2, ...))
+            result = await client.call("box.space.llm_audit:select", (None, {"limit": 100}))
+
+        Args:
+            func_name: Имя Lua-функции (может быть space:method)
+            args: Tuple с аргументами для функции
+
+        Returns:
+            Результат выполнения функции
+        """
+        return await self._call(func_name, *args)
+
     def _compress(self, data: bytes) -> bytes:
-        if data and len(data) >= self._config.compression_threshold:
-            compressed = gzip.compress(data, compresslevel=self._config.compression_level)
-            if len(compressed) < len(data):
-                self._metrics.compressed_saves += 1
-                self._metrics.bytes_saved_by_compression += len(data) - len(compressed)
-                return compressed
-        return data
+        """Compress data using the compression handler."""
+        original_compressed = self._compression._compressed_count
+        result = self._compression.compress(data)
+        # Sync metrics if compression occurred
+        if self._compression._compressed_count > original_compressed:
+            stats = self._compression.stats
+            self._metrics.compressed_saves = stats["compressed_saves"]
+            self._metrics.bytes_saved_by_compression = stats["bytes_saved_by_compression"]
+        return result
 
     def _decompress(self, data: bytes) -> bytes:
-        if data and len(data) >= 2 and data[:2] == COMPRESSION_MARKER:
-            return gzip.decompress(data)
-        return data
+        """Decompress data using the compression handler."""
+        return self._compression.decompress(data)
 
     def _generate_search_key(self, query: str, service: str = "default") -> str:
         normalized = query.lower().strip()
@@ -333,6 +344,7 @@ class TarantoolClient:
             packed = msgpack.packb(value, use_bin_type=True, strict_types=False)
             if compress:
                 packed = self._compress(packed)
+            _evict_oldest_cache_entry()  # Prevent memory leak
             _memory_cache[key] = (packed, expires_at, created_at, source)
             self._metrics.sets += 1
             self._metrics.total_set_time_ms += (time.time() - start_time) * 1000
@@ -451,6 +463,7 @@ class TarantoolClient:
                 packed = msgpack.packb(value, use_bin_type=True, strict_types=False)
                 if compress:
                     packed = self._compress(packed)
+                _evict_oldest_cache_entry()  # Prevent memory leak
                 _memory_cache[key] = (packed, expires_at, created_at, "api")
             self._metrics.sets += len(items)
             elapsed = (time.time() - start_time) * 1000
@@ -675,6 +688,7 @@ class TarantoolClient:
 
         if self._use_memory:
             packed = msgpack.packb(value, use_bin_type=True, strict_types=False)
+            _evict_oldest_persistent_entry()  # Prevent memory leak
             _memory_persistent[key] = packed
             return
 

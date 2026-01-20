@@ -1,7 +1,33 @@
 """
 Client Analysis Workflow: LangGraph workflow для анализа клиентов.
-Orchestrator -> Data Collector (parallel: Casebook, InfoSphere, DaData, Perplexity, Tavily)
-             -> Report Analyzer -> File Writer
+
+ОПТИМИЗИРОВАННАЯ АРХИТЕКТУРА (Sprint 8.1):
+- Orchestrator и INN-based sources (InfoSphere/Casebook) запускаются ПАРАЛЛЕЛЬНО
+- Это экономит до 10s на LLM вызов orchestrator (InfoSphere/Casebook занимают до 6 минут)
+- DaData по-прежнему вызывается в orchestrator для получения канонического названия
+
+Workflow:
+    ┌─────────────────────┐     ┌─────────────────────────────┐
+    │ Orchestrator        │     │ INN Sources (parallel)      │
+    │ (LLM ~10s + DaData) │     │ InfoSphere + Casebook       │
+    └─────────────────────┘     │ (up to 6min each)           │
+           ↓                    └─────────────────────────────┘
+           │                               ↓
+           └───────────────┬───────────────┘
+                           ↓
+              ┌─────────────────────┐
+              │ Web Search (parallel)│
+              │ Perplexity + Tavily  │
+              └─────────────────────┘
+                           ↓
+              ┌─────────────────────┐
+              │ Report Analyzer     │
+              │ (LLM ~30s + CoT)    │
+              └─────────────────────┘
+                           ↓
+              ┌─────────────────────┐
+              │ File Writer         │
+              └─────────────────────┘
 """
 
 import asyncio
@@ -10,7 +36,11 @@ from typing import Any, AsyncGenerator, Dict, List, Literal, Optional, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from app.agents.data_collector import data_collector_agent
+from app.agents.data_collector import (
+    data_collector_agent,
+    _fetch_infosphere_wrapper,
+    _fetch_casebook_wrapper,
+)
 from app.agents.file_writer import file_writer_agent
 from app.agents.orchestrator import orchestrator_agent
 from app.agents.report_analyzer import report_analyzer_agent
@@ -157,7 +187,14 @@ async def run_client_analysis_batch(
 async def _run_streaming_analysis(
     initial_state: ClientAnalysisState, session_id: str, client_name: str, inn: str
 ) -> AsyncGenerator[Dict[str, Any], None]:
-    """Streaming версия анализа с событиями прогресса."""
+    """
+    Streaming версия анализа с событиями прогресса.
+
+    Sprint 8.1 ОПТИМИЗАЦИЯ:
+    - Запускаем InfoSphere и Casebook ПАРАЛЛЕЛЬНО с orchestrator
+    - Экономим ~10s на LLM вызов (orchestrator работает пока INN sources грузятся)
+    - DaData вызывается внутри orchestrator для получения канонического названия
+    """
     current_state = initial_state.copy()
 
     try:
@@ -165,12 +202,29 @@ async def _run_streaming_analysis(
             "type": "progress",
             "data": {
                 "step": "orchestrating",
-                "message": "Формирование поисковых запросов...",
+                "message": "Формирование запросов + параллельный сбор INN данных...",
                 "progress": 10,
             },
         }
 
-        current_state = await orchestrator_agent(current_state)
+        # Sprint 8.1: ПАРАЛЛЕЛЬНЫЙ ЗАПУСК orchestrator + INN sources
+        # InfoSphere и Casebook не зависят от search_intents, только от INN
+        early_inn_tasks = {}
+        if inn and inn.isdigit() and len(inn) in (10, 12):
+            logger.info(
+                f"Workflow: starting early INN fetch (InfoSphere + Casebook) in parallel with orchestrator",
+                component="workflow",
+            )
+            early_inn_tasks = {
+                "infosphere": asyncio.create_task(_fetch_infosphere_wrapper(inn)),
+                "casebook": asyncio.create_task(_fetch_casebook_wrapper(inn)),
+            }
+
+        # Запускаем orchestrator (который внутри вызывает DaData + LLM)
+        orchestrator_task = asyncio.create_task(orchestrator_agent(current_state))
+
+        # Ждём orchestrator (INN tasks продолжают работать в фоне)
+        current_state = await orchestrator_task
 
         intents = current_state.get("search_intents", [])
         intent_categories = [i.get("category") or i.get("query", "")[:30] for i in intents]
@@ -180,11 +234,15 @@ async def _run_streaming_analysis(
                 "step": "orchestrator_complete",
                 "intents_count": len(intents),
                 "intents": intent_categories,
+                "early_inn_started": bool(early_inn_tasks),
                 "progress": 20,
             },
         }
 
         if current_state.get("current_step") == "failed":
+            # Отменяем early tasks если orchestrator упал
+            for task in early_inn_tasks.values():
+                task.cancel()
             yield {
                 "type": "error",
                 "data": {"error": current_state.get("error", "Ошибка оркестратора")},
@@ -195,10 +253,14 @@ async def _run_streaming_analysis(
             "type": "progress",
             "data": {
                 "step": "collecting",
-                "message": "Сбор данных из всех источников (Casebook, DaData, InfoSphere, Perplexity, Tavily)...",
+                "message": "Сбор данных из веб-источников (Perplexity, Tavily)...",
                 "progress": 25,
             },
         }
+
+        # Передаём early_inn_tasks в state для data_collector
+        if early_inn_tasks:
+            current_state["_early_inn_tasks"] = early_inn_tasks
 
         current_state = await data_collector_agent(current_state)
 

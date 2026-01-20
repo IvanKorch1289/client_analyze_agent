@@ -8,7 +8,7 @@ import json
 from typing import Any, Dict, Optional
 
 # Import singleton from canonical source (avoid duplication)
-from app.agents.llm_manager import LLMManager, get_llm_manager
+from app.agents.llm_manager import get_llm_manager
 from app.utility.logging_client import logger
 
 

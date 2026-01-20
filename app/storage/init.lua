@@ -162,6 +162,64 @@ box.space.persistent:create_index('primary', {
 print('✓ Persistent space created (legacy)')
 
 -- ============================================================================
+-- SPACE 5: LLM_AUDIT
+-- LLM request/response audit trail for compliance and debugging
+-- ============================================================================
+
+box.schema.space.create('llm_audit', {if_not_exists = true})
+
+box.space.llm_audit:format({
+    {name = 'request_id', type = 'string'},
+    {name = 'timestamp', type = 'string'},
+    {name = 'provider', type = 'string'},
+    {name = 'model', type = 'string'},
+    {name = 'operation', type = 'string'},
+    {name = 'duration_ms', type = 'number'},
+    {name = 'success', type = 'boolean'},
+    {name = 'pii_detected', type = 'boolean'},
+    {name = 'prompt_hash', type = 'string'},
+    {name = 'response_hash', type = 'string'},
+    {name = 'total_tokens', type = 'number'},
+    {name = 'record_data', type = 'any'}  -- Full LLMAuditRecord as JSON
+})
+
+-- Primary index by request_id
+box.space.llm_audit:create_index('primary', {
+    parts = {'request_id'},
+    if_not_exists = true
+})
+
+-- Secondary index by timestamp for time-based queries
+box.space.llm_audit:create_index('timestamp_idx', {
+    parts = {'timestamp'},
+    if_not_exists = true,
+    unique = false
+})
+
+-- Secondary index by provider for filtering
+box.space.llm_audit:create_index('provider_idx', {
+    parts = {'provider'},
+    if_not_exists = true,
+    unique = false
+})
+
+-- Secondary index by success flag for error tracking
+box.space.llm_audit:create_index('success_idx', {
+    parts = {'success'},
+    if_not_exists = true,
+    unique = false
+})
+
+-- Secondary index by PII detection for compliance
+box.space.llm_audit:create_index('pii_idx', {
+    parts = {'pii_detected'},
+    if_not_exists = true,
+    unique = false
+})
+
+print('✓ LLM Audit space created with indexes')
+
+-- ============================================================================
 -- CLEANUP FUNCTIONS
 -- ============================================================================
 
@@ -200,7 +258,8 @@ function get_space_stats()
         cache = box.space.cache:len(),
         reports = box.space.reports:len(),
         threads = box.space.threads:len(),
-        persistent = box.space.persistent:len()
+        persistent = box.space.persistent:len(),
+        llm_audit = box.space.llm_audit:len()
     }
 end
 
@@ -701,11 +760,11 @@ end
 
 print('========================================')
 print('Tarantool initialization complete!')
-print('Spaces: cache, reports, threads, persistent')
+print('Spaces: cache, reports, threads, persistent, llm_audit')
 print('Background cleanup task: enabled')
 print('========================================')
 
 -- Print current stats
 local stats = get_space_stats()
-print(string.format('Current entries: cache=%d, reports=%d, threads=%d, persistent=%d',
-    stats.cache, stats.reports, stats.threads, stats.persistent))
+print(string.format('Current entries: cache=%d, reports=%d, threads=%d, persistent=%d, llm_audit=%d',
+    stats.cache, stats.reports, stats.threads, stats.persistent, stats.llm_audit))

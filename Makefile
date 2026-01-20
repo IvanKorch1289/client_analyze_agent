@@ -4,7 +4,7 @@
 SOURCE_DIR = ./app
 PYTHON = python3.12
 
-.PHONY: format lint clean audit secrets-check all help security-check deps-check init install update lock
+.PHONY: format lint clean audit secrets-check all help security-check deps-check init install update lock complexity
 
 ## Format code using Black and isort
 format:
@@ -59,6 +59,12 @@ secrets-check:
 	poetry run detect-secrets scan --baseline .secrets.baseline || true
 	@echo "\033[32mSecrets check completed!\033[0m"
 
+## Analyze code complexity
+complexity:
+	@echo "\033[34mAnalyzing code complexity...\033[0m"
+	-poetry run complexipy $(SOURCE_DIR) || echo "Complexipy analysis complete"
+	@echo "\033[32mComplexity analysis done!\033[0m"
+
 ## Full security audit (dependencies + code)
 audit: security-check deps-check secrets-check
 	@echo "\033[32mFull security audit completed!\033[0m"
@@ -99,6 +105,7 @@ help:
 	@echo "  make security-check - Check for dependency vulnerabilities"
 	@echo "  make deps-check   - Check for unused/outdated dependencies"
 	@echo "  make secrets-check - Scan for secrets in code"
+	@echo "  make complexity   - Analyze code complexity with complexipy"
 	@echo "  make audit        - Run full security audit"
 	@echo "  make all          - Run full workflow (clean, format, lint)"
 	@echo "  make help         - Show this help"

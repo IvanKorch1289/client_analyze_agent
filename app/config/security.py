@@ -74,6 +74,17 @@ class SecureSettings(BaseSettingsWithLoader):
     csp_enabled: bool = Field(default=False, description="Включить CSP")
     csp_directives: Optional[str] = Field(default=None, description="CSP directives")
 
+    # LLM Audit Logging (152-ФЗ compliance)
+    llm_audit_enabled: bool = Field(default=True, description="Включить аудит всех LLM запросов")
+    llm_audit_privacy_mode: str = Field(
+        default="hash_only",
+        description="Режим приватности: 'full' (dev), 'hash_only' (prod), 'minimal'",
+    )
+    llm_audit_retention_days: int = Field(
+        default=90,
+        description="Срок хранения audit логов (дни)",
+    )
+
     model_config = ConfigDict(env_prefix="SECURITY_")
 
 

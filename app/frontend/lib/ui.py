@@ -20,19 +20,19 @@ def safe_api_call(
 ) -> Generator[None, None, None]:
     """
     Context manager for safely wrapping API calls with error handling.
-    
+
     Usage:
         with safe_api_call("Загрузка данных"):
             result = api.get("/endpoint")
-    
+
     Args:
         operation_name: Human-readable name of the operation for error messages
         show_error: Whether to display st.error() on failure
         log_error: Whether to log the error for debugging
-    
+
     Yields:
         None - the wrapped code executes within the context
-    
+
     On exception:
         - Logs the error if log_error=True
         - Shows user-friendly error via st.error() if show_error=True
@@ -75,21 +75,22 @@ def safe_api_call_decorator(
 ) -> Callable[[Callable[..., T]], Callable[..., Optional[T]]]:
     """
     Decorator version of safe_api_call for wrapping functions.
-    
+
     Usage:
         @safe_api_call_decorator("Загрузка данных")
         def fetch_data():
             return api.get("/endpoint")
-    
+
     Args:
         operation_name: Human-readable name of the operation
         show_error: Whether to display st.error() on failure
         log_error: Whether to log the error for debugging
         default: Default value to return on failure (default: None)
-    
+
     Returns:
         Decorated function that handles exceptions gracefully
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., Optional[T]]:
         def wrapper(*args: Any, **kwargs: Any) -> Optional[T]:
             try:
@@ -118,7 +119,9 @@ def safe_api_call_decorator(
                 if show_error:
                     st.error(f"❌ Ошибка при выполнении: {operation_name}. Обратитесь к администратору.")
                 return default
+
         return wrapper
+
     return decorator
 
 
@@ -196,7 +199,7 @@ def progress_with_status(
 ) -> None:
     """
     Display a progress bar with status text and optional time estimate.
-    
+
     Args:
         steps: List of (step_name, progress_fraction) tuples
         current_step: Index of the current step (0-based)
@@ -204,11 +207,11 @@ def progress_with_status(
     """
     if not steps or current_step < 0:
         return
-    
+
     step_name, progress = steps[min(current_step, len(steps) - 1)]
-    
+
     st.progress(progress, text=step_name)
-    
+
     if estimated_seconds is not None and estimated_seconds > 0:
         if estimated_seconds >= 60:
             minutes = estimated_seconds // 60

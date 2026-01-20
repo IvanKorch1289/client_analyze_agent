@@ -7,6 +7,7 @@ from typing import NamedTuple, Optional, Tuple, Union
 
 class ValidationResult(NamedTuple):
     """Result of a validation operation."""
+
     is_valid: bool
     error_message: str
     field_name: Optional[str] = None
@@ -19,11 +20,11 @@ class ValidationResult(NamedTuple):
 def validate_inn(inn: str, *, required: bool = False) -> Tuple[bool, str]:
     """
     Validate Russian INN (ИНН).
-    
+
     Args:
         inn: The INN string to validate
         required: Whether the field is required
-    
+
     Returns:
         Tuple of (is_valid, error_message)
     """
@@ -38,17 +39,20 @@ def validate_inn(inn: str, *, required: bool = False) -> Tuple[bool, str]:
         return True, ""
     if len(inn) == 12:
         return True, ""
-    return False, "ИНН должен содержать 10 цифр для юридических лиц или 12 цифр для ИП/физических лиц"
+    return (
+        False,
+        "ИНН должен содержать 10 цифр для юридических лиц или 12 цифр для ИП/физических лиц",
+    )
 
 
 def validate_inn_extended(inn: str, *, required: bool = False) -> ValidationResult:
     """
     Extended INN validation with ValidationResult.
-    
+
     Args:
         inn: The INN string to validate
         required: Whether the field is required
-    
+
     Returns:
         ValidationResult with detailed information
     """
@@ -62,7 +66,7 @@ def validate_inn_extended(inn: str, *, required: bool = False) -> ValidationResu
                 suggestion="Введите 10-значный ИНН организации или 12-значный ИНН ИП/физлица",
             )
         return ValidationResult(is_valid=True, error_message="")
-    
+
     if not inn.isdigit():
         return ValidationResult(
             is_valid=False,
@@ -70,7 +74,7 @@ def validate_inn_extended(inn: str, *, required: bool = False) -> ValidationResu
             field_name="ИНН",
             suggestion="Удалите все буквы и специальные символы из ИНН",
         )
-    
+
     if len(inn) not in (10, 12):
         return ValidationResult(
             is_valid=False,
@@ -78,18 +82,18 @@ def validate_inn_extended(inn: str, *, required: bool = False) -> ValidationResu
             field_name="ИНН",
             suggestion="Для юридических лиц — 10 цифр, для ИП/физических лиц — 12 цифр",
         )
-    
+
     return ValidationResult(is_valid=True, error_message="", field_name="ИНН")
 
 
 def validate_client_name(name: str, *, required: bool = True) -> Tuple[bool, str]:
     """
     Validate client/company name.
-    
+
     Args:
         name: The company name to validate
         required: Whether the field is required
-    
+
     Returns:
         Tuple of (is_valid, error_message)
     """
@@ -108,11 +112,11 @@ def validate_client_name(name: str, *, required: bool = True) -> Tuple[bool, str
 def validate_client_name_extended(name: str, *, required: bool = True) -> ValidationResult:
     """
     Extended client name validation with ValidationResult.
-    
+
     Args:
         name: The company name to validate
         required: Whether the field is required
-    
+
     Returns:
         ValidationResult with detailed information
     """
@@ -126,7 +130,7 @@ def validate_client_name_extended(name: str, *, required: bool = True) -> Valida
                 suggestion='Введите полное название, например: ООО "Ромашка"',
             )
         return ValidationResult(is_valid=True, error_message="")
-    
+
     if len(name) < 2:
         return ValidationResult(
             is_valid=False,
@@ -134,7 +138,7 @@ def validate_client_name_extended(name: str, *, required: bool = True) -> Valida
             field_name="Название компании",
             suggestion="Название должно содержать минимум 2 символа",
         )
-    
+
     if len(name) > 200:
         return ValidationResult(
             is_valid=False,
@@ -142,18 +146,18 @@ def validate_client_name_extended(name: str, *, required: bool = True) -> Valida
             field_name="Название компании",
             suggestion="Сократите название до 200 символов или используйте аббревиатуру",
         )
-    
+
     return ValidationResult(is_valid=True, error_message="", field_name="Название компании")
 
 
 def validate_email(email: str, *, required: bool = False) -> Tuple[bool, str]:
     """
     Validate email address format.
-    
+
     Args:
         email: The email address to validate
         required: Whether the field is required
-    
+
     Returns:
         Tuple of (is_valid, error_message)
     """
@@ -162,25 +166,25 @@ def validate_email(email: str, *, required: bool = False) -> Tuple[bool, str]:
         if required:
             return False, "Email обязателен для заполнения"
         return True, ""
-    
-    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+
+    email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
     if not re.match(email_pattern, email):
         return False, "Некорректный формат email. Пример: user@example.com"
-    
+
     if len(email) > 254:
         return False, "Email слишком длинный (максимум 254 символа)"
-    
+
     return True, ""
 
 
 def validate_email_extended(email: str, *, required: bool = False) -> ValidationResult:
     """
     Extended email validation with ValidationResult.
-    
+
     Args:
         email: The email address to validate
         required: Whether the field is required
-    
+
     Returns:
         ValidationResult with detailed information
     """
@@ -194,8 +198,8 @@ def validate_email_extended(email: str, *, required: bool = False) -> Validation
                 suggestion="Введите корректный email адрес, например: contact@company.ru",
             )
         return ValidationResult(is_valid=True, error_message="")
-    
-    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+
+    email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
     if not re.match(email_pattern, email):
         if "@" not in email:
             return ValidationResult(
@@ -217,7 +221,7 @@ def validate_email_extended(email: str, *, required: bool = False) -> Validation
             field_name="Email",
             suggestion="Пример корректного email: user@example.com",
         )
-    
+
     if len(email) > 254:
         return ValidationResult(
             is_valid=False,
@@ -225,24 +229,24 @@ def validate_email_extended(email: str, *, required: bool = False) -> Validation
             field_name="Email",
             suggestion="Максимальная длина email — 254 символа",
         )
-    
+
     return ValidationResult(is_valid=True, error_message="", field_name="Email")
 
 
 def validate_phone(phone: str, *, required: bool = False) -> Tuple[bool, str]:
     """
     Validate Russian phone number format.
-    
+
     Accepts formats:
     - +7XXXXXXXXXX (11 digits with +7)
     - 8XXXXXXXXXX (11 digits with 8)
     - 7XXXXXXXXXX (11 digits with 7)
     - XXXXXXXXXX (10 digits, assumes +7)
-    
+
     Args:
         phone: The phone number to validate
         required: Whether the field is required
-    
+
     Returns:
         Tuple of (is_valid, error_message)
     """
@@ -251,28 +255,31 @@ def validate_phone(phone: str, *, required: bool = False) -> Tuple[bool, str]:
         if required:
             return False, "Номер телефона обязателен для заполнения"
         return True, ""
-    
+
     digits = re.sub(r"[^\d]", "", phone)
-    
+
     if len(digits) == 10:
         return True, ""
-    
+
     if len(digits) == 11:
         if digits[0] in ("7", "8"):
             return True, ""
         return False, "Российский номер должен начинаться с 7 или 8"
-    
-    return False, "Номер телефона должен содержать 10 или 11 цифр. Пример: +7 (999) 123-45-67"
+
+    return (
+        False,
+        "Номер телефона должен содержать 10 или 11 цифр. Пример: +7 (999) 123-45-67",
+    )
 
 
 def validate_phone_extended(phone: str, *, required: bool = False) -> ValidationResult:
     """
     Extended Russian phone validation with ValidationResult.
-    
+
     Args:
         phone: The phone number to validate
         required: Whether the field is required
-    
+
     Returns:
         ValidationResult with detailed information
     """
@@ -286,9 +293,9 @@ def validate_phone_extended(phone: str, *, required: bool = False) -> Validation
                 suggestion="Введите номер в формате +7 (XXX) XXX-XX-XX",
             )
         return ValidationResult(is_valid=True, error_message="")
-    
+
     digits = re.sub(r"[^\d]", "", phone)
-    
+
     if len(digits) < 10:
         return ValidationResult(
             is_valid=False,
@@ -296,7 +303,7 @@ def validate_phone_extended(phone: str, *, required: bool = False) -> Validation
             field_name="Телефон",
             suggestion="Российский номер должен содержать 10-11 цифр",
         )
-    
+
     if len(digits) > 11:
         return ValidationResult(
             is_valid=False,
@@ -304,7 +311,7 @@ def validate_phone_extended(phone: str, *, required: bool = False) -> Validation
             field_name="Телефон",
             suggestion="Проверьте номер — возможно, введены лишние цифры",
         )
-    
+
     if len(digits) == 11 and digits[0] not in ("7", "8"):
         return ValidationResult(
             is_valid=False,
@@ -312,7 +319,7 @@ def validate_phone_extended(phone: str, *, required: bool = False) -> Validation
             field_name="Телефон",
             suggestion="Замените первую цифру на 7 или 8",
         )
-    
+
     return ValidationResult(is_valid=True, error_message="", field_name="Телефон")
 
 
@@ -325,16 +332,17 @@ def validate_date_range(
 ) -> Tuple[bool, str]:
     """
     Validate a date range.
-    
+
     Args:
         start: Start date (date, datetime, or ISO string)
         end: End date (date, datetime, or ISO string)
         max_days: Maximum allowed days between start and end
         allow_same_day: Whether start == end is allowed
-    
+
     Returns:
         Tuple of (is_valid, error_message)
     """
+
     def to_date(d: Optional[Union[date, datetime, str]]) -> Optional[date]:
         if d is None:
             return None
@@ -348,30 +356,33 @@ def validate_date_range(
             except ValueError:
                 return None
         return None
-    
+
     start_date = to_date(start)
     end_date = to_date(end)
-    
+
     if start_date is None and end_date is None:
         return True, ""
-    
+
     if start_date is None:
         return False, "Дата начала периода не указана"
-    
+
     if end_date is None:
         return False, "Дата окончания периода не указана"
-    
+
     if not allow_same_day and start_date == end_date:
         return False, "Дата начала и окончания не могут совпадать"
-    
+
     if start_date > end_date:
         return False, "Дата начала не может быть позже даты окончания"
-    
+
     if max_days is not None:
         delta = (end_date - start_date).days
         if delta > max_days:
-            return False, f"Период не может превышать {max_days} дней (выбрано: {delta} дней)"
-    
+            return (
+                False,
+                f"Период не может превышать {max_days} дней (выбрано: {delta} дней)",
+            )
+
     return True, ""
 
 
@@ -385,17 +396,18 @@ def validate_date_range_extended(
 ) -> ValidationResult:
     """
     Extended date range validation with ValidationResult.
-    
+
     Args:
         start: Start date
         end: End date
         max_days: Maximum allowed days between start and end
         allow_same_day: Whether start == end is allowed
         field_name: Name of the field for error messages
-    
+
     Returns:
         ValidationResult with detailed information
     """
+
     def to_date(d: Optional[Union[date, datetime, str]]) -> Optional[date]:
         if d is None:
             return None
@@ -409,13 +421,13 @@ def validate_date_range_extended(
             except ValueError:
                 return None
         return None
-    
+
     start_date = to_date(start)
     end_date = to_date(end)
-    
+
     if start_date is None and end_date is None:
         return ValidationResult(is_valid=True, error_message="")
-    
+
     if start_date is None:
         return ValidationResult(
             is_valid=False,
@@ -423,7 +435,7 @@ def validate_date_range_extended(
             field_name=field_name,
             suggestion="Выберите дату начала периода",
         )
-    
+
     if end_date is None:
         return ValidationResult(
             is_valid=False,
@@ -431,7 +443,7 @@ def validate_date_range_extended(
             field_name=field_name,
             suggestion="Выберите дату окончания периода",
         )
-    
+
     if not allow_same_day and start_date == end_date:
         return ValidationResult(
             is_valid=False,
@@ -439,7 +451,7 @@ def validate_date_range_extended(
             field_name=field_name,
             suggestion="Выберите разные даты для начала и окончания периода",
         )
-    
+
     if start_date > end_date:
         return ValidationResult(
             is_valid=False,
@@ -447,7 +459,7 @@ def validate_date_range_extended(
             field_name=field_name,
             suggestion="Поменяйте местами даты начала и окончания",
         )
-    
+
     if max_days is not None:
         delta = (end_date - start_date).days
         if delta > max_days:
@@ -457,5 +469,5 @@ def validate_date_range_extended(
                 field_name=field_name,
                 suggestion=f"Выбран период в {delta} дней. Сократите период до {max_days} дней",
             )
-    
+
     return ValidationResult(is_valid=True, error_message="", field_name=field_name)

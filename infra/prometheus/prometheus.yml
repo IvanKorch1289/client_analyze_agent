@@ -1,0 +1,65 @@
+# Prometheus Configuration for Client Analysis Agent
+# Documentation: https://prometheus.io/docs/prometheus/latest/configuration/configuration/
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'client-analysis-agent'
+    environment: 'development'
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Rule files for alerts
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # FastAPI backend - standard HTTP metrics (via prometheus_fastapi_instrumentator)
+  - job_name: 'fastapi'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['app:8000']
+        labels:
+          service: 'fastapi'
+          component: 'backend'
+
+  # FastAPI backend - custom application metrics (LLM, cache, analysis)
+  - job_name: 'fastapi-custom'
+    metrics_path: '/metrics/custom'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['app:8000']
+        labels:
+          service: 'fastapi'
+          component: 'application'
+
+  # Jay Guard proxy metrics
+  - job_name: 'jayguard'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['jayguard:8090']
+        labels:
+          service: 'jayguard'
+          component: 'pii-proxy'
+
+  # RabbitMQ metrics (requires prometheus plugin enabled)
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['rabbitmq:15692']
+        labels:
+          service: 'rabbitmq'
+          component: 'message-broker'

@@ -29,7 +29,7 @@ except ImportError:
 # Конфигурация
 MAX_PAGE_CONTENT_LENGTH = 10000  # 10k символов на страницу
 SCRAPE_TIMEOUT_SECONDS = 15  # Таймаут на одну страницу
-MAX_CONCURRENT_SCRAPES = 3  # Максимум параллельных запросов
+MAX_CONCURRENT_SCRAPES = 5  # Максимум параллельных запросов (было 3, увеличено до 5)
 USER_AGENT = "Mozilla/5.0 (compatible; AnalyzeAgent/1.0; +https://example.com/bot)"
 
 
