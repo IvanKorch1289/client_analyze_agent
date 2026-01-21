@@ -3,15 +3,20 @@ Utility decorators для приложения.
 
 Включает:
 - cache_with_tarantool - кэширование через TarantoolClient
-- async_retry - повторные попытки при ошибках
+- retry - повторные попытки при ошибках (реэкспорт из shared.decorators)
+
+NOTE: async_retry удалён в Sprint 10.2. Используйте `retry` из app.shared.decorators,
+который поддерживает и sync, и async функции автоматически.
 """
 
-import asyncio
 import hashlib
 from functools import wraps
 from typing import Any, Callable, Optional, TypeVar
 
 from app.utility.logging_client import logger
+
+# Re-export retry from canonical source (supports both sync and async)
+from app.shared.decorators import retry, RetryExhausted
 
 T = TypeVar("T")
 
@@ -127,72 +132,8 @@ def cache_with_tarantool(
     return decorator
 
 
-def async_retry(
-    max_attempts: int = 3,
-    delay: float = 1.0,
-    backoff: float = 2.0,
-    exceptions: tuple = (Exception,),
-):
-    """
-    Декоратор для повторных попыток выполнения асинхронных функций при ошибках.
-
-    Args:
-        max_attempts: Максимальное количество попыток (default: 3)
-        delay: Начальная задержка между попытками в секундах (default: 1.0)
-        backoff: Множитель для увеличения задержки (default: 2.0)
-        exceptions: Кортеж исключений для retry (default: (Exception,))
-
-    Returns:
-        Декорированная функция с retry логикой
-
-    Example:
-        @async_retry(max_attempts=3, delay=1.0, exceptions=(httpx.TimeoutError,))
-        async def fetch_api_data(url: str):
-            return await http_client.get(url)
-    """
-
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        async def wrapper(*args, **kwargs) -> Any:
-            last_exception = None
-            current_delay = delay
-
-            for attempt in range(1, max_attempts + 1):
-                try:
-                    return await func(*args, **kwargs)
-
-                except exceptions as e:
-                    last_exception = e
-
-                    if attempt == max_attempts:
-                        logger.error(
-                            f"All {max_attempts} attempts failed for {func.__name__}",
-                            component="retry_decorator",
-                            exc_info=True,
-                        )
-                        raise
-
-                    logger.warning(
-                        f"Attempt {attempt}/{max_attempts} failed for {func.__name__}: {e}. "
-                        f"Retrying in {current_delay}s...",
-                        component="retry_decorator",
-                    )
-
-                    await asyncio.sleep(current_delay)
-                    current_delay *= backoff
-
-            # Не должно сюда попасть, но на случай
-            if last_exception:
-                raise last_exception
-
-            return await func(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
 __all__ = [
     "cache_with_tarantool",
-    "async_retry",
+    "retry",  # Re-exported from app.shared.decorators
+    "RetryExhausted",  # Exception raised when all retries exhausted
 ]
