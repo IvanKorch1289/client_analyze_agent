@@ -71,8 +71,11 @@ class SecureSettings(BaseSettingsWithLoader):
     hsts_max_age: int = Field(default=31536000, description="HSTS max-age (секунды)")
 
     # Content Security Policy
-    csp_enabled: bool = Field(default=False, description="Включить CSP")
-    csp_directives: Optional[str] = Field(default=None, description="CSP directives")
+    csp_enabled: bool = Field(default=True, description="Включить CSP")
+    csp_directives: Optional[str] = Field(
+        default="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'",
+        description="CSP directives",
+    )
 
     # LLM Audit Logging (152-ФЗ compliance)
     llm_audit_enabled: bool = Field(default=True, description="Включить аудит всех LLM запросов")

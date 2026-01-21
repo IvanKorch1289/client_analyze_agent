@@ -84,6 +84,11 @@ async def lifespan(app: FastAPI):
     """
     logger.info("Инициализация приложения...")
 
+    # Security check on startup (warns if ADMIN_TOKEN is weak/missing)
+    from app.shared.toolkit.auth import check_security_on_startup
+
+    check_security_on_startup()
+
     # Инициализируем OpenTelemetry
     init_telemetry()
     logger.info("OpenTelemetry инициализирован")
