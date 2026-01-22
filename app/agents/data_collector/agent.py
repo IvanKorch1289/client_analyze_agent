@@ -114,9 +114,7 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def _collect_registry_sources(
-    inn: str, early_inn_tasks: Dict[str, asyncio.Task]
-) -> List[Any]:
+async def _collect_registry_sources(inn: str, early_inn_tasks: Dict[str, asyncio.Task]) -> List[Any]:
     """Collect data from registry sources (DaData, InfoSphere, Casebook)."""
     if not inn or not inn.isdigit() or len(inn) not in (10, 12):
         return []
@@ -149,16 +147,11 @@ async def _collect_registry_sources(
     return await asyncio.gather(*inn_tasks, return_exceptions=True)
 
 
-def _prepare_intents(
-    search_intents: List[Any], client_name: str
-) -> List[Dict[str, str]]:
+def _prepare_intents(search_intents: List[Any], client_name: str) -> List[Dict[str, str]]:
     """Prepare and validate search intents."""
     intents: List[Dict[str, str]] = []
     if isinstance(search_intents, list) and search_intents:
-        intents = [
-            i for i in search_intents
-            if isinstance(i, dict) and i.get("id") and i.get("query")
-        ]
+        intents = [i for i in search_intents if isinstance(i, dict) and i.get("id") and i.get("query")]
     if not intents:
         intents = [
             {
@@ -170,9 +163,7 @@ def _prepare_intents(
     return intents
 
 
-async def _collect_web_sources(
-    intents: List[Dict[str, str]], client_name: str, inn: str
-) -> List[Any]:
+async def _collect_web_sources(intents: List[Dict[str, str]], client_name: str, inn: str) -> List[Any]:
     """Collect data from web sources (Perplexity, Tavily)."""
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
 
@@ -184,12 +175,8 @@ async def _collect_web_sources(
     for intent in intents:
         intent_id = str(intent.get("id"))
         query = str(intent.get("query") or client_name)
-        web_tasks.append(
-            asyncio.create_task(_bounded(fetch_perplexity(intent_id, query, client_name, inn)))
-        )
-        web_tasks.append(
-            asyncio.create_task(_bounded(fetch_tavily(intent_id, query, client_name, inn)))
-        )
+        web_tasks.append(asyncio.create_task(_bounded(fetch_perplexity(intent_id, query, client_name, inn))))
+        web_tasks.append(asyncio.create_task(_bounded(fetch_tavily(intent_id, query, client_name, inn))))
 
     if not web_tasks:
         return []
@@ -242,10 +229,7 @@ def _organize_source_data(results: List[Any]) -> Dict[str, Any]:
                     container["successful_intents"] = int(container.get("successful_intents", 0)) + 1
                     container["success"] = True
                 else:
-                    container.setdefault("errors", []).append({
-                        "intent_id": intent_id,
-                        "error": result.get("error")
-                    })
+                    container.setdefault("errors", []).append({"intent_id": intent_id, "error": result.get("error")})
                     container["failed_intents"] = int(container.get("failed_intents", 0)) + 1
 
     return source_data

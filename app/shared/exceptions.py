@@ -172,7 +172,13 @@ class RateLimitError(APIError):
             details: Additional context
             original_error: Original exception
         """
-        super().__init__(message, status_code=429, api_name=api_name, details=details, original_error=original_error)
+        super().__init__(
+            message,
+            status_code=429,
+            api_name=api_name,
+            details=details,
+            original_error=original_error,
+        )
         self.retry_after = retry_after
 
 

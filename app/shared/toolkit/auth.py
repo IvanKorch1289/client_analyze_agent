@@ -55,11 +55,17 @@ def validate_admin_token_security() -> Tuple[bool, str]:
 
     # Check 2: Token is not weak/default
     if token.lower() in _WEAK_TOKENS:
-        return False, f"ADMIN_TOKEN is using a weak/default value. Change it immediately!"
+        return (
+            False,
+            "ADMIN_TOKEN is using a weak/default value. Change it immediately!",
+        )
 
     # Check 3: Token length (minimum 32 characters for security)
     if len(token) < 32:
-        return False, f"ADMIN_TOKEN is only {len(token)} characters. Minimum 32 recommended for production."
+        return (
+            False,
+            f"ADMIN_TOKEN is only {len(token)} characters. Minimum 32 recommended for production.",
+        )
 
     return True, "ADMIN_TOKEN security check passed"
 
@@ -81,11 +87,11 @@ def check_security_on_startup() -> None:
     if not is_secure:
         # Use warnings module for visibility
         warnings.warn(
-            f"\n{'='*60}\n"
+            f"\n{'=' * 60}\n"
             f"⚠️  SECURITY WARNING: {message}\n"
             f"Set a strong ADMIN_TOKEN (32+ random characters) in .env\n"
-            f"Generate with: python -c \"import secrets; print(secrets.token_hex(32))\"\n"
-            f"{'='*60}\n",
+            f'Generate with: python -c "import secrets; print(secrets.token_hex(32))"\n'
+            f"{'=' * 60}\n",
             UserWarning,
             stacklevel=2,
         )

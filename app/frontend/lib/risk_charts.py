@@ -15,17 +15,17 @@ import streamlit as st
 
 # Цветовая схема для уровней риска
 RISK_COLORS = {
-    "low": "#28a745",       # Зелёный
-    "medium": "#ffc107",    # Жёлтый
-    "high": "#fd7e14",      # Оранжевый
+    "low": "#28a745",  # Зелёный
+    "medium": "#ffc107",  # Жёлтый
+    "high": "#fd7e14",  # Оранжевый
     "critical": "#dc3545",  # Красный
 }
 
 # Цвета для gauge зон
 GAUGE_STEPS = [
-    {"range": [0, 25], "color": "#d4edda"},    # Светло-зелёный (low)
-    {"range": [25, 50], "color": "#fff3cd"},   # Светло-жёлтый (medium)
-    {"range": [50, 75], "color": "#ffe5d0"},   # Светло-оранжевый (high)
+    {"range": [0, 25], "color": "#d4edda"},  # Светло-зелёный (low)
+    {"range": [25, 50], "color": "#fff3cd"},  # Светло-жёлтый (medium)
+    {"range": [50, 75], "color": "#ffe5d0"},  # Светло-оранжевый (high)
     {"range": [75, 100], "color": "#f8d7da"},  # Светло-красный (critical)
 ]
 
@@ -211,11 +211,7 @@ def render_risk_categories_bar(
         else:
             colors.append(RISK_COLORS["low"])
 
-        hover_texts.append(
-            f"<b>{cat_info['name']}</b><br>"
-            f"Баллы: {normalized_score}/{max_score}<br>"
-            f"Вес: {weight_pct}%"
-        )
+        hover_texts.append(f"<b>{cat_info['name']}</b><br>Баллы: {normalized_score}/{max_score}<br>Вес: {weight_pct}%")
 
     # Создание графика
     fig = go.Figure()
@@ -362,7 +358,7 @@ def render_risk_summary(
         show_factors_chart: Показывать ли pie chart факторов
     """
     score = risk_assessment.get("score", 0)
-    level = risk_assessment.get("level", get_risk_level(score))
+    _level = risk_assessment.get("level", get_risk_level(score))  # noqa: F841
     factors = risk_assessment.get("factors", [])
     categories = risk_assessment.get("categories", {})
 

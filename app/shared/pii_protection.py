@@ -343,9 +343,7 @@ def mask_pii(
     # Analyze text
     # Use "ru" for Russian recognizers, they support multiple languages
     # score_threshold=0.5 filters out low-confidence matches
-    results = analyzer.analyze(
-        text=text, language=language, entities=entities_to_detect, score_threshold=0.5
-    )
+    results = analyzer.analyze(text=text, language=language, entities=entities_to_detect, score_threshold=0.5)
 
     if not results:
         return PIIMaskingResult(

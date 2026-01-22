@@ -212,7 +212,7 @@ async def _run_streaming_analysis(
         early_inn_tasks = {}
         if inn and inn.isdigit() and len(inn) in (10, 12):
             logger.info(
-                f"Workflow: starting early INN fetch (InfoSphere + Casebook) in parallel with orchestrator",
+                "Workflow: starting early INN fetch (InfoSphere + Casebook) in parallel with orchestrator",
                 component="workflow",
             )
             early_inn_tasks = {

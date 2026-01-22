@@ -36,9 +36,7 @@ from app.shared.utils.formatters import truncate
 from app.utility.logging_client import logger
 
 
-async def fetch_perplexity(
-    intent_id: str, query: str, client_name: str, inn: str = ""
-) -> PerplexityResult:
+async def fetch_perplexity(intent_id: str, query: str, client_name: str, inn: str = "") -> PerplexityResult:
     """Запрос к Perplexity AI с recency=year."""
     client = PerplexityClient.get_instance()
     if not client.is_configured():
@@ -65,8 +63,7 @@ async def fetch_perplexity(
 Период поиска: ПОСЛЕДНИЙ ГОД (актуальная информация)."""
 
         system_prompt = (
-            "Глубокий анализ за последний год. Ищи 20+ источников. "
-            "Только проверяемые факты. Пиши по-русски."
+            "Глубокий анализ за последний год. Ищи 20+ источников. Только проверяемые факты. Пиши по-русски."
         )
         result = await asyncio.wait_for(
             client.ask(
@@ -158,9 +155,7 @@ async def cascade_perplexity_analysis(
         return {"success": False, "error": str(e)}
 
 
-async def fetch_tavily(
-    intent_id: str, query: str, client_name: str, inn: str = ""
-) -> TavilyResult:
+async def fetch_tavily(intent_id: str, query: str, client_name: str, inn: str = "") -> TavilyResult:
     """Запрос к Tavily Search с time_range=year."""
     client = TavilyClient.get_instance()
     if not client.is_configured():

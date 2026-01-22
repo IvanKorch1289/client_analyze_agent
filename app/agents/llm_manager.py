@@ -18,7 +18,7 @@ import asyncio
 import threading
 import time
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from app.config import settings
 from app.utility.logging_client import logger
@@ -369,9 +369,7 @@ class LLMManager:
     # HELPER METHODS for ainvoke() - extracted for lower complexity
     # ============================================================
 
-    async def _try_cache_lookup(
-        self, prompt: str, start_time: float, **kwargs
-    ) -> Optional[str]:
+    async def _try_cache_lookup(self, prompt: str, start_time: float, **kwargs) -> Optional[str]:
         """
         Try to get response from LLM cache.
 
@@ -397,7 +395,10 @@ class LLMManager:
                 # Log cache hit to audit
                 if settings.secure.llm_audit_enabled:
                     await self._log_cache_hit_audit(
-                        prompt, cache_result.response, cache_result.cache_key, total_duration_ms
+                        prompt,
+                        cache_result.response,
+                        cache_result.cache_key,
+                        total_duration_ms,
                     )
 
                 return cache_result.response
@@ -406,9 +407,7 @@ class LLMManager:
 
         return None
 
-    async def _log_cache_hit_audit(
-        self, prompt: str, response: str, cache_key: str, duration_ms: int
-    ) -> None:
+    async def _log_cache_hit_audit(self, prompt: str, response: str, cache_key: str, duration_ms: int) -> None:
         """Log cache hit to audit trail."""
         try:
             audit = _get_llm_audit()
@@ -477,14 +476,17 @@ class LLMManager:
                 logger.info(f"Attempting LLM call with {provider}", component="llm_manager")
                 provider_start = time.perf_counter()
 
-                response_text = await self.ainvoke_with_provider(
-                    prompt=masked_prompt, provider=provider, **kwargs
-                )
+                response_text = await self.ainvoke_with_provider(prompt=masked_prompt, provider=provider, **kwargs)
 
                 provider_duration = time.perf_counter() - provider_start
                 self._log_provider_success(
-                    provider, masked_prompt, response_text, provider_duration,
-                    start_time, attempts, pii_result
+                    provider,
+                    masked_prompt,
+                    response_text,
+                    provider_duration,
+                    start_time,
+                    attempts,
+                    pii_result,
                 )
 
                 self._provider_status[provider] = True
@@ -500,13 +502,20 @@ class LLMManager:
         return False, response_text, used_provider, attempts, last_error
 
     def _log_provider_success(
-        self, provider: "LLMProvider", prompt: str, response: str,
-        provider_duration: float, start_time: float, attempts: int, pii_result: Optional[Any]
+        self,
+        provider: "LLMProvider",
+        prompt: str,
+        response: str,
+        provider_duration: float,
+        start_time: float,
+        attempts: int,
+        pii_result: Optional[Any],
     ) -> None:
         """Log successful provider call."""
         total_duration = time.perf_counter() - start_time
         logger.structured(
-            "info", "llm_success",
+            "info",
+            "llm_success",
             component="llm_manager",
             provider=provider.value,
             prompt_length=len(prompt),
@@ -523,9 +532,7 @@ class LLMManager:
         if prom and prom.enabled:
             prom.record_llm_request(provider=provider.value, success=True, latency=provider_duration)
 
-    def _record_provider_failure(
-        self, provider: "LLMProvider", provider_start: float, attempts: int
-    ) -> None:
+    def _record_provider_failure(self, provider: "LLMProvider", provider_start: float, attempts: int) -> None:
         """Record provider failure in metrics."""
         prom = _get_metrics()
         if prom and prom.enabled:
@@ -552,9 +559,16 @@ class LLMManager:
             return response
 
     async def _log_llm_audit(
-        self, prompt: str, response: Optional[str], used_provider: Optional["LLMProvider"],
-        success: bool, start_time: float, attempts: int, last_error: Optional[Exception],
-        pii_result: Optional[Any], **kwargs
+        self,
+        prompt: str,
+        response: Optional[str],
+        used_provider: Optional["LLMProvider"],
+        success: bool,
+        start_time: float,
+        attempts: int,
+        last_error: Optional[Exception],
+        pii_result: Optional[Any],
+        **kwargs,
     ) -> None:
         """Log LLM call to audit trail."""
         if not settings.secure.llm_audit_enabled:
@@ -567,7 +581,7 @@ class LLMManager:
 
             await audit_logger.log_llm_call(
                 provider=used_provider.value if used_provider else "unknown",
-                model=self._get_model_name(used_provider) if used_provider else "unknown",
+                model=(self._get_model_name(used_provider) if used_provider else "unknown"),
                 operation="ainvoke",
                 prompt=prompt,
                 response=response if success else None,
@@ -579,13 +593,20 @@ class LLMManager:
                 temperature=kwargs.get("temperature"),
                 max_tokens=kwargs.get("max_tokens"),
                 fallback_used=(used_provider != LLMProvider.OPENROUTER if used_provider else False),
-                metadata={"attempts": attempts, "prompt_masked": bool(pii_result and pii_result.pii_detected)},
+                metadata={
+                    "attempts": attempts,
+                    "prompt_masked": bool(pii_result and pii_result.pii_detected),
+                },
             )
         except Exception as e:
             logger.error(f"Audit logging failed: {e}", component="llm_manager")
 
     async def _save_to_cache(
-        self, prompt: str, response: str, used_provider: Optional["LLMProvider"], **kwargs
+        self,
+        prompt: str,
+        response: str,
+        used_provider: Optional["LLMProvider"],
+        **kwargs,
     ) -> None:
         """Save successful response to cache."""
         try:
@@ -659,8 +680,15 @@ class LLMManager:
 
         # Step 5: Log to audit trail
         await self._log_llm_audit(
-            prompt, final_response, used_provider, success, start_time,
-            attempts, last_error, pii_result, **kwargs
+            prompt,
+            final_response,
+            used_provider,
+            success,
+            start_time,
+            attempts,
+            last_error,
+            pii_result,
+            **kwargs,
         )
 
         # Step 6: Save to cache

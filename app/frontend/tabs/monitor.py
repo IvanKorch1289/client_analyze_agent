@@ -282,7 +282,9 @@ def _render_llm_statistics(api: ApiClient, admin_token: str) -> None:
 
     # Предупреждения
     if cache_hit_rate < 20 and total_calls > 10:
-        st.warning(f"⚠️ Низкий процент попаданий в кэш ({cache_hit_rate:.1f}%). Рассмотрите возможность увеличения TTL кэша.")
+        st.warning(
+            f"⚠️ Низкий процент попаданий в кэш ({cache_hit_rate:.1f}%). Рассмотрите возможность увеличения TTL кэша."
+        )
 
     if failed_calls / total_calls > 0.1 if total_calls > 0 else False:
         st.error(

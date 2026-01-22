@@ -65,31 +65,31 @@ class SentimentResult(TypedDict):
 # ============================================================
 
 
-class DaDataResult(TypedDict):
+class DaDataResult(TypedDict, total=False):
     """DaData API response structure."""
 
     source: Literal["dadata"]
     success: bool
-    data: Optional[Dict[str, Any]]
-    error: Optional[str]
+    data: Dict[str, Any]
+    error: str
 
 
-class CasebookResult(TypedDict):
+class CasebookResult(TypedDict, total=False):
     """Casebook API response structure."""
 
     source: Literal["casebook"]
     success: bool
-    data: Optional[List[Dict[str, Any]]]
-    error: Optional[str]
+    data: List[Dict[str, Any]]
+    error: str
 
 
-class InfoSphereResult(TypedDict):
+class InfoSphereResult(TypedDict, total=False):
     """InfoSphere API response structure."""
 
     source: Literal["infosphere"]
     success: bool
-    data: Optional[Dict[str, Any]]
-    error: Optional[str]
+    data: Dict[str, Any]
+    error: str
 
 
 class PerplexityResult(TypedDict, total=False):

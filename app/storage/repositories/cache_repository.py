@@ -11,7 +11,6 @@ Cache Repository - управление кешем в Tarantool.
 import time
 from typing import Any, Dict, List, Optional
 
-from app.shared.exceptions import StorageError
 from app.storage.repositories import BaseRepository
 from app.utility.logging_client import logger
 

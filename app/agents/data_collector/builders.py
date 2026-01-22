@@ -11,9 +11,7 @@ from app.config import MAX_CONTENT_LENGTH
 from app.shared.utils.formatters import truncate
 
 
-def build_search_results(
-    source_data: Dict[str, Any], intents: List[Dict[str, str]]
-) -> List[Dict[str, Any]]:
+def build_search_results(source_data: Dict[str, Any], intents: List[Dict[str, str]]) -> List[Dict[str, Any]]:
     """Собирает единый массив search_results для report_analyzer."""
     search_results = []
 

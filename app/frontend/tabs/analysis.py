@@ -565,7 +565,12 @@ def _render_report_details(api: ApiClient, opened: Dict[str, Any], selected_repo
                         severity = f.get("severity", "")
                         description = f.get("description", str(f))
                         category = f.get("category", "")
-                        emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}.get(severity, "⚪")
+                        emoji = {
+                            "critical": "🔴",
+                            "high": "🟠",
+                            "medium": "🟡",
+                            "low": "🟢",
+                        }.get(severity, "⚪")
                         st.write(f"{emoji} **[{category}]** {description}")
                     else:
                         st.write(f"- {f}")

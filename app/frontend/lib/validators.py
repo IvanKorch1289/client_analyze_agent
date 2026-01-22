@@ -14,7 +14,6 @@ from typing import NamedTuple, Optional, Tuple, Union
 
 # Import canonical validate_inn from shared module - single source of truth
 from app.shared.security import (
-    validate_inn,
     validate_inn_extended as _validate_inn_extended_internal,
 )
 
@@ -268,9 +267,7 @@ def validate_date_range(
     Returns:
         Tuple of (is_valid, error_message)
     """
-    result = validate_date_range_extended(
-        start, end, max_days=max_days, allow_same_day=allow_same_day
-    )
+    result = validate_date_range_extended(start, end, max_days=max_days, allow_same_day=allow_same_day)
     return result.is_valid, result.error_message
 
 
