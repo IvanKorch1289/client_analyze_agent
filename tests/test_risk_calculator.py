@@ -44,7 +44,7 @@ class TestRiskScoreCalculator:
 
         # Should have factor for missing financial data
         assert any("недоступны" in f.description for f in factors)
-        assert score >= 10  # At least penalty for missing data
+        assert score >= 9  # At least penalty for missing data (normalized: 10/105*100=9.5)
 
     def test_score_bounded_0_to_100(self):
         """Score should always be in 0-100 range."""
