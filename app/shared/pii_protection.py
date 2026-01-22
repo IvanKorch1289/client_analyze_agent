@@ -210,8 +210,18 @@ def get_analyzer():
     global _analyzer
     if _analyzer is None:
         from presidio_analyzer import AnalyzerEngine
+        from presidio_analyzer.nlp_engine import NlpEngineProvider
 
-        _analyzer = AnalyzerEngine()
+        # Configure NLP engine to support both Russian and English
+        configuration = {
+            "nlp_engine_name": "spacy",
+            "models": [
+                {"lang_code": "ru", "model_name": "ru_core_news_sm"},
+                {"lang_code": "en", "model_name": "en_core_web_sm"},
+            ],
+        }
+        nlp_engine = NlpEngineProvider(nlp_configuration=configuration).create_engine()
+        _analyzer = AnalyzerEngine(nlp_engine=nlp_engine, supported_languages=["ru", "en"])
         _register_russian_recognizers(_analyzer)
 
     return _analyzer
