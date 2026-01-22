@@ -53,6 +53,23 @@ def validate_inn_extended(inn: str, *, required: bool = False) -> ValidationResu
     )
 
 
+def validate_inn(inn: str, *, required: bool = False) -> Tuple[bool, str]:
+    """
+    Validate Russian INN (simple wrapper).
+
+    This is a wrapper around validate_inn_extended that returns a simple tuple.
+
+    Args:
+        inn: The INN string to validate
+        required: Whether the field is required
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    result = validate_inn_extended(inn, required=required)
+    return result.is_valid, result.error_message
+
+
 def validate_client_name_extended(name: str, *, required: bool = True) -> ValidationResult:
     """
     Extended client name validation with ValidationResult.
