@@ -11,7 +11,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, patch, MagicMock
 from io import BytesIO, StringIO
 
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 
 # ============================================================================
@@ -354,12 +354,12 @@ class TestExcelExport:
     @pytest.mark.asyncio
     async def test_excel_export_success(self, sample_report):
         """Excel export should return xlsx file."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.api.routes.export._get_report", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = sample_report
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/export/report-123/excel")
 
             if response.status_code == 200:
@@ -376,12 +376,12 @@ class TestExcelExport:
     @pytest.mark.asyncio
     async def test_excel_export_not_found(self):
         """Excel export should return 404 for missing report."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.api.routes.export._get_report", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = None
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/export/nonexistent/excel")
 
             assert response.status_code == 404
@@ -389,14 +389,14 @@ class TestExcelExport:
     @pytest.mark.asyncio
     async def test_excel_export_missing_pandas(self, sample_report):
         """Excel export should handle missing pandas gracefully."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.api.routes.export._get_report", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = sample_report
 
             # Simulate pandas import error
             with patch.dict("sys.modules", {"pandas": None}):
-                async with AsyncClient(app=app, base_url="http://test") as client:
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                     response = await client.get("/export/report-123/excel")
 
                 # May return 500 if pandas not available
@@ -409,12 +409,12 @@ class TestWordExport:
     @pytest.mark.asyncio
     async def test_word_export_success(self, sample_report):
         """Word export should return docx file."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.api.routes.export._get_report", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = sample_report
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/export/report-123/word")
 
             if response.status_code == 200:
@@ -430,12 +430,12 @@ class TestWordExport:
     @pytest.mark.asyncio
     async def test_word_export_not_found(self):
         """Word export should return 404 for missing report."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.api.routes.export._get_report", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = None
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/export/nonexistent/word")
 
             assert response.status_code == 404
@@ -443,12 +443,12 @@ class TestWordExport:
     @pytest.mark.asyncio
     async def test_word_export_with_all_sections(self, sample_report):
         """Word export should include all report sections."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.api.routes.export._get_report", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = sample_report
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/export/report-123/word")
 
             # Just check it doesn't error - content is binary
@@ -461,7 +461,7 @@ class TestHistoryTimeline:
     @pytest.mark.asyncio
     async def test_history_timeline_success(self, multiple_reports):
         """History timeline should return analysis snapshots."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -470,7 +470,7 @@ class TestHistoryTimeline:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/export/history/7707083893")
 
             if response.status_code == 200:
@@ -480,7 +480,7 @@ class TestHistoryTimeline:
     @pytest.mark.asyncio
     async def test_history_timeline_empty(self):
         """History timeline should return empty list for unknown INN."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -489,7 +489,7 @@ class TestHistoryTimeline:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/export/history/0000000000")
 
             if response.status_code == 200:
@@ -499,7 +499,7 @@ class TestHistoryTimeline:
     @pytest.mark.asyncio
     async def test_history_timeline_limit(self):
         """History timeline should respect limit parameter."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -508,7 +508,7 @@ class TestHistoryTimeline:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/export/history/7707083893?limit=5")
 
             assert response.status_code in [200, 500]
@@ -525,7 +525,7 @@ class TestReportJsonCsvExport:
     @pytest.mark.asyncio
     async def test_export_json_format(self, sample_report):
         """JSON export should return valid JSON."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -534,7 +534,7 @@ class TestReportJsonCsvExport:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/reports/report-123/export?format=json")
 
             if response.status_code == 200:
@@ -546,7 +546,7 @@ class TestReportJsonCsvExport:
     @pytest.mark.asyncio
     async def test_export_csv_format(self, sample_report):
         """CSV export should return valid CSV."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -555,7 +555,7 @@ class TestReportJsonCsvExport:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/reports/report-123/export?format=csv")
 
             if response.status_code == 200:
@@ -566,7 +566,7 @@ class TestReportJsonCsvExport:
     @pytest.mark.asyncio
     async def test_export_default_format_is_json(self, sample_report):
         """Default export format should be JSON."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -575,7 +575,7 @@ class TestReportJsonCsvExport:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/reports/report-123/export")
 
             if response.status_code == 200:
@@ -584,7 +584,7 @@ class TestReportJsonCsvExport:
     @pytest.mark.asyncio
     async def test_export_report_not_found(self):
         """Export should return 404 for missing report."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -593,7 +593,7 @@ class TestReportJsonCsvExport:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/reports/nonexistent/export")
 
             assert response.status_code == 404
@@ -601,7 +601,7 @@ class TestReportJsonCsvExport:
     @pytest.mark.asyncio
     async def test_export_content_disposition(self, sample_report):
         """Export should set Content-Disposition header."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -610,7 +610,7 @@ class TestReportJsonCsvExport:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/reports/report-123/export?format=json")
 
             if response.status_code == 200:
@@ -625,7 +625,7 @@ class TestBulkExport:
     @pytest.mark.asyncio
     async def test_bulk_export_csv(self, multiple_reports):
         """Bulk export should create summary CSV."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -636,7 +636,7 @@ class TestBulkExport:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post(
                     "/reports/bulk-export?format=csv",
                     json={"report_ids": ["report-0", "report-1", "report-2"]},
@@ -651,7 +651,7 @@ class TestBulkExport:
     @pytest.mark.asyncio
     async def test_bulk_export_empty_list(self):
         """Bulk export with empty list should return 404 or error."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -660,7 +660,7 @@ class TestBulkExport:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post(
                     "/reports/bulk-export?format=csv",
                     json={"report_ids": ["nonexistent-1", "nonexistent-2"]},
@@ -672,7 +672,7 @@ class TestBulkExport:
     @pytest.mark.asyncio
     async def test_bulk_export_partial_success(self, sample_report):
         """Bulk export should handle partial availability."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         def get_report_mock(report_id):
             if report_id == "report-123":
@@ -686,7 +686,7 @@ class TestBulkExport:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post(
                     "/reports/bulk-export?format=csv",
                     json={"report_ids": ["report-123", "nonexistent"]},
@@ -838,7 +838,7 @@ class TestExportSecurityAndValidation:
     @pytest.mark.asyncio
     async def test_export_sanitizes_report_id(self):
         """Export should handle potentially malicious report IDs."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -847,7 +847,7 @@ class TestExportSecurityAndValidation:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 # Test path traversal attempt
                 response = await client.get("/reports/../../../etc/passwd/export")
 
@@ -857,12 +857,12 @@ class TestExportSecurityAndValidation:
     @pytest.mark.asyncio
     async def test_bulk_export_validates_limit(self):
         """Bulk export should validate list size."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         # Try to export too many reports (if there's a limit)
         many_ids = [f"report-{i}" for i in range(200)]
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
                 "/reports/bulk-export?format=csv",
                 json={"report_ids": many_ids},
@@ -928,7 +928,7 @@ class TestExportRouterExists:
     @pytest.mark.asyncio
     async def test_export_routes_exist(self):
         """Export router should be mounted with correct routes."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         routes = [route.path for route in app.routes]
 
@@ -939,7 +939,7 @@ class TestExportRouterExists:
     @pytest.mark.asyncio
     async def test_reports_export_route_exists(self):
         """Reports export route should exist."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         routes = [route.path for route in app.routes]
 

@@ -16,7 +16,7 @@ Tests for common security vulnerabilities:
 
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 
 # ============================================================================
@@ -30,7 +30,7 @@ class TestBrokenAccessControl:
     @pytest.mark.asyncio
     async def test_admin_endpoints_require_token(self):
         """Admin endpoints should require authentication."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         admin_endpoints = [
             "/admin/cache/clear",
@@ -39,7 +39,7 @@ class TestBrokenAccessControl:
             "/admin/audit/llm",
         ]
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             for endpoint in admin_endpoints:
                 # Without token
                 response = await client.get(endpoint)
@@ -59,7 +59,7 @@ class TestBrokenAccessControl:
     @pytest.mark.asyncio
     async def test_path_traversal_prevention(self):
         """Path traversal attacks should be blocked."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         traversal_payloads = [
             "../../../etc/passwd",
@@ -69,7 +69,7 @@ class TestBrokenAccessControl:
             "..\\..\\..\\etc\\passwd",
         ]
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             for payload in traversal_payloads:
                 response = await client.get(f"/reports/{payload}")
                 # Should return 404 or 422, not file contents
@@ -80,7 +80,7 @@ class TestBrokenAccessControl:
     @pytest.mark.asyncio
     async def test_idor_prevention(self):
         """IDOR attacks should not expose other users' data."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -90,7 +90,7 @@ class TestBrokenAccessControl:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 # Try to access report with sequential ID guessing
                 for i in range(1, 10):
                     response = await client.get(f"/reports/{i}")
@@ -100,7 +100,7 @@ class TestBrokenAccessControl:
     @pytest.mark.asyncio
     async def test_horizontal_privilege_escalation(self):
         """Users should not access other tenants' resources."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         # Test that INN validation prevents cross-tenant access
         invalid_inns = [
@@ -110,7 +110,7 @@ class TestBrokenAccessControl:
             "12345678901234",  # Too long
         ]
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             for inn in invalid_inns:
                 response = await client.get(f"/export/history/{inn}")
                 # Should validate INN or return empty
@@ -203,7 +203,7 @@ class TestInjection:
     @pytest.mark.asyncio
     async def test_sql_injection_prevention(self):
         """SQL injection payloads should not work."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         sql_payloads = [
             "'; DROP TABLE reports;--",
@@ -213,7 +213,7 @@ class TestInjection:
             "' OR 1=1--",
         ]
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             for payload in sql_payloads:
                 response = await client.get(f"/reports/{payload}")
                 # Should return 404 or 422, not execute SQL
@@ -226,7 +226,7 @@ class TestInjection:
     @pytest.mark.asyncio
     async def test_nosql_injection_prevention(self):
         """NoSQL injection payloads should not work."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         nosql_payloads = [
             '{"$gt": ""}',
@@ -235,7 +235,7 @@ class TestInjection:
             "[$ne]=1",
         ]
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             for payload in nosql_payloads:
                 response = await client.get(f"/reports/{payload}")
                 assert response.status_code in [404, 422, 400, 500]
@@ -243,7 +243,7 @@ class TestInjection:
     @pytest.mark.asyncio
     async def test_command_injection_prevention(self):
         """Command injection payloads should not execute."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         cmd_payloads = [
             "; ls -la",
@@ -253,7 +253,7 @@ class TestInjection:
             "&& echo pwned",
         ]
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             for payload in cmd_payloads:
                 response = await client.get(f"/reports/{payload}")
                 # Should not execute commands
@@ -264,7 +264,7 @@ class TestInjection:
     @pytest.mark.asyncio
     async def test_xss_prevention(self):
         """XSS payloads should be sanitized."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         xss_payloads = [
             "<script>alert('xss')</script>",
@@ -274,7 +274,7 @@ class TestInjection:
             "'-alert('xss')-'",
         ]
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             for payload in xss_payloads:
                 response = await client.get(f"/reports/{payload}")
                 # XSS should be escaped in any response
@@ -324,9 +324,9 @@ class TestSecurityMisconfiguration:
     @pytest.mark.asyncio
     async def test_security_headers_present(self):
         """Security headers should be present."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/health")
 
             headers = response.headers
@@ -338,9 +338,9 @@ class TestSecurityMisconfiguration:
     @pytest.mark.asyncio
     async def test_cors_configuration(self):
         """CORS should be properly configured."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Preflight request
             response = await client.options(
                 "/health",
@@ -359,9 +359,9 @@ class TestSecurityMisconfiguration:
     @pytest.mark.asyncio
     async def test_error_messages_not_verbose(self):
         """Error messages should not reveal internal details."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Trigger an error
             response = await client.get("/reports/nonexistent-12345")
 
@@ -394,9 +394,9 @@ class TestAuthenticationFailures:
     @pytest.mark.asyncio
     async def test_rate_limiting_on_auth(self):
         """Authentication should have rate limiting."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Try many failed auth attempts
             for i in range(20):
                 response = await client.get(
@@ -411,9 +411,9 @@ class TestAuthenticationFailures:
     async def test_timing_attack_prevention(self):
         """Auth should not be vulnerable to timing attacks."""
         import time
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Time valid-looking vs completely invalid tokens
             times_short = []
             times_long = []
@@ -463,10 +463,10 @@ class TestSecurityLogging:
     @pytest.mark.asyncio
     async def test_failed_auth_logged(self):
         """Failed authentication attempts should be logged."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
         from app.utility.logging_client import logger
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Trigger failed auth
             await client.get(
                 "/admin/cache/stats",
@@ -530,7 +530,7 @@ class TestInputValidation:
     @pytest.mark.asyncio
     async def test_inn_validation(self):
         """INN should be properly validated."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         invalid_inns = [
             "",  # Empty
@@ -542,7 +542,7 @@ class TestInputValidation:
             "12.3456789",  # Contains decimal
         ]
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             for inn in invalid_inns:
                 # INN validation should reject invalid values
                 response = await client.get(f"/export/history/{inn}")
@@ -552,7 +552,7 @@ class TestInputValidation:
     @pytest.mark.asyncio
     async def test_report_id_validation(self):
         """Report ID should be validated."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         invalid_ids = [
             "",
@@ -562,7 +562,7 @@ class TestInputValidation:
             "a" * 1000,  # Very long
         ]
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             for report_id in invalid_ids:
                 if report_id:  # Skip empty as it may match different route
                     response = await client.get(f"/reports/{report_id}")
@@ -571,9 +571,9 @@ class TestInputValidation:
     @pytest.mark.asyncio
     async def test_json_body_validation(self):
         """JSON body should be validated."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Invalid JSON
             response = await client.post(
                 "/reports/bulk-export",
@@ -642,16 +642,16 @@ class TestSecurityConfiguration:
 
     def test_csp_enabled(self):
         """CSP should be enabled by default."""
-        from app.config.security import SecuritySettings
+        from app.config.security import SecureSettings
 
-        settings = SecuritySettings()
+        settings = SecureSettings()
         assert settings.csp_enabled is True
 
     def test_csp_directives_secure(self):
         """CSP directives should be secure."""
-        from app.config.security import SecuritySettings
+        from app.config.security import SecureSettings
 
-        settings = SecuritySettings()
+        settings = SecureSettings()
 
         if settings.csp_directives:
             directives = settings.csp_directives.lower()

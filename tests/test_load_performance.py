@@ -14,7 +14,7 @@ from typing import List, Tuple
 from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 
 # ============================================================================
@@ -124,9 +124,9 @@ class TestConcurrentLoad:
     @pytest.mark.asyncio
     async def test_concurrent_health_checks(self):
         """Health endpoint should handle 50 concurrent requests."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             start_time = time.perf_counter()
 
             # Send 50 concurrent requests
@@ -216,7 +216,7 @@ class TestApiThroughput:
     @pytest.mark.asyncio
     async def test_reports_list_throughput(self):
         """Reports list endpoint should handle multiple requests efficiently."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -227,7 +227,7 @@ class TestApiThroughput:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response_times: List[float] = []
 
                 for _ in range(20):
@@ -244,7 +244,7 @@ class TestApiThroughput:
     @pytest.mark.asyncio
     async def test_export_endpoint_throughput(self):
         """Export endpoint should maintain throughput under load."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         sample_report = {
             "id": "test-123",
@@ -264,7 +264,7 @@ class TestApiThroughput:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 start_time = time.perf_counter()
 
                 tasks = [client.get("/reports/test-123/export?format=json") for _ in range(15)]
@@ -315,7 +315,7 @@ class TestResourceUsage:
     @pytest.mark.asyncio
     async def test_no_connection_leaks(self):
         """HTTP client should not leak connections."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -326,7 +326,7 @@ class TestResourceUsage:
 
             # Make many requests
             for batch in range(5):
-                async with AsyncClient(app=app, base_url="http://test") as client:
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                     tasks = [client.get("/reports/nonexistent") for _ in range(10)]
                     await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -345,7 +345,7 @@ class TestTimeouts:
     @pytest.mark.asyncio
     async def test_slow_operation_timeout(self):
         """Slow operations should timeout appropriately."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         async def slow_get(*args, **kwargs):
             await asyncio.sleep(10)
@@ -372,7 +372,7 @@ class TestTimeouts:
     @pytest.mark.asyncio
     async def test_concurrent_timeouts_handled(self):
         """Multiple concurrent timeouts should be handled gracefully."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         timeout_count = 0
 
@@ -411,9 +411,9 @@ class TestStress:
     @pytest.mark.asyncio
     async def test_rapid_sequential_requests(self):
         """System should handle rapid sequential requests."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             start = time.perf_counter()
 
             for i in range(100):
@@ -428,9 +428,9 @@ class TestStress:
     @pytest.mark.asyncio
     async def test_burst_traffic(self):
         """System should handle burst traffic patterns."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Burst 1
             burst1 = await asyncio.gather(*[client.get("/health") for _ in range(20)])
 
@@ -508,7 +508,7 @@ class TestLoadScenarios:
     @pytest.mark.asyncio
     async def test_mixed_workload(self):
         """Simulate realistic mixed workload."""
-        from app.main import app
+        from app.api.v1 import v1_app as app
 
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
@@ -526,7 +526,7 @@ class TestLoadScenarios:
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
-            async with AsyncClient(app=app, base_url="http://test") as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 # Mix of different request types
                 tasks = []
 
