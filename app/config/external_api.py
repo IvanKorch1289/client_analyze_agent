@@ -175,6 +175,19 @@ class OpenRouterAPISettings(BaseSettingsWithLoader):
     api_url: str = Field(default="https://openrouter.ai/api/v1", description="URL OpenRouter API")
     model: str = Field(default="anthropic/claude-3.5-sonnet", description="Модель LLM")
 
+    # Fallback модели для OpenRouter (в порядке приоритета)
+    fallback_models: list[str] = Field(
+        default=[
+            "anthropic/claude-3.5-sonnet",
+            "anthropic/claude-3-5-sonnet-20241022",
+            "anthropic/claude-3-opus",
+            "openai/gpt-4-turbo",
+            "google/gemini-pro-1.5",
+            "meta-llama/llama-3.1-70b-instruct",
+        ],
+        description="Список резервных моделей для автоматического переключения",
+    )
+
     # Параметры генерации
     temperature: float = Field(default=0.1, description="Temperature для генерации")
     max_tokens: int = Field(default=1000, description="Максимум токенов")
@@ -182,6 +195,10 @@ class OpenRouterAPISettings(BaseSettingsWithLoader):
 
     # Таймауты
     timeout: float = Field(default=60.0, description="Таймаут запроса (сек)")
+
+    # Проверка доступности моделей
+    check_availability: bool = Field(default=True, description="Проверять доступность модели перед использованием")
+    availability_cache_ttl: int = Field(default=300, description="TTL кеша доступности моделей (сек)")
 
     model_config = ConfigDict(env_prefix="OPENROUTER_")
 
