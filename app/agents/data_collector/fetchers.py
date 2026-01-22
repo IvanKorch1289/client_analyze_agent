@@ -10,7 +10,7 @@ Contains fetch functions for:
 """
 
 import asyncio
-from typing import Any, Dict, List
+from typing import List
 
 from app.config import (
     MAX_CONTENT_LENGTH,
@@ -23,13 +23,22 @@ from app.services.fetch_data import (
 )
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
+from app.shared.types import (
+    CascadeResult,
+    CasebookResult,
+    DaDataResult,
+    InfoSphereResult,
+    PerplexityResult,
+    TavilyResult,
+    TavilyFullText,
+)
 from app.shared.utils.formatters import truncate
 from app.utility.logging_client import logger
 
 
 async def fetch_perplexity(
     intent_id: str, query: str, client_name: str, inn: str = ""
-) -> Dict[str, Any]:
+) -> PerplexityResult:
     """Запрос к Perplexity AI с recency=year."""
     client = PerplexityClient.get_instance()
     if not client.is_configured():
@@ -97,9 +106,9 @@ async def fetch_perplexity(
 async def cascade_perplexity_analysis(
     client_name: str,
     inn: str,
-    initial_perplexity_results: List[Dict[str, Any]],
-    tavily_full_texts: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    initial_perplexity_results: List[PerplexityResult],
+    tavily_full_texts: List[TavilyFullText],
+) -> CascadeResult:
     """
     CASCADE АНАЛИЗ - повторный Perplexity с учётом Tavily данных.
 
@@ -151,7 +160,7 @@ async def cascade_perplexity_analysis(
 
 async def fetch_tavily(
     intent_id: str, query: str, client_name: str, inn: str = ""
-) -> Dict[str, Any]:
+) -> TavilyResult:
     """Запрос к Tavily Search с time_range=year."""
     client = TavilyClient.get_instance()
     if not client.is_configured():
@@ -197,7 +206,7 @@ async def fetch_tavily(
         }
 
 
-async def fetch_dadata(inn: str) -> Dict[str, Any]:
+async def fetch_dadata(inn: str) -> DaDataResult:
     """
     Обёртка для DaData с обработкой ошибок.
     Timeout: 30s (быстрый источник).
@@ -219,7 +228,7 @@ async def fetch_dadata(inn: str) -> Dict[str, Any]:
         return {"source": "dadata", "success": False, "error": str(e)}
 
 
-async def fetch_infosphere(inn: str) -> Dict[str, Any]:
+async def fetch_infosphere(inn: str) -> InfoSphereResult:
     """
     Обёртка для InfoSphere с обработкой ошибок.
     Многостраничный источник, требует до 6 минут.
@@ -246,7 +255,7 @@ async def fetch_infosphere(inn: str) -> Dict[str, Any]:
         return {"source": "infosphere", "success": False, "error": str(e)}
 
 
-async def fetch_casebook(inn: str) -> Dict[str, Any]:
+async def fetch_casebook(inn: str) -> CasebookResult:
     """
     Обёртка для Casebook с обработкой ошибок.
     Многостраничный источник (100+ страниц арбитражных дел).
