@@ -278,7 +278,7 @@ async def get_analysis_timeline(
 
         client = await TarantoolClient.get_instance()
         repo = client.get_reports_repository()
-        reports = await repo.get_by_inn(inn, limit=limit)
+        reports = await repo.get_reports_by_inn(inn, limit=limit)
     except Exception as e:
         logger.error(f"Failed to get history: {e}", component="export")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve history: {str(e)}")
