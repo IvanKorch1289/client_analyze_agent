@@ -13,10 +13,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive CI/CD pipeline with security scanning (bandit, pip-audit, Trivy)
 - Docker resource limits and logging configuration
 - Container vulnerability scanning with Trivy
+- **OpenRouter model availability check with automatic fallback** (2026-01-22)
+  - Real-time model availability verification via OpenRouter API
+  - Configurable fallback model list (Claude, GPT-4, Gemini, Llama)
+  - Model availability caching (5 min TTL) to reduce API overhead
+  - Smart model switching on failures with zero downtime
+  - Configuration options:
+    - `OPENROUTER_CHECK_AVAILABILITY` (default: true)
+    - `OPENROUTER_FALLBACK_MODELS` (6 models by default)
+    - `OPENROUTER_AVAILABILITY_CACHE_TTL` (default: 300s)
+- **Real-time streaming progress UI** (2026-01-22)
+  - Server-Sent Events (SSE) based progress indicator
+  - Live display of current execution step with emoji indicators
+  - Model information for each analysis stage:
+    - Orchestrating: Claude 3.5 Sonnet (OpenRouter)
+    - Collecting: Perplexity + Tavily (API)
+    - Analyzing: Claude 3.5 Sonnet (OpenRouter)
+  - Real-time statistics: execution time, data sources, risk score
+  - Session ID tracking for debugging
 
 ### Changed
 - Improved Docker Compose configuration with environment variable secrets
 - Enhanced Prometheus configuration with AlertManager target
+- **Streamlit UI analysis tab refactored** to use streaming API instead of threading
+  - Replaced polling-based progress with SSE streaming
+  - Added httpx client for HTTP/2 and streaming support
+  - Improved error handling with detailed context
+  - Better user feedback with step-by-step progress updates
+
+### Fixed
+- **Missing `validate_inn` function import error** in Streamlit frontend (2026-01-22)
+  - Added `validate_inn()` wrapper function in `app/frontend/lib/validators.py`
+  - Function returns tuple `(is_valid, error_message)` for compatibility
+  - Maintains backward compatibility with existing code
 
 ## [0.1.0] - 2026-01-22
 
