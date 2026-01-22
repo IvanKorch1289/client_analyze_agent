@@ -1,210 +1,210 @@
-# Contributing to Client Analysis Agent
+# Руководство по участию в разработке Client Analysis Agent
 
-Thank you for your interest in contributing to Client Analysis Agent! This document provides guidelines and instructions for contributing.
+Благодарим за интерес к участию в разработке Client Analysis Agent! Этот документ содержит рекомендации и инструкции для участников проекта.
 
-## Table of Contents
+## Содержание
 
-- [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [Development Setup](#development-setup)
-- [Making Changes](#making-changes)
-- [Pull Request Process](#pull-request-process)
-- [Code Style](#code-style)
-- [Testing](#testing)
-- [Documentation](#documentation)
+- [Кодекс поведения](#кодекс-поведения)
+- [Начало работы](#начало-работы)
+- [Настройка окружения разработки](#настройка-окружения-разработки)
+- [Внесение изменений](#внесение-изменений)
+- [Процесс Pull Request](#процесс-pull-request)
+- [Стиль кода](#стиль-кода)
+- [Тестирование](#тестирование)
+- [Документация](#документация)
 
-## Code of Conduct
+## Кодекс поведения
 
-This project adheres to a code of conduct. By participating, you are expected to:
+Участвуя в этом проекте, вы соглашаетесь:
 
-- Be respectful and inclusive
-- Accept constructive criticism gracefully
-- Focus on what is best for the community
-- Show empathy towards other contributors
+- Быть уважительным и инклюзивным
+- Принимать конструктивную критику с благодарностью
+- Фокусироваться на том, что лучше для сообщества
+- Проявлять эмпатию к другим участникам
 
-## Getting Started
+## Начало работы
 
-### Prerequisites
+### Предварительные требования
 
 - Python 3.12+
-- Poetry (dependency management)
-- Docker and Docker Compose
+- Poetry (управление зависимостями)
+- Docker и Docker Compose
 - Git
 
-### Fork and Clone
+### Форк и клонирование
 
-1. Fork the repository on GitHub
-2. Clone your fork locally:
+1. Сделайте форк репозитория на GitHub
+2. Клонируйте свой форк локально:
    ```bash
    git clone https://github.com/YOUR_USERNAME/client_analyze_agent.git
    cd client_analyze_agent
    ```
-3. Add upstream remote:
+3. Добавьте upstream remote:
    ```bash
    git remote add upstream https://github.com/IvanKorch1289/client_analyze_agent.git
    ```
 
-## Development Setup
+## Настройка окружения разработки
 
-### 1. Install Dependencies
+### 1. Установка зависимостей
 
 ```bash
-# Install Poetry if not already installed
+# Установите Poetry, если еще не установлен
 pip install poetry
 
-# Install project dependencies
+# Установите зависимости проекта
 poetry install
 
-# Activate virtual environment
+# Активируйте виртуальное окружение
 poetry shell
 ```
 
-### 2. Configure Environment
+### 2. Настройка переменных окружения
 
 ```bash
-# Copy example environment file
+# Скопируйте файл с примером переменных окружения
 cp .env.example .env
 
-# Edit .env with your API keys and configuration
-# Required: OPENROUTER_API_KEY, DADATA_API_KEY, etc.
+# Отредактируйте .env, добавив ваши API ключи
+# Обязательные: OPENROUTER_API_KEY, DADATA_API_KEY и т.д.
 ```
 
-### 3. Start Services
+### 3. Запуск сервисов
 
 ```bash
-# Start all services with Docker Compose
+# Запустите все сервисы с помощью Docker Compose
 docker-compose up -d
 
-# Or start only dependencies (Tarantool, RabbitMQ)
+# Или запустите только зависимости (Tarantool, RabbitMQ)
 docker-compose up -d tarantool rabbitmq
 ```
 
-### 4. Run the Application
+### 4. Запуск приложения
 
 ```bash
-# Run the main application
+# Запустите основное приложение
 python run.py
 
-# Or run individual components
+# Или запустите отдельные компоненты
 python -m app.messaging.worker  # Worker
 python -m app.mcp_server.main   # MCP Server
 ```
 
-## Making Changes
+## Внесение изменений
 
-### Branch Naming Convention
+### Соглашение об именовании веток
 
-- `feature/` - New features (e.g., `feature/add-new-data-source`)
-- `fix/` - Bug fixes (e.g., `fix/circuit-breaker-timeout`)
-- `docs/` - Documentation changes (e.g., `docs/update-api-reference`)
-- `refactor/` - Code refactoring (e.g., `refactor/split-large-module`)
-- `test/` - Test additions/changes (e.g., `test/add-integration-tests`)
+- `feature/` - Новые функции (например, `feature/add-new-data-source`)
+- `fix/` - Исправления ошибок (например, `fix/circuit-breaker-timeout`)
+- `docs/` - Изменения в документации (например, `docs/update-api-reference`)
+- `refactor/` - Рефакторинг кода (например, `refactor/split-large-module`)
+- `test/` - Добавление/изменение тестов (например, `test/add-integration-tests`)
 
-### Workflow
+### Рабочий процесс
 
-1. Create a new branch from `main`:
+1. Создайте новую ветку от `main`:
    ```bash
    git checkout main
    git pull upstream main
    git checkout -b feature/your-feature-name
    ```
 
-2. Make your changes following the [Code Style](#code-style) guidelines
+2. Внесите изменения, следуя рекомендациям [Стиля кода](#стиль-кода)
 
-3. Write tests for new functionality
+3. Напишите тесты для новой функциональности
 
-4. Run the test suite:
+4. Запустите набор тестов:
    ```bash
    poetry run pytest
    ```
 
-5. Run linting and type checking:
+5. Запустите линтеры и проверку типов:
    ```bash
    poetry run ruff check .
    poetry run pyright
    ```
 
-6. Commit your changes:
+6. Зафиксируйте изменения:
    ```bash
    git add .
-   git commit -m "feat: add new data source integration"
+   git commit -m "feat: добавить интеграцию нового источника данных"
    ```
 
-### Commit Message Convention
+### Соглашение о коммитах
 
-We follow [Conventional Commits](https://www.conventionalcommits.org/):
+Мы следуем [Conventional Commits](https://www.conventionalcommits.org/ru/):
 
-- `feat:` - New feature
-- `fix:` - Bug fix
-- `docs:` - Documentation only
-- `style:` - Formatting, no code change
-- `refactor:` - Code restructuring
-- `test:` - Adding tests
-- `chore:` - Maintenance tasks
+- `feat:` - Новая функция
+- `fix:` - Исправление ошибки
+- `docs:` - Только документация
+- `style:` - Форматирование, изменений кода нет
+- `refactor:` - Реструктуризация кода
+- `test:` - Добавление тестов
+- `chore:` - Задачи по обслуживанию
 
-Examples:
+Примеры:
 ```
-feat: add Spark API integration
-fix: resolve circuit breaker race condition
-docs: update deployment runbook
-refactor: split data_collector into modules
-test: add PII protection unit tests
+feat: добавить интеграцию Spark API
+fix: исправить состояние гонки circuit breaker
+docs: обновить руководство по развертыванию
+refactor: разделить data_collector на модули
+test: добавить юнит-тесты защиты PII
 ```
 
-## Pull Request Process
+## Процесс Pull Request
 
-### Before Submitting
+### Перед отправкой
 
-1. **Update your branch** with the latest changes from upstream:
+1. **Обновите вашу ветку** с последними изменениями из upstream:
    ```bash
    git fetch upstream
    git rebase upstream/main
    ```
 
-2. **Run all checks**:
+2. **Запустите все проверки**:
    ```bash
-   # Linting
+   # Линтинг
    poetry run ruff check .
 
-   # Type checking
+   # Проверка типов
    poetry run pyright
 
-   # Tests
+   # Тесты
    poetry run pytest
 
-   # Security scan
+   # Сканирование безопасности
    poetry run bandit -r app
    ```
 
-3. **Update documentation** if needed
+3. **Обновите документацию** при необходимости
 
-### Submitting
+### Отправка
 
-1. Push your branch to your fork:
+1. Отправьте вашу ветку в ваш форк:
    ```bash
    git push origin feature/your-feature-name
    ```
 
-2. Create a Pull Request on GitHub
+2. Создайте Pull Request на GitHub
 
-3. Fill in the PR template with:
-   - Description of changes
-   - Related issues
-   - Testing performed
-   - Checklist completion
+3. Заполните шаблон PR, указав:
+   - Описание изменений
+   - Связанные issue
+   - Проведенное тестирование
+   - Выполнение чек-листа
 
-### Review Process
+### Процесс ревью
 
-- PRs require at least one approval
-- CI checks must pass
-- Address review comments promptly
-- Squash commits if requested
+- PR требуется как минимум одно одобрение
+- Проверки CI должны быть успешными
+- Оперативно отвечайте на комментарии ревью
+- При необходимости объедините коммиты (squash)
 
-## Code Style
+## Стиль кода
 
-### Python Style Guide
+### Руководство по стилю Python
 
-We use [Ruff](https://docs.astral.sh/ruff/) for linting with the following rules:
+Мы используем [Ruff](https://docs.astral.sh/ruff/) для линтинга со следующими правилами:
 
 ```toml
 [tool.ruff.lint]
@@ -217,99 +217,99 @@ select = [
 ]
 ```
 
-### Key Guidelines
+### Ключевые рекомендации
 
-1. **Type Hints**: Use type hints for all function signatures
+1. **Аннотации типов**: Используйте аннотации типов для всех сигнатур функций
    ```python
    async def fetch_data(inn: str, timeout: int = 30) -> dict[str, Any]:
        ...
    ```
 
-2. **Docstrings**: Use Google-style docstrings
+2. **Docstrings**: Используйте docstring в стиле Google
    ```python
    def calculate_risk(data: dict) -> float:
-       """Calculate normalized risk score.
+       """Рассчитать нормализованную оценку риска.
 
        Args:
-           data: Raw data from multiple sources.
+           data: Необработанные данные из нескольких источников.
 
        Returns:
-           Risk score from 0.0 to 100.0.
+           Оценка риска от 0.0 до 100.0.
 
        Raises:
-           ValueError: If data is incomplete.
+           ValueError: Если данные неполные.
        """
    ```
 
-3. **Async/Await**: Use async for I/O operations
+3. **Async/Await**: Используйте async для операций ввода-вывода
    ```python
-   # Good
+   # Хорошо
    async def fetch_all():
        results = await asyncio.gather(fetch_a(), fetch_b())
 
-   # Bad - blocking in async context
+   # Плохо - блокировка в async контексте
    async def fetch_all():
-       result_a = requests.get(...)  # Don't do this
+       result_a = requests.get(...)  # Не делайте так
    ```
 
-4. **Error Handling**: Use specific exceptions
+4. **Обработка ошибок**: Используйте специфические исключения
    ```python
-   # Good
+   # Хорошо
    except CircuitBreakerOpenError as e:
        logger.warning(f"Circuit open: {e}")
 
-   # Bad
+   # Плохо
    except Exception:
        pass
    ```
 
-5. **Imports**: Group and sort with isort
+5. **Импорты**: Группируйте и сортируйте с помощью isort
    ```python
-   # Standard library
+   # Стандартная библиотека
    import asyncio
    from typing import Any
 
-   # Third-party
+   # Сторонние библиотеки
    from fastapi import FastAPI
    from pydantic import BaseModel
 
-   # Local
+   # Локальные
    from app.services.http_client import resilient_client
    ```
 
-## Testing
+## Тестирование
 
-### Test Structure
+### Структура тестов
 
 ```
 tests/
-├── unit/           # Unit tests
-├── integration/    # Integration tests
-├── e2e/            # End-to-end tests
-├── performance/    # Performance tests
-└── security/       # Security tests
+├── unit/           # Юнит-тесты
+├── integration/    # Интеграционные тесты
+├── e2e/            # Сквозные тесты
+├── performance/    # Тесты производительности
+└── security/       # Тесты безопасности
 ```
 
-### Running Tests
+### Запуск тестов
 
 ```bash
-# All tests
+# Все тесты
 poetry run pytest
 
-# With coverage
+# С покрытием
 poetry run pytest --cov=app --cov-report=html
 
-# Specific test file
+# Конкретный файл теста
 poetry run pytest tests/test_risk_calculator.py
 
-# Specific test
+# Конкретный тест
 poetry run pytest tests/test_api.py::test_health_endpoint
 
-# Skip integration tests
+# Пропустить интеграционные тесты
 SKIP_INTEGRATION=true poetry run pytest
 ```
 
-### Writing Tests
+### Написание тестов
 
 ```python
 import pytest
@@ -317,7 +317,7 @@ from app.services.risk_calculator import calculate_risk
 
 @pytest.mark.asyncio
 async def test_calculate_risk_high():
-    """Test risk calculation for high-risk company."""
+    """Тест расчета риска для высокорискованной компании."""
     data = {
         "legal_issues": {"court_cases": 15},
         "financial": {"bankruptcy_risk": True},
@@ -331,38 +331,38 @@ async def test_calculate_risk_high():
 
 @pytest.fixture
 def mock_http_client(mocker):
-    """Mock HTTP client for isolated testing."""
+    """Mock HTTP клиента для изолированного тестирования."""
     return mocker.patch("app.services.http_client.resilient_client")
 ```
 
-## Documentation
+## Документация
 
-### Types of Documentation
+### Типы документации
 
-1. **Code Documentation**: Docstrings in code
-2. **API Documentation**: OpenAPI/Swagger (auto-generated)
-3. **User Documentation**: `docs/` directory
-4. **Architecture Decisions**: `docs/adr/` (ADRs)
+1. **Документация кода**: Docstrings в коде
+2. **API документация**: OpenAPI/Swagger (генерируется автоматически)
+3. **Пользовательская документация**: Директория `docs/`
+4. **Архитектурные решения**: `docs/adr/` (ADR)
 
-### Updating Documentation
+### Обновление документации
 
-- Update relevant docs when changing functionality
-- Add ADR for significant architectural changes
-- Keep README.md up to date with new features
+- Обновляйте соответствующую документацию при изменении функциональности
+- Добавляйте ADR для значительных архитектурных изменений
+- Поддерживайте README.md в актуальном состоянии с новыми функциями
 
-### Building Documentation
+### Сборка документации
 
 ```bash
-# API docs are auto-generated at /docs endpoint
-# User docs are in Markdown format in docs/
+# API документация генерируется автоматически на эндпоинте /docs
+# Пользовательская документация находится в формате Markdown в docs/
 ```
 
-## Questions?
+## Вопросы?
 
-- Open an issue for bugs or feature requests
-- Use discussions for questions
-- Check existing issues before creating new ones
+- Откройте issue для сообщений об ошибках или запросов функций
+- Используйте обсуждения для вопросов
+- Проверяйте существующие issue перед созданием новых
 
 ---
 
-Thank you for contributing to Client Analysis Agent!
+Спасибо за участие в разработке Client Analysis Agent!
