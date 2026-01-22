@@ -990,29 +990,6 @@ async def get_asyncapi_html() -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-# =============================================================================
-# PROMETHEUS METRICS
-# =============================================================================
-
-
-@utility_router.get("/metrics")
-async def get_prometheus_metrics(request: Request):
-    """
-    Prometheus metrics endpoint.
-
-    Returns metrics in Prometheus text format for scraping.
-    """
-    from fastapi.responses import Response
-
-    from app.shared.prometheus_metrics import metrics
-
-    if not metrics.enabled:
-        return Response(
-            content="# Prometheus client not available\n",
-            media_type="text/plain",
-        )
-
-    return Response(
-        content=metrics.get_metrics(),
-        media_type=metrics.get_content_type(),
-    )
+# Note: Prometheus metrics are exposed at /metrics and /metrics/custom in main.py
+# via prometheus_fastapi_instrumentator. The /utility/metrics endpoint above
+# provides HTTP client metrics (different from Prometheus format).

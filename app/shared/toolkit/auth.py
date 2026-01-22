@@ -7,14 +7,96 @@ like cache clearing and system configuration changes.
 
 import os
 import secrets
-from typing import Optional
+import warnings
+from typing import Optional, Tuple
 
 from fastapi import Depends, Header, HTTPException, status
+
+
+# Weak/default tokens that should trigger warnings
+_WEAK_TOKENS = {
+    "",
+    "your_admin_token_here",
+    "your_admin_token",
+    "admin",
+    "admin123",
+    "password",
+    "token",
+    "secret",
+    "test",
+    "changeme",
+}
+
+_security_warning_shown = False
 
 
 def get_admin_token() -> str:
     """Get admin token from environment (reads at request time)."""
     return os.getenv("ADMIN_TOKEN", "")
+
+
+def validate_admin_token_security() -> Tuple[bool, str]:
+    """
+    Validate ADMIN_TOKEN security for production use.
+
+    Returns:
+        Tuple[bool, str]: (is_secure, warning_message)
+
+    Security checks:
+    - Token must be set
+    - Token must be at least 32 characters
+    - Token must not be a known weak/default value
+    """
+    token = get_admin_token().strip()
+
+    # Check 1: Token is set
+    if not token:
+        return False, "ADMIN_TOKEN is not set. Admin endpoints are unprotected!"
+
+    # Check 2: Token is not weak/default
+    if token.lower() in _WEAK_TOKENS:
+        return (
+            False,
+            "ADMIN_TOKEN is using a weak/default value. Change it immediately!",
+        )
+
+    # Check 3: Token length (minimum 32 characters for security)
+    if len(token) < 32:
+        return (
+            False,
+            f"ADMIN_TOKEN is only {len(token)} characters. Minimum 32 recommended for production.",
+        )
+
+    return True, "ADMIN_TOKEN security check passed"
+
+
+def check_security_on_startup() -> None:
+    """
+    Check security configuration on application startup.
+
+    Logs warnings if ADMIN_TOKEN is weak or missing.
+    Should be called once during application initialization.
+    """
+    global _security_warning_shown
+
+    if _security_warning_shown:
+        return
+
+    is_secure, message = validate_admin_token_security()
+
+    if not is_secure:
+        # Use warnings module for visibility
+        warnings.warn(
+            f"\n{'=' * 60}\n"
+            f"⚠️  SECURITY WARNING: {message}\n"
+            f"Set a strong ADMIN_TOKEN (32+ random characters) in .env\n"
+            f'Generate with: python -c "import secrets; print(secrets.token_hex(32))"\n'
+            f"{'=' * 60}\n",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    _security_warning_shown = True
 
 
 class Role:
@@ -97,4 +179,6 @@ __all__ = [
     "get_current_role",
     "require_admin",
     "is_admin",
+    "validate_admin_token_security",
+    "check_security_on_startup",
 ]

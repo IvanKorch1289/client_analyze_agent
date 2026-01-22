@@ -11,7 +11,7 @@ LLM Audit Logging Module
 import hashlib
 import time
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional
@@ -183,7 +183,7 @@ class LLMAuditLogger:
 
         # Создаём запись
         record = LLMAuditRecord(
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             duration_ms=duration_ms,
             request_id=request_id,
             provider=provider,
@@ -319,9 +319,7 @@ class LLMAuditLogger:
         records = await self.get_recent_calls(limit=1000)
 
         # Фильтруем по времени
-        from datetime import timedelta
-
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         recent = [r for r in records if datetime.fromisoformat(r.timestamp) >= cutoff]
 
         # Считаем статистику

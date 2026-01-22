@@ -1,10 +1,12 @@
 import asyncio
 from typing import Any, Dict
 
+import httpx
 import xmltodict
 
 from app.config import settings
 from app.services.http_client import AsyncHttpClient
+from app.shared.exceptions import APIError
 from app.utility.decorators import cache_with_tarantool
 from app.utility.helpers import clean_xml_dict
 from app.utility.logging_client import logger
@@ -45,7 +47,16 @@ async def fetch_from_dadata(inn: str) -> Dict[str, Any]:
         result = {"status": "success", "data": suggestions[0]["data"]}
         return result
 
-    except Exception as e:
+    except httpx.TimeoutException as e:
+        logger.warning(f"DaData request timeout for INN {inn}", component="dadata")
+        return {"error": f"DaData timeout: {str(e)}"}
+    except httpx.HTTPStatusError as e:
+        logger.warning(
+            f"DaData HTTP error for INN {inn}: {e.response.status_code}",
+            component="dadata",
+        )
+        return {"error": f"DaData HTTP error: {e.response.status_code}"}
+    except (httpx.RequestError, APIError) as e:
         logger.exception(f"DaData request failed for INN {inn}", component="dadata")
         return {"error": f"DaData request failed: {str(e)}"}
 
@@ -88,7 +99,16 @@ async def fetch_from_infosphere(inn: str) -> Dict[str, Any]:
         cleaned = clean_xml_dict(raw_data.get("Response", {}).get("Source", []))
         return {"status": "success", "data": cleaned}
 
-    except Exception as e:
+    except httpx.TimeoutException as e:
+        logger.warning(f"InfoSphere request timeout for INN {inn}", component="infosphere")
+        return {"error": f"InfoSphere timeout: {str(e)}"}
+    except httpx.HTTPStatusError as e:
+        logger.warning(
+            f"InfoSphere HTTP error for INN {inn}: {e.response.status_code}",
+            component="infosphere",
+        )
+        return {"error": f"InfoSphere HTTP error: {e.response.status_code}"}
+    except (httpx.RequestError, APIError) as e:
         logger.exception(f"InfoSphere request failed for INN {inn}", component="infosphere")
         return {"error": f"InfoSphere request failed: {str(e)}"}
 
@@ -118,7 +138,16 @@ async def fetch_from_casebook(inn: str) -> Dict[str, Any]:
         all_cases = await http_client.fetch_all_pages(url=url, params=params)
         return {"status": "success", "data": all_cases}
 
-    except Exception as e:
+    except httpx.TimeoutException as e:
+        logger.warning(f"Casebook request timeout for INN {inn}", component="casebook")
+        return {"error": f"Casebook timeout: {str(e)}"}
+    except httpx.HTTPStatusError as e:
+        logger.warning(
+            f"Casebook HTTP error for INN {inn}: {e.response.status_code}",
+            component="casebook",
+        )
+        return {"error": f"Casebook HTTP error: {e.response.status_code}"}
+    except (httpx.RequestError, APIError) as e:
         logger.exception(f"Casebook request failed for INN {inn}", component="casebook")
         return {"error": f"Casebook request failed: {str(e)}"}
 

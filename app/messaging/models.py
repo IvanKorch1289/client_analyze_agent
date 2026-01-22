@@ -20,6 +20,16 @@ class ClientAnalysisResult(BaseModel):
     raw_result: Dict[str, Any] = Field(default_factory=dict, description="Полный результат workflow")
 
 
+class ClientAnalysisRequest(BaseModel):
+    """Запрос на анализ клиента через очередь."""
+
+    client_name: str = Field(..., description="Название компании")
+    inn: str = Field(default="", description="ИНН компании")
+    additional_notes: str = Field(default="", description="Дополнительные заметки")
+    session_id: Optional[str] = Field(default=None, description="ID сессии")
+    save_report: bool = Field(default=True, description="Сохранить отчёт")
+
+
 class CacheInvalidateRequest(BaseModel):
     """Инвалидация кэша (по префиксу или полностью)."""
 

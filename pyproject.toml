@@ -79,6 +79,8 @@ mypy = "^1.12.0"
 types-requests = "^2.26.0"
 complexipy = "^0.4.0"               # Code complexity analysis
 safety = "^3.3.2"                   # Dependency security scanner
+locust = "^2.43.1"
+pytest-benchmark = "^5.2.3"
 
 [build-system]
 requires = ["poetry-core"]

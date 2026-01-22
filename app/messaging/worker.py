@@ -17,7 +17,7 @@ app = FastStream(broker)
 def main() -> None:
     # Важно: это long-lived процесс (воркер).
     # app.run() внутри обрабатывает event loop, warning можно игнорировать
-    _ = app.run()  # noqa: type: ignore
+    _ = app.run()  # type: ignore
 
 
 if __name__ == "__main__":

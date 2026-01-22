@@ -514,7 +514,15 @@ class RiskScoreCalculator:
         score = 0
         max_score = self.MAX_SCORE_PER_CATEGORY[RiskCategory.REGULATORY]
 
-        sanction_keywords = ["санкции", "санкционный", "ограничения", "запрет"]
+        sanction_keywords = [
+            "санкции",
+            "санкций",
+            "санкциями",
+            "санкционный",
+            "санкционные",
+            "ограничения",
+            "запрет",
+        ]
         regulatory_keywords = ["штраф", "нарушение", "проверка фнс", "проверка фас"]
 
         for result in search_results:

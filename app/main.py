@@ -84,6 +84,11 @@ async def lifespan(app: FastAPI):
     """
     logger.info("Инициализация приложения...")
 
+    # Security check on startup (warns if ADMIN_TOKEN is weak/missing)
+    from app.shared.toolkit.auth import check_security_on_startup
+
+    check_security_on_startup()
+
     # Инициализируем OpenTelemetry
     init_telemetry()
     logger.info("OpenTelemetry инициализирован")
@@ -512,6 +517,40 @@ def _host_allowed(host: str, allowed_hosts: list[str]) -> bool:
 
 
 # =======================
+# HTTPS Redirect Middleware
+# =======================
+
+
+class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
+    """
+    Redirects HTTP requests to HTTPS when enabled.
+
+    Controlled by settings.secure.https_redirect_enabled.
+    Respects X-Forwarded-Proto header for apps behind proxies.
+    Excludes health check endpoints to allow internal HTTP monitoring.
+    """
+
+    _excluded_paths = ("/utility/health", "/api/v1/utility/health", "/metrics")
+
+    async def dispatch(self, request: Request, call_next):
+        if not getattr(settings.secure, "https_redirect_enabled", False):
+            return await call_next(request)
+
+        # Skip health checks (internal monitoring should work over HTTP)
+        if request.url.path in self._excluded_paths:
+            return await call_next(request)
+
+        # Check if already HTTPS (direct or via proxy)
+        scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+        if scheme == "https":
+            return await call_next(request)
+
+        # Redirect to HTTPS
+        https_url = request.url.replace(scheme="https")
+        return RedirectResponse(url=str(https_url), status_code=307)
+
+
+# =======================
 # Legacy API deprecation headers
 # =======================
 
@@ -620,6 +659,9 @@ if settings.secure.cors_enabled:
         allow_methods=settings.secure.cors_methods or ["*"],
         allow_headers=settings.secure.cors_headers or ["*"],
     )
+
+# HTTPS redirect (for production behind HTTPS termination proxy)
+app.add_middleware(HTTPSRedirectMiddleware)
 
 # Базовые security headers.
 app.add_middleware(SecurityHeadersMiddleware)

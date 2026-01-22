@@ -358,7 +358,7 @@ def render_risk_summary(
         show_factors_chart: Показывать ли pie chart факторов
     """
     score = risk_assessment.get("score", 0)
-    level = risk_assessment.get("level", get_risk_level(score))
+    _level = risk_assessment.get("level", get_risk_level(score))  # noqa: F841
     factors = risk_assessment.get("factors", [])
     categories = risk_assessment.get("categories", {})
 

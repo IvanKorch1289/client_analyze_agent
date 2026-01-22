@@ -110,6 +110,100 @@ class StorageError(AnalyzeAgentError):
     pass
 
 
+class CacheError(StorageError):
+    """Cache-specific error (Tarantool cache operations)."""
+
+    pass
+
+
+class LLMError(AnalyzeAgentError):
+    """LLM-related error."""
+
+    def __init__(
+        self,
+        message: str,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        original_error: Optional[Exception] = None,
+    ):
+        """
+        Initialize LLM error.
+
+        Args:
+            message: Error message
+            provider: LLM provider name (e.g., "OpenRouter", "GigaChat")
+            model: Model name (e.g., "claude-3.5-sonnet")
+            details: Additional context
+            original_error: Original exception
+        """
+        super().__init__(message, details, original_error)
+        self.provider = provider
+        self.model = model
+
+    def __str__(self) -> str:
+        """String representation with LLM info."""
+        base = super().__str__()
+        if self.provider:
+            base = f"[{self.provider}] {base}"
+        if self.model:
+            base += f" (model: {self.model})"
+        return base
+
+
+class RateLimitError(APIError):
+    """Rate limit exceeded error."""
+
+    def __init__(
+        self,
+        message: str = "Rate limit exceeded",
+        retry_after: Optional[int] = None,
+        api_name: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        original_error: Optional[Exception] = None,
+    ):
+        """
+        Initialize rate limit error.
+
+        Args:
+            message: Error message
+            retry_after: Seconds to wait before retry
+            api_name: Name of the API
+            details: Additional context
+            original_error: Original exception
+        """
+        super().__init__(
+            message,
+            status_code=429,
+            api_name=api_name,
+            details=details,
+            original_error=original_error,
+        )
+        self.retry_after = retry_after
+
+
+class CircuitBreakerError(AnalyzeAgentError):
+    """Circuit breaker is open, service unavailable."""
+
+    def __init__(
+        self,
+        service_name: str,
+        message: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize circuit breaker error.
+
+        Args:
+            service_name: Name of the service
+            message: Error message (auto-generated if not provided)
+            details: Additional context
+        """
+        msg = message or f"Circuit breaker open for service: {service_name}"
+        super().__init__(msg, details)
+        self.service_name = service_name
+
+
 __all__ = [
     "AnalyzeAgentError",
     "ConfigurationError",
@@ -119,4 +213,8 @@ __all__ = [
     "DataCollectionError",
     "AnalysisError",
     "StorageError",
+    "CacheError",
+    "LLMError",
+    "RateLimitError",
+    "CircuitBreakerError",
 ]

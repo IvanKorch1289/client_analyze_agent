@@ -1,8 +1,21 @@
+"""
+Frontend validation utilities.
+
+NOTE: validate_inn is imported from the canonical source app.shared.security
+to avoid code duplication. All INN validation across the project should use
+the same implementation.
+"""
+
 from __future__ import annotations
 
 import re
 from datetime import date, datetime
 from typing import NamedTuple, Optional, Tuple, Union
+
+# Import canonical validate_inn from shared module - single source of truth
+from app.shared.security import (
+    validate_inn_extended as _validate_inn_extended_internal,
+)
 
 
 class ValidationResult(NamedTuple):
@@ -17,37 +30,12 @@ class ValidationResult(NamedTuple):
         return self.is_valid
 
 
-def validate_inn(inn: str, *, required: bool = False) -> Tuple[bool, str]:
-    """
-    Validate Russian INN (ИНН).
-
-    Args:
-        inn: The INN string to validate
-        required: Whether the field is required
-
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    inn = (inn or "").strip()
-    if not inn:
-        if required:
-            return False, "ИНН обязателен для заполнения"
-        return True, ""
-    if not inn.isdigit():
-        return False, "ИНН должен содержать только цифры (0-9)"
-    if len(inn) == 10:
-        return True, ""
-    if len(inn) == 12:
-        return True, ""
-    return (
-        False,
-        "ИНН должен содержать 10 цифр для юридических лиц или 12 цифр для ИП/физических лиц",
-    )
-
-
 def validate_inn_extended(inn: str, *, required: bool = False) -> ValidationResult:
     """
     Extended INN validation with ValidationResult.
+
+    This is a wrapper around the canonical app.shared.security.validate_inn_extended
+    that returns a frontend-compatible ValidationResult NamedTuple.
 
     Args:
         inn: The INN string to validate
@@ -56,62 +44,20 @@ def validate_inn_extended(inn: str, *, required: bool = False) -> ValidationResu
     Returns:
         ValidationResult with detailed information
     """
-    inn = (inn or "").strip()
-    if not inn:
-        if required:
-            return ValidationResult(
-                is_valid=False,
-                error_message="ИНН обязателен для заполнения",
-                field_name="ИНН",
-                suggestion="Введите 10-значный ИНН организации или 12-значный ИНН ИП/физлица",
-            )
-        return ValidationResult(is_valid=True, error_message="")
-
-    if not inn.isdigit():
-        return ValidationResult(
-            is_valid=False,
-            error_message="ИНН должен содержать только цифры",
-            field_name="ИНН",
-            suggestion="Удалите все буквы и специальные символы из ИНН",
-        )
-
-    if len(inn) not in (10, 12):
-        return ValidationResult(
-            is_valid=False,
-            error_message=f"ИНН должен содержать 10 или 12 цифр (введено: {len(inn)})",
-            field_name="ИНН",
-            suggestion="Для юридических лиц — 10 цифр, для ИП/физических лиц — 12 цифр",
-        )
-
-    return ValidationResult(is_valid=True, error_message="", field_name="ИНН")
-
-
-def validate_client_name(name: str, *, required: bool = True) -> Tuple[bool, str]:
-    """
-    Validate client/company name.
-
-    Args:
-        name: The company name to validate
-        required: Whether the field is required
-
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    name = (name or "").strip()
-    if not name:
-        if required:
-            return False, "Название компании обязательно для заполнения"
-        return True, ""
-    if len(name) < 2:
-        return False, "Название компании слишком короткое (минимум 2 символа)"
-    if len(name) > 200:
-        return False, "Название компании слишком длинное (максимум 200 символов)"
-    return True, ""
+    result = _validate_inn_extended_internal(inn, required=required)
+    return ValidationResult(
+        is_valid=result.is_valid,
+        error_message=result.error_message,
+        field_name="ИНН",
+        suggestion=result.suggestion,
+    )
 
 
 def validate_client_name_extended(name: str, *, required: bool = True) -> ValidationResult:
     """
     Extended client name validation with ValidationResult.
+
+    This is the canonical implementation - validate_client_name() is a wrapper.
 
     Args:
         name: The company name to validate
@@ -150,31 +96,19 @@ def validate_client_name_extended(name: str, *, required: bool = True) -> Valida
     return ValidationResult(is_valid=True, error_message="", field_name="Название компании")
 
 
-def validate_email(email: str, *, required: bool = False) -> Tuple[bool, str]:
+def validate_client_name(name: str, *, required: bool = True) -> Tuple[bool, str]:
     """
-    Validate email address format.
+    Validate client/company name (simple wrapper).
 
     Args:
-        email: The email address to validate
+        name: The company name to validate
         required: Whether the field is required
 
     Returns:
         Tuple of (is_valid, error_message)
     """
-    email = (email or "").strip().lower()
-    if not email:
-        if required:
-            return False, "Email обязателен для заполнения"
-        return True, ""
-
-    email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-    if not re.match(email_pattern, email):
-        return False, "Некорректный формат email. Пример: user@example.com"
-
-    if len(email) > 254:
-        return False, "Email слишком длинный (максимум 254 символа)"
-
-    return True, ""
+    result = validate_client_name_extended(name, required=required)
+    return result.is_valid, result.error_message
 
 
 def validate_email_extended(email: str, *, required: bool = False) -> ValidationResult:
@@ -233,43 +167,19 @@ def validate_email_extended(email: str, *, required: bool = False) -> Validation
     return ValidationResult(is_valid=True, error_message="", field_name="Email")
 
 
-def validate_phone(phone: str, *, required: bool = False) -> Tuple[bool, str]:
+def validate_email(email: str, *, required: bool = False) -> Tuple[bool, str]:
     """
-    Validate Russian phone number format.
-
-    Accepts formats:
-    - +7XXXXXXXXXX (11 digits with +7)
-    - 8XXXXXXXXXX (11 digits with 8)
-    - 7XXXXXXXXXX (11 digits with 7)
-    - XXXXXXXXXX (10 digits, assumes +7)
+    Validate email address format (simple wrapper).
 
     Args:
-        phone: The phone number to validate
+        email: The email address to validate
         required: Whether the field is required
 
     Returns:
         Tuple of (is_valid, error_message)
     """
-    phone = (phone or "").strip()
-    if not phone:
-        if required:
-            return False, "Номер телефона обязателен для заполнения"
-        return True, ""
-
-    digits = re.sub(r"[^\d]", "", phone)
-
-    if len(digits) == 10:
-        return True, ""
-
-    if len(digits) == 11:
-        if digits[0] in ("7", "8"):
-            return True, ""
-        return False, "Российский номер должен начинаться с 7 или 8"
-
-    return (
-        False,
-        "Номер телефона должен содержать 10 или 11 цифр. Пример: +7 (999) 123-45-67",
-    )
+    result = validate_email_extended(email, required=required)
+    return result.is_valid, result.error_message
 
 
 def validate_phone_extended(phone: str, *, required: bool = False) -> ValidationResult:
@@ -323,6 +233,21 @@ def validate_phone_extended(phone: str, *, required: bool = False) -> Validation
     return ValidationResult(is_valid=True, error_message="", field_name="Телефон")
 
 
+def validate_phone(phone: str, *, required: bool = False) -> Tuple[bool, str]:
+    """
+    Validate Russian phone number (simple wrapper).
+
+    Args:
+        phone: The phone number to validate
+        required: Whether the field is required
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    result = validate_phone_extended(phone, required=required)
+    return result.is_valid, result.error_message
+
+
 def validate_date_range(
     start: Optional[Union[date, datetime, str]],
     end: Optional[Union[date, datetime, str]],
@@ -331,7 +256,7 @@ def validate_date_range(
     allow_same_day: bool = True,
 ) -> Tuple[bool, str]:
     """
-    Validate a date range.
+    Validate a date range (simple wrapper).
 
     Args:
         start: Start date (date, datetime, or ISO string)
@@ -342,48 +267,8 @@ def validate_date_range(
     Returns:
         Tuple of (is_valid, error_message)
     """
-
-    def to_date(d: Optional[Union[date, datetime, str]]) -> Optional[date]:
-        if d is None:
-            return None
-        if isinstance(d, datetime):
-            return d.date()
-        if isinstance(d, date):
-            return d
-        if isinstance(d, str):
-            try:
-                return datetime.fromisoformat(d.replace("Z", "+00:00")).date()
-            except ValueError:
-                return None
-        return None
-
-    start_date = to_date(start)
-    end_date = to_date(end)
-
-    if start_date is None and end_date is None:
-        return True, ""
-
-    if start_date is None:
-        return False, "Дата начала периода не указана"
-
-    if end_date is None:
-        return False, "Дата окончания периода не указана"
-
-    if not allow_same_day and start_date == end_date:
-        return False, "Дата начала и окончания не могут совпадать"
-
-    if start_date > end_date:
-        return False, "Дата начала не может быть позже даты окончания"
-
-    if max_days is not None:
-        delta = (end_date - start_date).days
-        if delta > max_days:
-            return (
-                False,
-                f"Период не может превышать {max_days} дней (выбрано: {delta} дней)",
-            )
-
-    return True, ""
+    result = validate_date_range_extended(start, end, max_days=max_days, allow_same_day=allow_same_day)
+    return result.is_valid, result.error_message
 
 
 def validate_date_range_extended(

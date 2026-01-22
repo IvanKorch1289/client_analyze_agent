@@ -89,23 +89,31 @@ def _create_russian_recognizers():
     )
 
     # 4. RU_PERSON (ФИО кириллицей) - улучшенный распознаватель
+    # Примечание: Presidio использует IGNORECASE по умолчанию, поэтому паттерн [А-ЯЁ]
+    # ловит любые буквы. Используем низкий базовый score - требуется контекст.
     recognizers.append(
         PatternRecognizer(
             supported_entity="RU_PERSON",
             name="RU Person Name Recognizer",
             supported_language="ru",
             patterns=[
-                # Фамилия Имя Отчество
+                # Фамилия Имя Отчество - с типичными окончаниями отчества
+                Pattern(
+                    name="full_name_with_patronymic",
+                    regex=r"\b[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(ич|на|вич|вна)\b",
+                    score=0.85,  # Высокий score - отчество явно указывает на ФИО
+                ),
+                # Фамилия Имя Отчество - общий паттерн (низкий score без контекста)
                 Pattern(
                     name="full_name_pattern",
                     regex=r"\b[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\b",
-                    score=0.85,
+                    score=0.35,  # Низкий score - требуется контекст (+0.35)
                 ),
                 # Фамилия И.О.
                 Pattern(
                     name="abbreviated_name_pattern",
                     regex=r"\b[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.\s*[А-ЯЁ]\.",
-                    score=0.8,
+                    score=0.75,  # Формат И.О. более специфичен
                 ),
             ],
             context=[
@@ -114,6 +122,8 @@ def _create_russian_recognizers():
                 "руководитель",
                 "владелец",
                 "ФИО",
+                "гражданин",
+                "гражданка",
             ],
         )
     )
@@ -149,13 +159,20 @@ def _create_russian_recognizers():
             name="RU Passport Recognizer",
             supported_language="ru",
             patterns=[
+                # Формат с пробелом: XXXX XXXXXX или XX XX XXXXXX
                 Pattern(
-                    name="passport_pattern",
-                    regex=r"\b\d{4}\s*\d{6}\b",  # 4 цифры (серия) + 6 цифр (номер)
+                    name="passport_pattern_spaced",
+                    regex=r"\b\d{2}\s+\d{2}\s+\d{6}\b|\b\d{4}\s+\d{6}\b",
                     score=0.9,
-                )
+                ),
+                # Формат без пробела только с контекстом (низкий score без контекста)
+                Pattern(
+                    name="passport_pattern_compact",
+                    regex=r"\b\d{4}\d{6}\b",
+                    score=0.5,  # Низкий score - требуется контекст для активации
+                ),
             ],
-            context=["паспорт", "passport", "серия", "номер паспорта"],
+            context=["паспорт", "passport", "серия", "номер паспорта", "документ"],
         )
     )
 
@@ -210,8 +227,18 @@ def get_analyzer():
     global _analyzer
     if _analyzer is None:
         from presidio_analyzer import AnalyzerEngine
+        from presidio_analyzer.nlp_engine import NlpEngineProvider
 
-        _analyzer = AnalyzerEngine()
+        # Configure NLP engine to support both Russian and English
+        configuration = {
+            "nlp_engine_name": "spacy",
+            "models": [
+                {"lang_code": "ru", "model_name": "ru_core_news_sm"},
+                {"lang_code": "en", "model_name": "en_core_web_sm"},
+            ],
+        }
+        nlp_engine = NlpEngineProvider(nlp_configuration=configuration).create_engine()
+        _analyzer = AnalyzerEngine(nlp_engine=nlp_engine, supported_languages=["ru", "en"])
         _register_russian_recognizers(_analyzer)
 
     return _analyzer
@@ -315,7 +342,8 @@ def mask_pii(
 
     # Analyze text
     # Use "ru" for Russian recognizers, they support multiple languages
-    results = analyzer.analyze(text=text, language=language, entities=entities_to_detect)
+    # score_threshold=0.5 filters out low-confidence matches
+    results = analyzer.analyze(text=text, language=language, entities=entities_to_detect, score_threshold=0.5)
 
     if not results:
         return PIIMaskingResult(
@@ -326,33 +354,35 @@ def mask_pii(
             pii_count=0,
         )
 
-    # Anonymize with angle brackets format: <ENTITY_TYPE>
-    anonymized = anonymizer.anonymize(text=text, analyzer_results=results)
+    # Build replacements map BEFORE anonymization to capture original positions
+    # Sort by start position to process in order
+    sorted_results = sorted(results, key=lambda r: r.start)
 
-    # Build replacements map
     replacements = []
     detected_types = set()
 
-    for item in anonymized.items:
-        entity_type = item.entity_type
+    for r in sorted_results:
+        entity_type = r.entity_type
         detected_types.add(entity_type)
 
-        # Get original text (before anonymization)
-        original_value = text[item.start : item.end]
-
-        # Get masked value (after anonymization)
-        masked_value = anonymized.text[item.start : item.end]
+        # Get original text (before anonymization) using analyzer positions
+        original_value = text[r.start : r.end]
+        # Masked value will be <ENTITY_TYPE>
+        masked_value = f"<{entity_type}>"
 
         replacements.append(
             {
-                "start": item.start,
-                "end": item.end,
+                "start": r.start,
+                "end": r.end,
                 "entity_type": entity_type,
                 "original": original_value,
                 "masked": masked_value,
-                "operator": item.operator,
+                "operator": "replace",
             }
         )
+
+    # Anonymize with angle brackets format: <ENTITY_TYPE>
+    anonymized = anonymizer.anonymize(text=text, analyzer_results=results)
 
     return PIIMaskingResult(
         masked_text=anonymized.text,

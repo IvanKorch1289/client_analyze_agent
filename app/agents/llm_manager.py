@@ -18,7 +18,7 @@ import asyncio
 import threading
 import time
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from app.config import settings
 from app.utility.logging_client import logger
@@ -365,6 +365,267 @@ class LLMManager:
             self._provider_status[provider] = False
             raise
 
+    # ============================================================
+    # HELPER METHODS for ainvoke() - extracted for lower complexity
+    # ============================================================
+
+    async def _try_cache_lookup(self, prompt: str, start_time: float, **kwargs) -> Optional[str]:
+        """
+        Try to get response from LLM cache.
+
+        Returns:
+            Cached response if hit, None if miss or error.
+        """
+        try:
+            cache = _get_llm_cache()
+            cache_result = await cache.get_cached_response(
+                prompt=prompt,
+                provider=self._fallback_order[0].value,
+                temperature=kwargs.get("temperature", 0.7),
+                max_tokens=kwargs.get("max_tokens", 4000),
+            )
+
+            if cache_result.hit:
+                total_duration_ms = int((time.perf_counter() - start_time) * 1000)
+                logger.info(
+                    f"LLM Cache HIT - saved {total_duration_ms}ms",
+                    component="llm_manager",
+                )
+
+                # Log cache hit to audit
+                if settings.secure.llm_audit_enabled:
+                    await self._log_cache_hit_audit(
+                        prompt,
+                        cache_result.response,
+                        cache_result.cache_key,
+                        total_duration_ms,
+                    )
+
+                return cache_result.response
+        except Exception as e:
+            logger.error(f"LLM Cache check failed: {e}", component="llm_manager")
+
+        return None
+
+    async def _log_cache_hit_audit(self, prompt: str, response: str, cache_key: str, duration_ms: int) -> None:
+        """Log cache hit to audit trail."""
+        try:
+            audit = _get_llm_audit()
+            audit_logger = audit.get_audit_logger()
+            await audit_logger.log_llm_call(
+                provider="cache",
+                model="cached",
+                operation="ainvoke_cached",
+                prompt=prompt,
+                response=response,
+                duration_ms=duration_ms,
+                success=True,
+                pii_detected=False,
+                metadata={"cache_key": cache_key, "cache_hit": True},
+            )
+        except Exception as e:
+            logger.error(f"Audit logging failed: {e}", component="llm_manager")
+
+    def _mask_prompt_pii(self, prompt: str) -> Tuple[str, Optional[Any]]:
+        """
+        Mask PII in prompt before sending to LLM.
+
+        Returns:
+            Tuple of (masked_prompt, pii_result or None)
+        """
+        if not settings.secure.llm_audit_enabled:
+            return prompt, None
+
+        try:
+            pii = _get_pii_protection()
+            pii_result = pii.mask_pii(text=prompt, language="ru", mask_level="high")
+
+            if pii_result.pii_detected:
+                logger.warning(
+                    f"PII detected and masked: {pii_result.pii_count} items",
+                    component="llm_manager",
+                )
+
+            return pii_result.masked_text, pii_result
+        except Exception as e:
+            logger.error(f"PII masking failed: {e}", component="llm_manager")
+            return prompt, None
+
+    async def _call_providers_with_fallback(
+        self, masked_prompt: str, pii_result: Optional[Any], start_time: float, **kwargs
+    ) -> Tuple[bool, str, Optional["LLMProvider"], int, Optional[Exception]]:
+        """
+        Try calling LLM providers in fallback order.
+
+        Returns:
+            Tuple of (success, response_text, used_provider, attempts, last_error)
+        """
+        last_error = None
+        attempts = 0
+        response_text = ""
+        used_provider = None
+
+        for provider in self._fallback_order:
+            attempts += 1
+
+            if not self._provider_status[provider]:
+                logger.warning(f"Skipping {provider} (unavailable)", component="llm_manager")
+                continue
+
+            try:
+                logger.info(f"Attempting LLM call with {provider}", component="llm_manager")
+                provider_start = time.perf_counter()
+
+                response_text = await self.ainvoke_with_provider(prompt=masked_prompt, provider=provider, **kwargs)
+
+                provider_duration = time.perf_counter() - provider_start
+                self._log_provider_success(
+                    provider,
+                    masked_prompt,
+                    response_text,
+                    provider_duration,
+                    start_time,
+                    attempts,
+                    pii_result,
+                )
+
+                self._provider_status[provider] = True
+                used_provider = provider
+                return True, response_text, used_provider, attempts, None
+
+            except Exception as e:
+                last_error = e
+                logger.error(f"LLM call failed with {provider}: {e}", component="llm_manager")
+                self._provider_status[provider] = False
+                self._record_provider_failure(provider, provider_start, attempts)
+
+        return False, response_text, used_provider, attempts, last_error
+
+    def _log_provider_success(
+        self,
+        provider: "LLMProvider",
+        prompt: str,
+        response: str,
+        provider_duration: float,
+        start_time: float,
+        attempts: int,
+        pii_result: Optional[Any],
+    ) -> None:
+        """Log successful provider call."""
+        total_duration = time.perf_counter() - start_time
+        logger.structured(
+            "info",
+            "llm_success",
+            component="llm_manager",
+            provider=provider.value,
+            prompt_length=len(prompt),
+            response_length=len(response),
+            duration_ms=round(provider_duration * 1000, 2),
+            total_duration_ms=round(total_duration * 1000, 2),
+            fallback_used=(provider != LLMProvider.OPENROUTER),
+            attempts=attempts,
+            pii_masked=bool(pii_result and pii_result.pii_detected),
+        )
+
+        # Record Prometheus metrics
+        prom = _get_metrics()
+        if prom and prom.enabled:
+            prom.record_llm_request(provider=provider.value, success=True, latency=provider_duration)
+
+    def _record_provider_failure(self, provider: "LLMProvider", provider_start: float, attempts: int) -> None:
+        """Record provider failure in metrics."""
+        prom = _get_metrics()
+        if prom and prom.enabled:
+            prom.record_llm_request(
+                provider=provider.value,
+                success=False,
+                latency=time.perf_counter() - provider_start,
+            )
+            if attempts < len(self._fallback_order):
+                next_provider = self._fallback_order[attempts] if attempts < len(self._fallback_order) else None
+                if next_provider:
+                    prom.record_llm_fallback(provider.value, next_provider.value)
+
+    def _unmask_response_pii(self, response: str, pii_result: Optional[Any]) -> str:
+        """Unmask PII in response if masking was applied."""
+        if not pii_result or not pii_result.replacements:
+            return response
+
+        try:
+            pii = _get_pii_protection()
+            return pii.unmask_pii(masked_text=response, replacements=pii_result.replacements)
+        except Exception as e:
+            logger.error(f"PII unmasking failed: {e}", component="llm_manager")
+            return response
+
+    async def _log_llm_audit(
+        self,
+        prompt: str,
+        response: Optional[str],
+        used_provider: Optional["LLMProvider"],
+        success: bool,
+        start_time: float,
+        attempts: int,
+        last_error: Optional[Exception],
+        pii_result: Optional[Any],
+        **kwargs,
+    ) -> None:
+        """Log LLM call to audit trail."""
+        if not settings.secure.llm_audit_enabled:
+            return
+
+        try:
+            audit = _get_llm_audit()
+            audit_logger = audit.get_audit_logger()
+            total_duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+            await audit_logger.log_llm_call(
+                provider=used_provider.value if used_provider else "unknown",
+                model=(self._get_model_name(used_provider) if used_provider else "unknown"),
+                operation="ainvoke",
+                prompt=prompt,
+                response=response if success else None,
+                duration_ms=total_duration_ms,
+                success=success,
+                error=str(last_error) if not success else None,
+                pii_detected=bool(pii_result and pii_result.pii_detected),
+                pii_types=pii_result.detected_pii_types if pii_result else [],
+                temperature=kwargs.get("temperature"),
+                max_tokens=kwargs.get("max_tokens"),
+                fallback_used=(used_provider != LLMProvider.OPENROUTER if used_provider else False),
+                metadata={
+                    "attempts": attempts,
+                    "prompt_masked": bool(pii_result and pii_result.pii_detected),
+                },
+            )
+        except Exception as e:
+            logger.error(f"Audit logging failed: {e}", component="llm_manager")
+
+    async def _save_to_cache(
+        self,
+        prompt: str,
+        response: str,
+        used_provider: Optional["LLMProvider"],
+        **kwargs,
+    ) -> None:
+        """Save successful response to cache."""
+        try:
+            cache = _get_llm_cache()
+            await cache.set_cached_response(
+                prompt=prompt,
+                response=response,
+                provider=used_provider.value if used_provider else "default",
+                temperature=kwargs.get("temperature", 0.7),
+                max_tokens=kwargs.get("max_tokens", 4000),
+                ttl=3600,
+            )
+        except Exception as e:
+            logger.error(f"LLM Cache save failed: {e}", component="llm_manager")
+
+    # ============================================================
+    # MAIN AINVOKE METHOD (refactored to use helpers)
+    # ============================================================
+
     async def ainvoke(self, prompt: str, cache_enabled: bool = True, **kwargs) -> str:
         """
         Вызов LLM с автоматическим fallback, кэшированием, PII защитой и аудитом.
@@ -399,250 +660,47 @@ class LLMManager:
             Exception: Если все провайдеры недоступны
         """
         start_time = time.perf_counter()
-        last_error = None
-        attempts = 0
-        success = False
-        response_text = ""
-        used_provider = None
 
-        # ============================================================
-        # LLM CACHE: Проверяем кэш перед вызовом
-        # ============================================================
+        # Step 1: Check cache
         if cache_enabled:
-            try:
-                cache = _get_llm_cache()
-                cache_result = await cache.get_cached_response(
-                    prompt=prompt,
-                    provider=self._fallback_order[0].value,  # Используем primary provider для ключа
-                    temperature=kwargs.get("temperature", 0.7),
-                    max_tokens=kwargs.get("max_tokens", 4000),
-                )
+            cached_response = await self._try_cache_lookup(prompt, start_time, **kwargs)
+            if cached_response is not None:
+                return cached_response
 
-                if cache_result.hit:
-                    # Cache HIT - возвращаем из кэша
-                    total_duration_ms = int((time.perf_counter() - start_time) * 1000)
+        # Step 2: Mask PII in prompt
+        masked_prompt, pii_result = self._mask_prompt_pii(prompt)
 
-                    logger.info(
-                        f"LLM Cache HIT - saved {total_duration_ms}ms (estimated 30-40s API call)",
-                        component="llm_manager",
-                    )
+        # Step 3: Try providers with fallback
+        success, response_text, used_provider, attempts, last_error = await self._call_providers_with_fallback(
+            masked_prompt, pii_result, start_time, **kwargs
+        )
 
-                    # Логируем в audit (cache hit)
-                    if settings.secure.llm_audit_enabled:
-                        try:
-                            audit = _get_llm_audit()
-                            audit_logger = audit.get_audit_logger()
-                            await audit_logger.log_llm_call(
-                                provider="cache",
-                                model="cached",
-                                operation="ainvoke_cached",
-                                prompt=prompt,
-                                response=cache_result.response,
-                                duration_ms=total_duration_ms,
-                                success=True,
-                                pii_detected=False,
-                                metadata={
-                                    "cache_key": cache_result.cache_key,
-                                    "cache_hit": True,
-                                },
-                            )
-                        except Exception as e:
-                            logger.error(f"Audit logging failed: {e}", component="llm_manager")
+        # Step 4: Unmask PII in response
+        final_response = self._unmask_response_pii(response_text, pii_result) if success else response_text
 
-                    return cache_result.response
+        # Step 5: Log to audit trail
+        await self._log_llm_audit(
+            prompt,
+            final_response,
+            used_provider,
+            success,
+            start_time,
+            attempts,
+            last_error,
+            pii_result,
+            **kwargs,
+        )
 
-            except Exception as e:
-                logger.error(
-                    f"LLM Cache check failed: {e}, proceeding without cache",
-                    component="llm_manager",
-                )
-                # Продолжаем без кэша при ошибке
-
-        # ============================================================
-        # PII PROTECTION: Маскируем конфиденциальные данные
-        # ============================================================
-        pii_result = None
-        masked_prompt = prompt
-
-        if settings.secure.llm_audit_enabled:
-            try:
-                pii = _get_pii_protection()
-                pii_result = pii.mask_pii(
-                    text=prompt,
-                    language="ru",
-                    mask_level="high",  # Максимальная защита
-                )
-                masked_prompt = pii_result.masked_text
-
-                if pii_result.pii_detected:
-                    logger.warning(
-                        f"PII detected and masked: {pii_result.pii_count} items of types {pii_result.detected_pii_types}",
-                        component="llm_manager",
-                    )
-            except Exception as e:
-                logger.error(
-                    f"PII masking failed: {e}, proceeding without masking",
-                    component="llm_manager",
-                )
-                # Продолжаем без маскирования при ошибке
-
-        # ============================================================
-        # LLM FALLBACK LOOP
-        # ============================================================
-        for provider in self._fallback_order:
-            attempts += 1
-
-            # Пропускаем провайдеры, которые помечены как недоступные
-            if not self._provider_status[provider]:
-                logger.warning(
-                    f"Skipping {provider} (marked as unavailable)",
-                    component="llm_manager",
-                )
-                continue
-
-            try:
-                logger.info(
-                    f"Attempting LLM call with {provider} (attempt {attempts})",
-                    component="llm_manager",
-                )
-
-                provider_start = time.perf_counter()
-
-                # ВАЖНО: отправляем masked_prompt вместо оригинального
-                response_text = await self.ainvoke_with_provider(prompt=masked_prompt, provider=provider, **kwargs)
-
-                provider_duration = time.perf_counter() - provider_start
-                total_duration = time.perf_counter() - start_time
-
-                logger.structured(
-                    "info",
-                    "llm_success",
-                    component="llm_manager",
-                    provider=provider.value,
-                    prompt_length=len(masked_prompt),
-                    response_length=len(response_text),
-                    duration_ms=round(provider_duration * 1000, 2),
-                    total_duration_ms=round(total_duration * 1000, 2),
-                    fallback_used=(provider != LLMProvider.OPENROUTER),
-                    attempts=attempts,
-                    pii_masked=bool(pii_result and pii_result.pii_detected),
-                )
-
-                # Record Prometheus metrics
-                prom = _get_metrics()
-                if prom and prom.enabled:
-                    prom.record_llm_request(
-                        provider=provider.value,
-                        success=True,
-                        latency=provider_duration,
-                    )
-
-                # Помечаем провайдер как доступный при успехе
-                self._provider_status[provider] = True
-                used_provider = provider
-                success = True
-                break  # Успешно получен ответ
-
-            except Exception as e:
-                last_error = e
-                logger.error(f"LLM call failed with {provider}: {e}", component="llm_manager")
-                self._provider_status[provider] = False
-
-                # Record failed attempt in Prometheus
-                prom = _get_metrics()
-                if prom and prom.enabled:
-                    prom.record_llm_request(
-                        provider=provider.value,
-                        success=False,
-                        latency=time.perf_counter() - provider_start,
-                    )
-                    # Record fallback if moving to next provider
-                    if attempts < len(self._fallback_order):
-                        next_provider = self._fallback_order[attempts] if attempts < len(self._fallback_order) else None
-                        if next_provider:
-                            prom.record_llm_fallback(provider.value, next_provider.value)
-
-                continue
-
-        # ============================================================
-        # PII UNMASKING: Восстанавливаем оригинальные данные в ответе
-        # ============================================================
-        final_response = response_text
-
-        if success and pii_result and pii_result.replacements:
-            try:
-                pii = _get_pii_protection()
-                final_response = pii.unmask_pii(masked_text=response_text, replacements=pii_result.replacements)
-                logger.debug("PII unmasked in response", component="llm_manager")
-            except Exception as e:
-                logger.error(
-                    f"PII unmasking failed: {e}, returning masked response",
-                    component="llm_manager",
-                )
-                # Возвращаем masked response при ошибке unmasking
-
-        # ============================================================
-        # AUDIT LOGGING: Логируем для compliance
-        # ============================================================
-        if settings.secure.llm_audit_enabled:
-            try:
-                audit = _get_llm_audit()
-                audit_logger = audit.get_audit_logger()
-
-                total_duration_ms = int((time.perf_counter() - start_time) * 1000)
-
-                await audit_logger.log_llm_call(
-                    provider=used_provider.value if used_provider else "unknown",
-                    model=(self._get_model_name(used_provider) if used_provider else "unknown"),
-                    operation="ainvoke",
-                    prompt=prompt,  # Логируем оригинальный промпт (хэшируется в audit)
-                    response=final_response if success else None,
-                    duration_ms=total_duration_ms,
-                    success=success,
-                    error=str(last_error) if not success else None,
-                    pii_detected=bool(pii_result and pii_result.pii_detected),
-                    pii_types=pii_result.detected_pii_types if pii_result else [],
-                    temperature=kwargs.get("temperature"),
-                    max_tokens=kwargs.get("max_tokens"),
-                    fallback_used=(used_provider != LLMProvider.OPENROUTER if used_provider else False),
-                    metadata={
-                        "attempts": attempts,
-                        "prompt_masked": bool(pii_result and pii_result.pii_detected),
-                    },
-                )
-            except Exception as e:
-                logger.error(f"Audit logging failed: {e}", component="llm_manager", exc_info=True)
-                # Не прерываем выполнение при ошибке аудита
-
-        # ============================================================
-        # CACHE SAVE: Сохраняем успешный ответ в кэш
-        # ============================================================
+        # Step 6: Save to cache
         if success and cache_enabled and final_response:
-            try:
-                cache = _get_llm_cache()
-                await cache.set_cached_response(
-                    prompt=prompt,
-                    response=final_response,
-                    provider=used_provider.value if used_provider else "default",
-                    temperature=kwargs.get("temperature", 0.7),
-                    max_tokens=kwargs.get("max_tokens", 4000),
-                    ttl=3600,  # 1 час
-                )
-            except Exception as e:
-                logger.error(f"LLM Cache save failed: {e}", component="llm_manager")
-                # Не прерываем выполнение при ошибке сохранения в кэш
+            await self._save_to_cache(prompt, final_response, used_provider, **kwargs)
 
-        # ============================================================
-        # FINAL RESULT OR ERROR
-        # ============================================================
+        # Step 7: Return result or raise error
         if not success:
-            # Все провайдеры недоступны
             total_duration = time.perf_counter() - start_time
-
             logger.error(
                 f"All LLM providers failed (duration: {total_duration * 1000:.2f}ms, attempts: {attempts})",
                 component="llm_manager",
-                exc_info=True,
             )
             raise Exception(f"All LLM providers failed after {attempts} attempts. Last error: {last_error}")
 

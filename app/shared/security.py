@@ -166,12 +166,16 @@ def validate_email(email: str) -> str:
     return email.lower().strip()
 
 
-def validate_inn(inn: str) -> Tuple[bool, str]:
+def validate_inn(inn: str, *, required: bool = False) -> Tuple[bool, str]:
     """
     Validate Russian INN (ИНН).
 
+    Canonical implementation for the entire project.
+    Use this function everywhere instead of duplicating validation logic.
+
     Args:
         inn: INN number (10 or 12 digits)
+        required: If True, empty INN is invalid; if False, empty is OK
 
     Returns:
         (is_valid, error_message)
@@ -182,21 +186,93 @@ def validate_inn(inn: str) -> Tuple[bool, str]:
 
         >>> validate_inn("123")
         (False, "ИНН должен содержать 10 или 12 цифр")
+
+        >>> validate_inn("", required=True)
+        (False, "ИНН обязателен для заполнения")
+
+        >>> validate_inn("", required=False)
+        (True, "")
     """
     inn = (inn or "").strip()
 
     if not inn:
-        return True, ""  # INN is optional
+        if required:
+            return False, "ИНН обязателен для заполнения"
+        return True, ""
 
     # Only digits allowed
     if not inn.isdigit():
-        return False, "ИНН должен содержать только цифры"
+        return False, "ИНН должен содержать только цифры (0-9)"
 
-    # Length: 10 (legal entity) or 12 (individual)
+    # Length: 10 (legal entity) or 12 (individual/entrepreneur)
     if len(inn) not in (10, 12):
-        return False, "ИНН должен содержать 10 (юрлица) или 12 (ИП) цифр"
+        return False, "ИНН должен содержать 10 цифр (юрлица) или 12 цифр (ИП/физлица)"
 
     return True, ""
+
+
+class INNValidationResult:
+    """
+    Extended validation result for INN with suggestions.
+
+    Attributes:
+        is_valid: Whether the INN is valid
+        error_message: Error message if invalid
+        suggestion: Helpful suggestion for fixing the error
+    """
+
+    __slots__ = ("is_valid", "error_message", "suggestion")
+
+    def __init__(self, is_valid: bool, error_message: str = "", suggestion: str = ""):
+        self.is_valid = is_valid
+        self.error_message = error_message
+        self.suggestion = suggestion
+
+    def __bool__(self) -> bool:
+        return self.is_valid
+
+    def to_tuple(self) -> Tuple[bool, str]:
+        """Convert to simple (is_valid, error_message) tuple."""
+        return self.is_valid, self.error_message
+
+
+def validate_inn_extended(inn: str, *, required: bool = False) -> INNValidationResult:
+    """
+    Extended INN validation with detailed error messages and suggestions.
+
+    Args:
+        inn: INN number (10 or 12 digits)
+        required: If True, empty INN is invalid
+
+    Returns:
+        INNValidationResult with is_valid, error_message, and suggestion
+    """
+    inn = (inn or "").strip()
+
+    if not inn:
+        if required:
+            return INNValidationResult(
+                is_valid=False,
+                error_message="ИНН обязателен для заполнения",
+                suggestion="Введите 10-значный ИНН организации или 12-значный ИНН ИП/физлица",
+            )
+        return INNValidationResult(is_valid=True)
+
+    if not inn.isdigit():
+        return INNValidationResult(
+            is_valid=False,
+            error_message="ИНН должен содержать только цифры",
+            suggestion="Удалите все буквы и специальные символы из ИНН",
+        )
+
+    if len(inn) not in (10, 12):
+        return INNValidationResult(
+            is_valid=False,
+            error_message=f"ИНН должен содержать 10 или 12 цифр (введено: {len(inn)})",
+            suggestion="Для юридических лиц — 10 цифр, для ИП/физических лиц — 12 цифр",
+        )
+
+    return INNValidationResult(is_valid=True)
 
 
 def sanitize_for_sql(text: str) -> str:
@@ -284,6 +360,8 @@ __all__ = [
     "validate_client_id",
     "validate_email",
     "validate_inn",
+    "validate_inn_extended",
+    "INNValidationResult",
     "sanitize_for_sql",
     "sanitize_filename",
 ]

@@ -65,34 +65,34 @@ class SentimentResult(TypedDict):
 # ============================================================
 
 
-class DaDataResult(TypedDict):
+class DaDataResult(TypedDict, total=False):
     """DaData API response structure."""
 
     source: Literal["dadata"]
     success: bool
-    data: Optional[Dict[str, Any]]
-    error: Optional[str]
+    data: Dict[str, Any]
+    error: str
 
 
-class CasebookResult(TypedDict):
+class CasebookResult(TypedDict, total=False):
     """Casebook API response structure."""
 
     source: Literal["casebook"]
     success: bool
-    data: Optional[List[Dict[str, Any]]]
-    error: Optional[str]
+    data: List[Dict[str, Any]]
+    error: str
 
 
-class InfoSphereResult(TypedDict):
+class InfoSphereResult(TypedDict, total=False):
     """InfoSphere API response structure."""
 
     source: Literal["infosphere"]
     success: bool
-    data: Optional[Dict[str, Any]]
-    error: Optional[str]
+    data: Dict[str, Any]
+    error: str
 
 
-class PerplexityResult(TypedDict):
+class PerplexityResult(TypedDict, total=False):
     """Perplexity API response structure."""
 
     source: Literal["perplexity"]
@@ -101,29 +101,70 @@ class PerplexityResult(TypedDict):
     content: Optional[str]
     citations: List[str]
     error: Optional[str]
+    integration: Optional[str]  # Integration status info
 
 
-class TavilyResult(TypedDict):
+class TavilyResultItem(TypedDict, total=False):
+    """Single Tavily search result item."""
+
+    url: str
+    title: str
+    content: str
+    snippet: str
+    score: float
+
+
+class TavilyResult(TypedDict, total=False):
     """Tavily API response structure."""
 
     source: Literal["tavily"]
     intent_id: str
     success: bool
     answer: Optional[str]
-    results: List[Dict[str, Any]]
+    results: List[TavilyResultItem]
     error: Optional[str]
 
 
-class SourceData(TypedDict):
+class CascadeResult(TypedDict, total=False):
+    """Cascade Perplexity analysis result."""
+
+    success: bool
+    content: Optional[str]
+    citations: List[str]
+    urls_analyzed: List[str]
+    error: Optional[str]
+
+
+class TavilyFullText(TypedDict, total=False):
+    """Scraped full text from Tavily URL."""
+
+    url: str
+    title: str
+    full_content: str
+    content_length: int
+    scrape_status: Literal["success", "failed", "timeout"]
+
+
+class IntentResults(TypedDict, total=False):
+    """Collection of results grouped by intent."""
+
+    success: bool
+    intents: Dict[str, Any]  # intent_id -> PerplexityResult or TavilyResult
+    errors: List[Dict[str, str]]
+    successful_intents: int
+    failed_intents: int
+
+
+class SourceData(TypedDict, total=False):
     """Combined data from all sources."""
 
     dadata: Optional[DaDataResult]
     infosphere: Optional[InfoSphereResult]
     casebook: Optional[CasebookResult]
-    perplexity: Dict[str, Any]
-    tavily: Dict[str, Any]
-    tavily_full_texts: List[Dict[str, Any]]
-    cascade_perplexity: Optional[Dict[str, Any]]
+    perplexity: IntentResults
+    tavily: IntentResults
+    tavily_full_texts: List[TavilyFullText]
+    cascade_perplexity: Optional[CascadeResult]
 
 
 # ============================================================
