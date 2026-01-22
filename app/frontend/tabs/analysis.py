@@ -31,6 +31,35 @@ ANALYSIS_STEPS = [
 
 ESTIMATED_ANALYSIS_SECONDS = 45
 
+# Маппинг этапов анализа к используемым моделям
+STEP_MODEL_INFO = {
+    "orchestrating": {
+        "model": "Claude 3.5 Sonnet",
+        "provider": "OpenRouter",
+        "task": "Планирование поисковых запросов",
+    },
+    "collecting": {
+        "model": "Perplexity + Tavily",
+        "provider": "API",
+        "task": "Сбор данных из веб-источников",
+    },
+    "searching": {
+        "model": "Perplexity Sonar",
+        "provider": "Perplexity AI",
+        "task": "Веб-поиск и анализ",
+    },
+    "analyzing": {
+        "model": "Claude 3.5 Sonnet",
+        "provider": "OpenRouter",
+        "task": "Анализ данных и оценка рисков",
+    },
+    "saving": {
+        "model": "—",
+        "provider": "File System",
+        "task": "Сохранение отчёта",
+    },
+}
+
 
 def _get_token() -> str:
     """Получить admin token из session_state."""
@@ -106,86 +135,165 @@ def _render_run_analysis_now(api: ApiClient) -> None:
 
 
 def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None:
-    """Run analysis with progress indicator and status updates."""
+    """Run analysis with real-time streaming progress indicator and model info."""
     progress_container = st.empty()
-    time_container = st.empty()
+    status_container = st.empty()
+    model_info_container = st.empty()
+    info_container = st.empty()
 
     start_time = time.time()
-    estimated_remaining = ESTIMATED_ANALYSIS_SECONDS
-
-    progress_container.progress(0.05, text="🚀 Запуск анализа...")
-    time_container.caption(f"⏱️ Примерное время: ~{ESTIMATED_ANALYSIS_SECONDS} сек")
-
     result = None
     error_occurred = False
 
     try:
-        with safe_api_call("Запуск анализа клиента", show_error=False, log_error=True):
-            import threading
+        import httpx
 
-            result_holder: Dict[str, Any] = {
-                "result": None,
-                "error": None,
-                "done": False,
-            }
+        # Используем streaming API для получения real-time прогресса
+        url = api.url("/agent/analyze-client") + "?stream=true"
+        headers = api._headers(admin_token=_get_token())
+        headers["Accept"] = "text/event-stream"
 
-            def api_call():
-                try:
-                    result_holder["result"] = api.post("/agent/analyze-client", json=payload, admin_token=_get_token())
-                except Exception as e:
-                    result_holder["error"] = str(e)
-                finally:
-                    result_holder["done"] = True
+        progress_container.progress(0.05, text="🚀 Запуск анализа...")
 
-            thread = threading.Thread(target=api_call, daemon=True)
-            thread.start()
+        with httpx.Client(timeout=180.0) as client:
+            with client.stream("POST", url, json=payload, headers=headers) as response:
+                if response.status_code != 200:
+                    error_text = response.text
+                    raise Exception(f"API error {response.status_code}: {error_text}")
 
-            step_idx = 0
-            while not result_holder["done"]:
-                elapsed = time.time() - start_time
-                progress_fraction = min(0.9, elapsed / ESTIMATED_ANALYSIS_SECONDS)
+                current_step = ""
+                current_progress = 0.05
+                sources_info = ""
 
-                while step_idx < len(ANALYSIS_STEPS) - 1 and progress_fraction >= ANALYSIS_STEPS[step_idx + 1][1]:
-                    step_idx += 1
+                for line in response.iter_lines():
+                    if not line or not line.strip():
+                        continue
 
-                step_name, _ = ANALYSIS_STEPS[step_idx]
-                progress_container.progress(progress_fraction, text=step_name)
+                    # Парсинг SSE событий
+                    if line.startswith("event:"):
+                        event_type = line[6:].strip()
+                        continue
+                    elif line.startswith("data:"):
+                        try:
+                            data = json.loads(line[5:].strip())
 
-                estimated_remaining = max(0, ESTIMATED_ANALYSIS_SECONDS - int(elapsed))
-                if estimated_remaining >= 60:
-                    minutes = estimated_remaining // 60
-                    seconds = estimated_remaining % 60
-                    time_text = f"~{minutes} мин {seconds} сек"
-                elif estimated_remaining > 0:
-                    time_text = f"~{estimated_remaining} сек"
-                else:
-                    time_text = "завершается..."
-                time_container.caption(f"⏱️ Примерное время: {time_text}")
+                            # Обработка различных типов событий
+                            if event_type == "start":
+                                session_id = data.get("session_id", "")
+                                info_container.caption(f"🔑 Session ID: `{session_id[:16]}...`")
 
-                time.sleep(0.5)
+                            elif event_type == "progress":
+                                step = data.get("step", "")
+                                message = data.get("message", "")
+                                progress_val = data.get("progress", 0) / 100.0
+                                current_progress = progress_val
 
-            thread.join(timeout=1)
+                                step_emoji = {
+                                    "orchestrating": "🧠",
+                                    "collecting": "📥",
+                                    "searching": "🔍",
+                                    "analyzing": "📊",
+                                    "saving": "💾",
+                                }.get(step, "⚙️")
 
-            if result_holder["error"]:
-                raise Exception(result_holder["error"])
+                                current_step = f"{step_emoji} {message}"
+                                progress_container.progress(progress_val, text=current_step)
 
-            result = result_holder["result"]
+                                elapsed = int(time.time() - start_time)
+
+                                # Показываем информацию о модели для текущего этапа
+                                model_info = STEP_MODEL_INFO.get(step, {})
+                                if model_info:
+                                    model_name = model_info.get("model", "")
+                                    provider = model_info.get("provider", "")
+                                    task = model_info.get("task", "")
+
+                                    # Используем expander для компактного отображения в углу
+                                    with model_info_container.container():
+                                        st.caption(
+                                            f"⏱️ **{elapsed} сек** | 🤖 **{model_name}** ({provider})\n\n"
+                                            f"📝 {task}"
+                                        )
+                                else:
+                                    status_container.caption(f"⏱️ Время выполнения: {elapsed} сек | Этап: {step}")
+
+                            elif event_type == "orchestrator":
+                                intents_count = data.get("intents_count", 0)
+                                intents = data.get("intents", [])
+                                info_text = f"🎯 Сформировано запросов: {intents_count}"
+                                if intents:
+                                    info_text += f"\n\n📋 Категории: {', '.join(intents[:5])}"
+                                info_container.info(info_text)
+
+                            elif event_type == "data_collected":
+                                sources = data.get("sources", [])
+                                successful = data.get("successful", [])
+                                duration_ms = data.get("duration_ms", 0)
+
+                                sources_info = f"✅ Источники: {len(successful)}/{len(sources)}\n"
+                                sources_info += f"📦 Успешно: {', '.join(successful)}"
+                                info_container.success(sources_info)
+
+                                current_progress = data.get("progress", 60) / 100.0
+                                progress_container.progress(current_progress, text="📥 Данные собраны")
+
+                                # Обновляем информацию о модели
+                                with model_info_container.container():
+                                    st.caption(
+                                        f"⏱️ Сбор данных: {duration_ms/1000:.1f} сек | "
+                                        f"Источников: {len(successful)}/{len(sources)}"
+                                    )
+
+                            elif event_type == "report":
+                                risk_score = data.get("risk_score", 0)
+                                risk_level = data.get("risk_level", "unknown")
+                                findings_count = data.get("findings_count", 0)
+
+                                info_container.warning(
+                                    f"⚠️ Риск-скор: **{risk_score}/100** ({risk_level})\n\n"
+                                    f"📋 Обнаружено факторов: {findings_count}"
+                                )
+
+                                current_progress = data.get("progress", 85) / 100.0
+                                progress_container.progress(current_progress, text="📊 Отчёт сформирован")
+
+                            elif event_type == "result":
+                                result = data
+                                current_progress = 1.0
+                                progress_container.progress(1.0, text="✅ Анализ завершён!")
+                                elapsed = int(time.time() - start_time)
+
+                                with model_info_container.container():
+                                    st.caption(f"⏱️ **Общее время: {elapsed} сек** | ✅ **Завершено успешно**")
+
+                            elif event_type == "error":
+                                error_msg = data.get("error", "Неизвестная ошибка")
+                                raise Exception(error_msg)
+
+                            elif event_type == "complete":
+                                if result is None:
+                                    # Если result не был получен ранее, делаем финальный запрос
+                                    logger.warning("Stream completed without result event")
+
+                        except json.JSONDecodeError as e:
+                            logger.error(f"Failed to parse SSE data: {line}, error: {e}")
+                            continue
+
     except Exception as e:
         error_occurred = True
         logger.error(f"Analysis error: {e}")
         progress_container.empty()
-        time_container.empty()
+        status_container.empty()
+        model_info_container.empty()
+        info_container.empty()
         st.error(f"❌ Ошибка при выполнении анализа: {str(e)}")
         st.info("💡 Попробуйте повторить запрос или обратитесь к администратору")
 
     if not error_occurred:
-        progress_container.progress(1.0, text="✅ Анализ завершён!")
-        time_container.empty()
-
         if result is not None:
             st.session_state["last_analysis_result"] = result
         else:
-            st.warning("⚠️ Анализ завершён, но данные не получены. Попробуйте обновить страницу.")
+            st.warning("⚠️ Анализ завершён, но финальные данные не получены. Попробуйте обновить страницу.")
 
 
 def _render_schedule_analysis(api: ApiClient) -> None:
