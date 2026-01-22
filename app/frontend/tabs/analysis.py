@@ -211,8 +211,7 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
                                     # Используем expander для компактного отображения в углу
                                     with model_info_container.container():
                                         st.caption(
-                                            f"⏱️ **{elapsed} сек** | 🤖 **{model_name}** ({provider})\n\n"
-                                            f"📝 {task}"
+                                            f"⏱️ **{elapsed} сек** | 🤖 **{model_name}** ({provider})\n\n📝 {task}"
                                         )
                                 else:
                                     status_container.caption(f"⏱️ Время выполнения: {elapsed} сек | Этап: {step}")
@@ -240,7 +239,7 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
                                 # Обновляем информацию о модели
                                 with model_info_container.container():
                                     st.caption(
-                                        f"⏱️ Сбор данных: {duration_ms/1000:.1f} сек | "
+                                        f"⏱️ Сбор данных: {duration_ms / 1000:.1f} сек | "
                                         f"Источников: {len(successful)}/{len(sources)}"
                                     )
 

@@ -92,13 +92,11 @@ class AdaptivePromptEngine:
         )
 
         # Фильтровать только негативные и частично точные
-        relevant_feedbacks = [
-            fb for fb in recent_feedbacks if fb.get("rating") in ["inaccurate", "partially_accurate"]
-        ]
+        relevant_feedbacks = [fb for fb in recent_feedbacks if fb.get("rating") in ["inaccurate", "partially_accurate"]]
 
         if not relevant_feedbacks:
             logger.debug(
-                f"No relevant feedbacks found for adaptive prompting",
+                "No relevant feedbacks found for adaptive prompting",
                 component="adaptive_prompt",
             )
             return base_prompt
@@ -178,12 +176,12 @@ class AdaptivePromptEngine:
 КОНТЕКСТ: Агент "{template_name}" получил следующие фидбеки от пользователей:
 
 СТАТИСТИКА ФИДБЕКОВ:
-- Распределение оценок: {patterns.get('rating_distribution', {})}
-- Частые проблемы: {', '.join(patterns.get('common_issues', []))}
-- Области, требующие внимания: {patterns.get('focus_areas_frequency', {})}
+- Распределение оценок: {patterns.get("rating_distribution", {})}
+- Частые проблемы: {", ".join(patterns.get("common_issues", []))}
+- Области, требующие внимания: {patterns.get("focus_areas_frequency", {})}
 
 ПОСЛЕДНИЕ КОММЕНТАРИИ ПОЛЬЗОВАТЕЛЕЙ:
-{chr(10).join(f'- "{comment}"' for comment in patterns.get('sample_comments', [])[:3])}
+{chr(10).join(f'- "{comment}"' for comment in patterns.get("sample_comments", [])[:3])}
 
 ЗАДАЧА: Проанализируй эти фидбеки и сгенерируй КОНКРЕТНЫЕ, ДЕЙСТВЕННЫЕ инструкции
 для промпта агента "{template_name}", чтобы предотвратить повторение этих ошибок.
