@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD Pipeline
 
 on:
   pull_request:
@@ -6,9 +6,20 @@ on:
     branches:
       - main
       - master
+  schedule:
+    # Nightly security scan at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  test:
+  # ==========================================================================
+  # Stage 1: Code Quality & Testing
+  # ==========================================================================
+  lint-and-test:
+    name: Lint & Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -25,14 +36,162 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction --no-ansi
 
-      - name: Ruff
+      - name: Ruff (linting)
         run: poetry run ruff check .
 
-      - name: Pyright
+      - name: Pyright (type checking)
         run: poetry run pyright
 
-      - name: Pytest
+      - name: Pytest with coverage
         env:
           SKIP_INTEGRATION: "true"
-        run: poetry run pytest -q
+        run: |
+          poetry run pytest -q --cov=app --cov-report=xml --cov-report=term-missing
 
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+        continue-on-error: true
+
+  # ==========================================================================
+  # Stage 2: Security Scanning
+  # ==========================================================================
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Poetry
+        run: python -m pip install --upgrade pip poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-ansi
+
+      - name: Bandit (SAST)
+        run: poetry run bandit -r app -c .bandit.yml -f json -o bandit-report.json || true
+
+      - name: pip-audit (dependency vulnerabilities)
+        run: poetry run pip-audit --format json --output pip-audit-report.json || true
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            pip-audit-report.json
+        if: always()
+
+      - name: Check for critical vulnerabilities
+        run: |
+          # Fail if bandit finds high severity issues
+          if [ -f bandit-report.json ]; then
+            HIGH_ISSUES=$(cat bandit-report.json | python -c "import sys,json; d=json.load(sys.stdin); print(len([r for r in d.get('results',[]) if r.get('issue_severity')=='HIGH']))" 2>/dev/null || echo "0")
+            if [ "$HIGH_ISSUES" -gt "0" ]; then
+              echo "::error::Found $HIGH_ISSUES high severity security issues"
+              cat bandit-report.json | python -c "import sys,json; d=json.load(sys.stdin); [print(f\"- {r['filename']}:{r['line_number']}: {r['issue_text']}\") for r in d.get('results',[]) if r.get('issue_severity')=='HIGH']"
+              exit 1
+            fi
+          fi
+
+  # ==========================================================================
+  # Stage 3: Build & Push Docker Image
+  # ==========================================================================
+  build-and-push:
+    name: Build & Push Docker
+    runs-on: ubuntu-latest
+    needs: [lint-and-test, security-scan]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ==========================================================================
+  # Stage 4: Container Security Scan
+  # ==========================================================================
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+        continue-on-error: true
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+        if: always()
+
+  # ==========================================================================
+  # Stage 5: Smoke Tests (optional - requires staging environment)
+  # ==========================================================================
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run smoke tests
+        run: |
+          echo "Smoke tests would run here against staging environment"
+          echo "Configure STAGING_URL secret and uncomment below:"
+          # curl -f ${{ secrets.STAGING_URL }}/utility/health || exit 1

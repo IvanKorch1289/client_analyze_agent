@@ -15,7 +15,12 @@ class PaginationParams(BaseModel):
     """Pagination parameters for list endpoints."""
 
     limit: int = Field(default=50, ge=1, le=500, description="Number of items per page")
-    offset: int = Field(default=0, ge=0, description="Number of items to skip")
+    offset: int = Field(
+        default=0,
+        ge=0,
+        le=100000,
+        description="Number of items to skip (max 100000 to prevent DoS)",
+    )
 
 
 class PaginatedResponse(BaseModel, Generic[T]):

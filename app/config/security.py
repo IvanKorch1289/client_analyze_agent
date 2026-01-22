@@ -41,8 +41,25 @@ class SecureSettings(BaseSettingsWithLoader):
         default=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         description="Разрешенные HTTP методы",
     )
-    cors_headers: List[str] = Field(default=["*"], description="Разрешенные HTTP заголовки")
+    cors_headers: List[str] = Field(
+        default=[
+            "Accept",
+            "Accept-Language",
+            "Content-Language",
+            "Content-Type",
+            "Authorization",
+            "X-Request-ID",
+            "X-API-Key",
+        ],
+        description="Разрешенные HTTP заголовки (production: explicit list, not '*')",
+    )
     cors_credentials: bool = Field(default=True, description="Разрешить credentials")
+
+    # HTTPS Enforcement
+    https_redirect_enabled: bool = Field(
+        default=False,
+        description="Redirect HTTP to HTTPS in production (set to True behind HTTPS proxy)",
+    )
 
     # Rate Limiting (глобальные настройки)
     rate_limit_enabled: bool = Field(default=True, description="Включить rate limiting")
