@@ -7,8 +7,8 @@
 - Адаптивной доработки промптов
 """
 
+import json
 import time
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.utility.logging_client import logger
@@ -69,7 +69,10 @@ class FeedbackRepository:
                 },
             )
 
-            logger.info(f"Feedback space '{self.space_name}' initialized", component="feedback_repo")
+            logger.info(
+                f"Feedback space '{self.space_name}' initialized",
+                component="feedback_repo",
+            )
 
         except Exception as e:
             logger.warning(
@@ -105,7 +108,7 @@ class FeedbackRepository:
             feedback.get("report_id", ""),
             feedback.get("rating", ""),
             feedback.get("comment") or "",
-            str(feedback.get("focus_areas", [])),  # JSON строка
+            json.dumps(feedback.get("focus_areas", [])),  # JSON строка
             feedback.get("client_name", ""),
             feedback.get("inn", ""),
             timestamp,
@@ -157,7 +160,7 @@ class FeedbackRepository:
                     "report_id": row[1],
                     "rating": row[2],
                     "comment": row[3],
-                    "focus_areas": eval(row[4]) if row[4] else [],  # Parse JSON string
+                    "focus_areas": (json.loads(row[4]) if row[4] else []),  # Parse JSON string
                     "client_name": row[5],
                     "inn": row[6],
                     "timestamp": row[7],
@@ -198,7 +201,7 @@ class FeedbackRepository:
                         "report_id": row[1],
                         "rating": row[2],
                         "comment": row[3],
-                        "focus_areas": eval(row[4]) if row[4] else [],
+                        "focus_areas": json.loads(row[4]) if row[4] else [],
                         "client_name": row[5],
                         "inn": row[6],
                         "timestamp": row[7],
