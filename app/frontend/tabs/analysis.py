@@ -145,7 +145,6 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
     start_time = time.time()
     result = None
     error_occurred = False
-    current_session_id = None  # Для отслеживания текущей сессии
 
     try:
         import httpx
@@ -182,7 +181,6 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
                             # Обработка различных типов событий
                             if event_type == "start":
                                 session_id = data.get("session_id", "")
-                                current_session_id = session_id
                                 cancellable = data.get("cancellable", False)
 
                                 info_container.caption(f"🔑 Session ID: `{session_id[:16]}...`")

@@ -145,10 +145,8 @@ def compute_cache_key(
     """
     normalized = normalize_prompt(prompt)
 
-    # Debug logging (только для первых 200 символов чтобы не логировать PII)
+    # Debug logging (метрики нормализации для аналитики)
     if len(prompt) != len(normalized):
-        original_preview = prompt[:200] + "..." if len(prompt) > 200 else prompt
-        normalized_preview = normalized[:200] + "..." if len(normalized) > 200 else normalized
         logger.debug(
             f"Prompt normalized for cache: {len(prompt)} → {len(normalized)} chars",
             component="llm_cache",

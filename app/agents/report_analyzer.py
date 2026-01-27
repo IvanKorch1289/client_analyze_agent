@@ -191,7 +191,10 @@ async def report_analyzer_agent(
         successful_sources_count = sum(1 for r in search_results if r.get("success")) + sum(
             1 for v in source_data.values() if v and v.get("success")
         )
-        data_quality_percent = round((successful_sources_count / total_sources * 100) if total_sources > 0 else 0, 1)
+        data_quality_percent = round(
+            ((successful_sources_count / total_sources * 100) if total_sources > 0 else 0),
+            1,
+        )
 
         # Список failed источников для диагностики
         failed_sources = []
@@ -207,7 +210,10 @@ async def report_analyzer_agent(
         for source_name, source_result in source_data.items():
             if source_result and not source_result.get("success"):
                 failed_sources.append(
-                    {"source": source_name, "error": source_result.get("error", "Unknown error")}
+                    {
+                        "source": source_name,
+                        "error": source_result.get("error", "Unknown error"),
+                    }
                 )
 
         # Предупреждения если качество данных низкое
@@ -473,10 +479,20 @@ async def _generate_report_fallback(
     failed_sources = []
     for r in search_results:
         if not r.get("success"):
-            failed_sources.append({"source": r.get("source", "unknown"), "error": r.get("error", "Unknown error")})
+            failed_sources.append(
+                {
+                    "source": r.get("source", "unknown"),
+                    "error": r.get("error", "Unknown error"),
+                }
+            )
     for source_name, source_result in source_data.items():
         if source_result and not source_result.get("success"):
-            failed_sources.append({"source": source_name, "error": source_result.get("error", "Unknown error")})
+            failed_sources.append(
+                {
+                    "source": source_name,
+                    "error": source_result.get("error", "Unknown error"),
+                }
+            )
 
     # Предупреждения
     data_warnings = []
