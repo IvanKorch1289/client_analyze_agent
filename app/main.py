@@ -77,10 +77,10 @@ def _bool_env(name: str, default: bool = False) -> bool:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Application lifespan manager.
+    Менеджер жизненного цикла приложения.
 
-    Initializes global clients, LLM, and background services on startup.
-    Cleans up connections on shutdown.
+    Инициализирует глобальные клиенты, LLM и фоновые сервисы при старте.
+    Закрывает соединения и освобождает ресурсы при остановке.
     """
     logger.info("Инициализация приложения...")
 

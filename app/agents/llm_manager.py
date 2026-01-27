@@ -601,10 +601,19 @@ class LLMManager:
 
             return pii_result.masked_text, pii_result
         except Exception as e:
-            logger.error(f"PII masking failed: {e}", component="llm_manager", exc_info=True)
-            # КРИТИЧЕСКИ ВАЖНО: При ошибке маскирования возвращаем оригинальный промпт
-            # но логируем ошибку для расследования
-            return prompt, None
+            # КРИТИЧЕСКИ ВАЖНО: При ошибке маскирования НЕ отправляем промпт в LLM
+            # Блокируем вызов для предотвращения утечки PII
+            logger.critical(
+                f"PII masking FAILED - BLOCKING LLM call to prevent PII leak: {e}",
+                component="llm_manager",
+                exc_info=True,
+            )
+            # В dev режиме можно вернуть оригинал с предупреждением
+            if getattr(settings.app, "debug", False):
+                logger.warning("DEBUG mode: allowing unmasked prompt", component="llm_manager")
+                return prompt, None
+            # В production блокируем вызов
+            raise Exception("PII masking failed - cannot proceed with LLM call") from e
 
     async def _call_providers_with_fallback(
         self, masked_prompt: str, pii_result: Optional[Any], start_time: float, **kwargs

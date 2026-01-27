@@ -90,8 +90,14 @@ class SecureSettings(BaseSettingsWithLoader):
     # Content Security Policy
     csp_enabled: bool = Field(default=True, description="Включить CSP")
     csp_directives: Optional[str] = Field(
-        default="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'",
-        description="CSP directives",
+        default="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'",
+        description="CSP директивы (БЕЗ 'unsafe-inline' и 'unsafe-eval' для production безопасности)",
+    )
+
+    # PII Protection (Маскирование персональных данных)
+    pii_masking_enabled: bool = Field(
+        default=True,
+        description="Включить маскирование PII перед отправкой в LLM (КРИТИЧНО: НЕ отключайте в production!)",
     )
 
     # LLM Audit Logging (152-ФЗ compliance)

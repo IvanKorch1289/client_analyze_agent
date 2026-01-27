@@ -1,8 +1,9 @@
 """
-PII Protection Module
+Модуль защиты персональных данных (PII)
 
-Masks personally identifiable information before sending to external LLMs.
-Uses Microsoft Presidio for detection and anonymization with custom Russian recognizers.
+Маскирует персональные данные перед отправкой во внешние LLM.
+Использует Microsoft Presidio с кастомными распознавателями для русского языка.
+Поддерживает Reversible Pseudonymization с нумерованными псевдонимами.
 """
 
 import hashlib
@@ -17,7 +18,7 @@ _recognizers_registered = False
 
 @dataclass
 class PIIMaskingResult:
-    """Result of PII masking operation with reversible pseudonymization."""
+    """Результат операции маскирования PII с обратимой псевдонимизацией."""
 
     masked_text: str
     original_text: str
