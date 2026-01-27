@@ -191,7 +191,7 @@ async def set_cached_response(
             key=cache_key,
             value={
                 "response": response,
-                "prompt_hash": hashlib.md5(prompt.encode()).hexdigest()[:8],
+                "prompt_hash": hashlib.md5(prompt.encode(), usedforsecurity=False).hexdigest()[:8],
             },
             ttl=ttl,
             source="llm_cache",
