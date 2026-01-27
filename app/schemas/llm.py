@@ -87,6 +87,32 @@ class LLMProvidersResponse(BaseModel):
     status: Dict[str, bool] = Field(..., description="Статус доступности провайдеров")
 
 
+class MaskTextRequest(BaseModel):
+    """
+    Запрос на маскирование PII данных в тексте.
+
+    Используется для тестирования и preview маскирования перед отправкой в LLM.
+    """
+
+    text: str = Field(..., min_length=1, max_length=100000, description="Текст для маскирования")
+    language: str = Field(default="ru", description="Язык текста (ru, en)")
+    mask_level: str = Field(
+        default="high",
+        description="Уровень маскирования: low (только ИНН/ОГРН), medium (+ контакты), high (все PII)",
+    )
+
+
+class MaskTextResponse(BaseModel):
+    """Ответ с замаскированным текстом и метаданными."""
+
+    original_text: str = Field(..., description="Оригинальный текст")
+    masked_text: str = Field(..., description="Текст с замаскированными PII данными")
+    pii_detected: bool = Field(..., description="Обнаружены ли PII данные")
+    pii_count: int = Field(..., description="Количество обнаруженных PII сущностей")
+    detected_pii_types: list[str] = Field(..., description="Типы обнаруженных PII")
+    replacements: list[Dict[str, Any]] = Field(..., description="Маппинг для размаскирования")
+
+
 __all__ = [
     "LLMProviderEnum",
     "AsyncLLMRequest",
@@ -94,4 +120,6 @@ __all__ = [
     "LLMCallbackPayload",
     "LLMProviderStatus",
     "LLMProvidersResponse",
+    "MaskTextRequest",
+    "MaskTextResponse",
 ]

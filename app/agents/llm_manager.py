@@ -570,10 +570,23 @@ class LLMManager:
         """
         Mask PII in prompt before sending to LLM.
 
+        КРИТИЧЕСКИ ВАЖНО: Маскирование работает ВСЕГДА при обращении к внешней LLM,
+        независимо от настроек аудита. Аудит и маскирование - разные функции.
+
         Returns:
             Tuple of (masked_prompt, pii_result or None)
         """
-        if not settings.secure.llm_audit_enabled:
+        # ИСПРАВЛЕНО: Маскирование работает всегда, не зависит от llm_audit_enabled
+        # Проверяем настройку PII protection (если есть отдельная настройка)
+        # Если нет настройки - маскируем по умолчанию для безопасности
+        pii_masking_enabled = getattr(settings.secure, "pii_masking_enabled", True)
+
+        if not pii_masking_enabled:
+            # Маскирование явно отключено в настройках (только для dev/test)
+            logger.warning(
+                "PII masking is DISABLED - personal data will be sent to external LLM!",
+                component="llm_manager",
+            )
             return prompt, None
 
         try:
@@ -588,7 +601,9 @@ class LLMManager:
 
             return pii_result.masked_text, pii_result
         except Exception as e:
-            logger.error(f"PII masking failed: {e}", component="llm_manager")
+            logger.error(f"PII masking failed: {e}", component="llm_manager", exc_info=True)
+            # КРИТИЧЕСКИ ВАЖНО: При ошибке маскирования возвращаем оригинальный промпт
+            # но логируем ошибку для расследования
             return prompt, None
 
     async def _call_providers_with_fallback(
