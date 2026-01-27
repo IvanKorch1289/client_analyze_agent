@@ -212,7 +212,80 @@ def _render_system_metrics(api: ApiClient, admin_token: str) -> None:
         help="Количество открытых файловых дескрипторов",
     )
 
+    # Connection Pool Stats (Sprint 2)
+    st.divider()
+    st.subheader("🔗 HTTP Connection Pool (Sprint 2 Optimization)")
+
+    pool_stats = api.get("/admin/metrics/connection-pool", admin_token=admin_token)
+
+    if pool_stats and pool_stats.get("status") == "success":
+        pool = pool_stats.get("connection_pool", {})
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            max_connections = pool.get("max_connections", 0)
+            st.metric(
+                label="🎯 Max Connections",
+                value=max_connections,
+                delta="+50 от baseline",
+                delta_color="normal",
+                help="Максимальное количество параллельных соединений (было 50, стало 100)",
+            )
+
+        with col2:
+            max_keepalive = pool.get("max_keepalive_connections", 0)
+            st.metric(
+                label="♻️ Max Keepalive",
+                value=max_keepalive,
+                delta="+30 от baseline",
+                delta_color="normal",
+                help="Максимум keepalive соединений для reuse (было 20, стало 50)",
+            )
+
+        with col3:
+            keepalive_expiry = pool.get("keepalive_expiry_seconds", 0)
+            st.metric(
+                label="⏱️ Keepalive Expiry",
+                value=f"{keepalive_expiry}s",
+                help="Время жизни keepalive соединений (оптимизировано для InfoSphere/Casebook)",
+            )
+
+        with col4:
+            http2_enabled = pool.get("http2_enabled", False)
+            st.metric(
+                label="🚀 HTTP/2",
+                value="✅ Enabled" if http2_enabled else "❌ Disabled",
+                help="HTTP/2 поддержка для мультиплексирования",
+            )
+
+        # Pool utilization (если доступно)
+        if "pool_utilization_pct" in pool:
+            utilization = pool.get("pool_utilization_pct", 0)
+            connections_count = pool.get("connections_count", 0)
+
+            st.progress(
+                utilization / 100,
+                text=f"Pool Utilization: {utilization}% ({connections_count}/{max_connections} connections)",
+            )
+
+            if utilization > 90:
+                st.warning(
+                    f"⚠️ Высокая утилизация connection pool ({utilization}%)! Возможно, нужно увеличить max_connections."
+                )
+            elif utilization > 0:
+                st.info(f"✅ Connection reuse работает! Активно {connections_count} соединений из {max_connections}.")
+
+        # Оптимизации
+        with st.expander("📝 Применённые оптимизации (Sprint 2)"):
+            for note in pool_stats.get("notes", []):
+                st.write(f"• {note}")
+
+    else:
+        st.warning("⚠️ Не удалось получить статистику connection pool")
+
     # Предупреждения
+    st.divider()
     if mem_percent > 80:
         st.warning("⚠️ Высокое использование памяти (>80%)!")
 

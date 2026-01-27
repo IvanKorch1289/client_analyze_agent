@@ -390,6 +390,44 @@ async def get_system_metrics() -> Dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
+@admin_router.get("/metrics/connection-pool", dependencies=[Depends(require_admin)])
+async def get_connection_pool_stats() -> Dict[str, Any]:
+    """
+    Получает статистику HTTP connection pool для мониторинга эффективности.
+
+    Sprint 2: Connection pooling monitoring endpoint.
+
+    Returns:
+        Метрики connection pool:
+        - connections_count: активные соединения
+        - max_connections: максимум параллельных
+        - pool_utilization_pct: процент использования пула
+        - keepalive_expiry_seconds: время жизни keepalive соединений
+        - http2_enabled: поддержка HTTP/2
+    """
+    try:
+        from app.services.http_client import AsyncHttpClient
+
+        client = await AsyncHttpClient.get_instance()
+        stats = client.get_connection_pool_stats()
+
+        return {
+            "status": "success",
+            "connection_pool": stats,
+            "optimization": "aggressive_pooling_enabled",
+            "notes": [
+                "Connection pool optimized for high throughput (Sprint 2)",
+                "max_connections increased from 50 to 100",
+                "max_keepalive increased from 20 to 50",
+                "keepalive_expiry set to 30s for long-running InfoSphere/Casebook requests",
+            ],
+        }
+
+    except Exception as e:
+        logger.error(f"Connection pool stats error: {e}", component="admin_api", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
 # ============================================================================
 # LLM AUDIT
 # ============================================================================
