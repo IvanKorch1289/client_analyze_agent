@@ -98,6 +98,11 @@ def _render_run_analysis_now(api: ApiClient) -> None:
 
     st.divider()
 
+    # Sprint 2+: Smart INN suggestions - автодополнение при вводе
+    _render_inn_suggestions(api)
+
+    st.divider()
+
     with st.form("run_analysis_now"):
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -1062,3 +1067,53 @@ def _add_to_favorites_button(api: ApiClient, client_name: str, inn: str) -> None
     except Exception as e:
         logger.warning(f"Failed to check favorites: {e}")
         # Не блокируем UI если favorites API недоступен
+
+
+def _render_inn_suggestions(api: ApiClient) -> None:
+    """
+    Умные подсказки при вводе ИНН или названия компании.
+
+    Sprint 2+: Autocomplete feature.
+    """
+    st.subheader("🔍 Быстрый поиск компании")
+
+    search_query = st.text_input(
+        "Введите ИНН или название компании",
+        placeholder="7707083893 или Сбербанк",
+        help="Начните вводить ИНН (минимум 3 цифры) или название для подсказок",
+        key="company_search_input",
+    )
+
+    # Показываем подсказки только если ввели достаточно символов
+    if search_query and len(search_query) >= 3:
+        with st.spinner("Поиск..."):
+            try:
+                suggestions = api.get("/favorites/suggest", params={"query": search_query, "limit": 5})
+
+                if suggestions:
+                    st.markdown("💡 **Найденные компании:**")
+
+                    for sugg in suggestions:
+                        col1, col2, col3 = st.columns([3, 2, 1])
+
+                        with col1:
+                            source_emoji = "⭐" if sugg["source"] == "favorites" else "📊"
+                            st.markdown(f"{source_emoji} **{sugg['company_name']}**")
+
+                        with col2:
+                            st.caption(f"ИНН: {sugg['inn']}")
+
+                        with col3:
+                            if st.button("Выбрать", key=f"select_{sugg['inn']}"):
+                                # Сохраняем в session_state для автозаполнения формы
+                                st.session_state["selected_company_name"] = sugg["company_name"]
+                                st.session_state["selected_company_inn"] = sugg["inn"]
+                                st.success(f"✅ Выбрана: {sugg['company_name']}")
+                                st.rerun()
+
+                elif len(search_query) >= 5:
+                    st.info("💡 Компании не найдены в истории. Введите полные данные в форму ниже.")
+
+            except Exception as e:
+                logger.debug(f"Suggestions failed (non-critical): {e}")
+                # Не показываем ошибку пользователю - autocomplete не критичный
