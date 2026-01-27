@@ -301,7 +301,46 @@ async def _run_streaming_analysis(
             },
         }
 
-        current_state = await report_analyzer_agent(current_state)
+        # Sprint 2: Progressive analysis updates - показываем что LLM анализирует
+        yield {
+            "type": "analysis_progress",
+            "data": {
+                "substep": "preparing_data",
+                "message": "Подготовка данных для анализа",
+                "sources_ready": len(successful_sources),
+                "progress": 72,
+            },
+        }
+
+        # Запускаем анализ с промежуточными обновлениями
+        analysis_task = asyncio.create_task(report_analyzer_agent(current_state))
+
+        # Показываем промежуточные обновления пока LLM думает
+        wait_count = 0
+        thinking_messages = [
+            "Анализирую финансовые показатели и статус компании",
+            "Оцениваю судебные дела и исполнительные производства",
+            "Проверяю репутационные риски и новости",
+            "Формирую итоговую оценку рисков",
+        ]
+
+        while not analysis_task.done():
+            await asyncio.sleep(3)  # Обновление каждые 3 секунды
+            if not analysis_task.done():
+                message_idx = min(wait_count, len(thinking_messages) - 1)
+                yield {
+                    "type": "analysis_progress",
+                    "data": {
+                        "substep": "llm_thinking",
+                        "message": f"🤔 {thinking_messages[message_idx]}...",
+                        "elapsed_seconds": (wait_count + 1) * 3,
+                        "progress": min(75 + wait_count, 82),  # Gradually increase progress
+                    },
+                }
+                wait_count += 1
+
+        # Получаем результат
+        current_state = await analysis_task
 
         report = current_state.get("report", {})
         risk = report.get("risk_assessment", {})

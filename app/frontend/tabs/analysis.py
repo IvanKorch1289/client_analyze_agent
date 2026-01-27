@@ -283,6 +283,24 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
                                     ):
                                         st.markdown(preview_text)
 
+                            elif event_type == "analysis_progress":
+                                # Sprint 2: Progressive analysis updates - показываем что LLM анализирует
+                                substep = data.get("substep", "")
+                                message = data.get("message", "")
+                                progress_val = data.get("progress", 70) / 100.0
+                                elapsed_seconds = data.get("elapsed_seconds", 0)
+
+                                if substep == "llm_thinking":
+                                    # Показываем что LLM думает с elapsed time
+                                    info_container.info(
+                                        f"🤔 **LLM анализ в процессе**\n\n{message}\n\n⏱️ Время анализа: {elapsed_seconds} сек"
+                                    )
+                                else:
+                                    info_container.info(f"📊 {message}")
+
+                                current_progress = progress_val
+                                progress_container.progress(progress_val, text=f"🧠 {message}")
+
                             elif event_type == "report":
                                 risk_score = data.get("risk_score", 0)
                                 risk_level = data.get("risk_level", "unknown")
