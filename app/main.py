@@ -16,6 +16,7 @@ from starlette.responses import JSONResponse, RedirectResponse
 from app.api.error_handlers import install_error_handlers
 from app.api.routes.agent import agent_router
 from app.api.routes.data import data_router
+from app.api.routes.favorites import favorites_router
 from app.api.routes.scheduler import scheduler_router
 from app.api.routes.utility import utility_router
 from app.api.v1 import v1_app
@@ -721,6 +722,7 @@ app.mount("/api/v1", v1_app)
 # but hidden from OpenAPI to avoid duplicated schemas.
 app.include_router(agent_router, include_in_schema=False)
 app.include_router(data_router, include_in_schema=False)
+app.include_router(favorites_router, include_in_schema=False)
 app.include_router(scheduler_router, include_in_schema=False)
 app.include_router(utility_router, include_in_schema=False)
 

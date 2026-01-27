@@ -93,12 +93,26 @@ def render(api: ApiClient) -> None:
 def _render_run_analysis_now(api: ApiClient) -> None:
     section_header("Запустить анализ сейчас", emoji="🔍")
 
+    # Sprint 2+: Favorites - быстрый доступ к частым компаниям
+    _render_favorites_selector(api)
+
+    st.divider()
+
     with st.form("run_analysis_now"):
         col1, col2 = st.columns([2, 1])
         with col1:
-            client_name = st.text_input("Название компании", placeholder="ООО Ромашка")
+            # Используем значения из session_state если они были выбраны из избранного
+            default_name = st.session_state.get("selected_company_name", "")
+            client_name = st.text_input("Название компании", placeholder="ООО Ромашка", value=default_name)
         with col2:
-            inn = st.text_input("ИНН (опционально)", placeholder="7707083893", max_chars=12)
+            # Используем ИНН из session_state если он был выбран из избранного
+            default_inn = st.session_state.get("selected_company_inn", "")
+            inn = st.text_input(
+                "ИНН (опционально)",
+                placeholder="7707083893",
+                max_chars=12,
+                value=default_inn,
+            )
         additional_notes = st.text_area("Дополнительные заметки (опционально)", height=120)
         run_now = st.form_submit_button("Запустить", type="primary")
 
@@ -360,6 +374,13 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
     if not error_occurred:
         if result is not None:
             st.session_state["last_analysis_result"] = result
+
+            # Sprint 2+: Favorites - предлагаем добавить в избранное после успешного анализа
+            result_inn = result.get("inn", "")
+            result_name = result.get("client_name", "")
+            if result_inn and result_name:
+                st.divider()
+                _add_to_favorites_button(api, result_name, result_inn)
         else:
             st.warning("⚠️ Анализ завершён, но финальные данные не получены. Попробуйте обновить страницу.")
 
@@ -709,6 +730,12 @@ def _render_report_details(api: ApiClient, opened: Dict[str, Any], selected_repo
     with col3:
         st.metric("Риск-скор", opened.get("risk_score", 0))
 
+    # Sprint 2+: Favorites - быстрое добавление в избранное
+    company_name = opened.get("client_name", "")
+    inn = opened.get("inn", "")
+    if company_name and inn:
+        _add_to_favorites_button(api, company_name, inn)
+
     report_data = opened.get("report_data") or {}
 
     if report_data.get("summary"):
@@ -930,3 +957,108 @@ def _render_feedback_section(api: ApiClient, opened: Dict[str, Any], selected_re
                 else:
                     st.warning(f"Статус: {status}")
                     st.json(feedback_result)
+
+
+def _render_favorites_selector(api: ApiClient) -> None:
+    """
+    Рендерит селектор избранных компаний для быстрого выбора.
+
+    Sprint 2+: Favorites feature for recurring analyses.
+    """
+    st.subheader("⭐ Избранные компании")
+
+    # Получаем список избранных
+    try:
+        favorites = api.get("/favorites")
+
+        if not favorites:
+            st.info("💡 У вас пока нет избранных компаний. Добавьте после анализа!")
+            return
+
+        # Форматируем для selectbox
+        options = [""] + [f"{fav['company_name']} (ИНН: {fav['inn']})" for fav in favorites]
+
+        selected = st.selectbox(
+            "Выбрать компанию из избранного",
+            options=options,
+            help="Быстрый доступ к часто анализируемым компаниям",
+        )
+
+        if selected:
+            # Парсим выбор
+            for fav in favorites:
+                if f"{fav['company_name']} (ИНН: {fav['inn']})" == selected:
+                    # Сохраняем в session_state для автозаполнения формы
+                    st.session_state["selected_company_name"] = fav["company_name"]
+                    st.session_state["selected_company_inn"] = fav["inn"]
+
+                    # Показываем информацию
+                    col1, col2, col3 = st.columns([3, 2, 1])
+
+                    with col1:
+                        st.success(f"✅ Выбрана: **{fav['company_name']}**")
+
+                    with col2:
+                        last_analyzed = fav.get("last_analyzed_at")
+                        if last_analyzed:
+                            st.caption(f"Последний анализ: {last_analyzed[:19]}")
+                        else:
+                            st.caption("Ещё не анализировалась")
+
+                    with col3:
+                        if st.button("🗑️ Удалить", key="remove_favorite"):
+                            try:
+                                api.delete(f"/favorites/{fav['inn']}")
+                                st.success("Удалено из избранного")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Ошибка: {e}")
+
+                    # Заметки если есть
+                    if fav.get("notes"):
+                        with st.expander("📝 Заметки"):
+                            st.markdown(fav["notes"])
+
+                    break
+
+    except Exception as e:
+        st.warning(f"⚠️ Не удалось загрузить избранное: {e}")
+
+
+def _add_to_favorites_button(api: ApiClient, client_name: str, inn: str) -> None:
+    """
+    Кнопка для добавления компании в избранное.
+
+    Sprint 2+: Favorites feature.
+    """
+    if not inn:
+        return  # Нельзя добавить без ИНН
+
+    # Проверяем, не в избранном ли уже
+    try:
+        favorites = api.get("/favorites") or []
+        is_favorite = any(f.get("inn") == inn for f in favorites)
+
+        if is_favorite:
+            st.info("⭐ Эта компания уже в избранном")
+            return
+
+        # Кнопка добавления
+        if st.button("⭐ Добавить в избранное", key="add_to_favorites"):
+            with st.spinner("Добавляю в избранное..."):
+                try:
+                    api.post(
+                        "/favorites",
+                        json={"company_name": client_name, "inn": inn, "notes": None},
+                    )
+                    st.success("✅ Добавлено в избранное!")
+                    st.rerun()
+                except Exception as e:
+                    if "409" in str(e):
+                        st.info("⭐ Эта компания уже в избранном")
+                    else:
+                        st.error(f"Ошибка: {e}")
+
+    except Exception as e:
+        logger.warning(f"Failed to check favorites: {e}")
+        # Не блокируем UI если favorites API недоступен
