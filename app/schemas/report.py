@@ -15,6 +15,12 @@ class ReportMetadata(BaseModel):
     analysis_date: datetime
     data_sources_count: int = 0
     successful_sources: int = 0
+    failed_sources_count: int = Field(default=0, description="Количество источников с ошибками")
+    data_quality_percent: float = Field(default=100.0, ge=0, le=100, description="Процент успешных источников")
+    data_warnings: List[str] = Field(default_factory=list, description="Предупреждения о качестве данных")
+    failed_sources: List[Dict[str, str]] = Field(
+        default_factory=list, description="Список failed источников для диагностики"
+    )
 
 
 class RiskAssessment(BaseModel):

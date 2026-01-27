@@ -20,6 +20,8 @@ from app.schemas.llm import (
     LLMCallbackPayload,
     LLMProviderEnum,
     LLMProvidersResponse,
+    MaskTextRequest,
+    MaskTextResponse,
 )
 from app.utility.logging_client import logger
 
@@ -48,7 +50,10 @@ async def _process_llm_request_background(
     data: AsyncLLMRequest,
 ) -> None:
     """
-    Обработка LLM запроса в фоне и отправка callback.
+    Обработка LLM запроса в фоне с PII маскированием и отправка callback.
+
+    ВАЖНО: Применяет маскирование PII ВСЕГДА перед отправкой в LLM,
+    независимо от настроек аудита. Размаскирует ответ перед callback.
 
     Используется как резервный вариант, когда RabbitMQ не включён.
     """
@@ -59,6 +64,7 @@ async def _process_llm_request_background(
 
     try:
         from app.agents.llm_manager import LLMProvider, get_llm_manager
+        from app.shared import pii_protection
 
         manager = get_llm_manager()
 
@@ -78,13 +84,30 @@ async def _process_llm_request_background(
         if data.system_prompt:
             full_prompt = f"{data.system_prompt}\n\n{data.prompt}"
 
-        # Вызов LLM с указанным провайдером
+        # МАСКИРОВАНИЕ PII перед отправкой в LLM
+        pii_result = pii_protection.mask_pii(text=full_prompt, language="ru", mask_level="high")
+
+        if pii_result.pii_detected:
+            logger.warning(
+                f"Request {request_id}: PII detected and masked ({pii_result.pii_count} items)",
+                component="llm_api",
+            )
+
+        # Вызов LLM с замаскированным промптом
         response = await manager.ainvoke_with_provider(
-            prompt=full_prompt,
+            prompt=pii_result.masked_text,
             provider=llm_provider,
             temperature=data.temperature,
             max_tokens=data.max_tokens,
         )
+
+        # РАЗМАСКИРОВАНИЕ PII в ответе
+        if pii_result.pii_detected and pii_result.replacements:
+            response = pii_protection.unmask_pii(masked_text=response, replacements=pii_result.replacements)
+            logger.info(
+                f"Request {request_id}: PII unmasked in response",
+                component="llm_api",
+            )
 
         processing_time = (time.perf_counter() - start_time) * 1000
 
@@ -237,6 +260,62 @@ async def list_llm_providers() -> LLMProvidersResponse:
         providers=providers,
         status=status,
     )
+
+
+@llm_router.post("/mask-text", response_model=MaskTextResponse)
+async def mask_text(data: MaskTextRequest) -> MaskTextResponse:
+    """
+    Маскирование PII данных в тексте.
+
+    Использует Reversible Pseudonymization - заменяет персональные данные
+    на нумерованные псевдонимы (например, [CLIENT_NAME_1], [INN_1]) с
+    возможностью обратного восстановления.
+
+    Применяется автоматически при всех обращениях к внешним LLM.
+    Этот эндпоинт позволяет протестировать маскирование вручную.
+
+    **Примеры обнаружения:**
+    - ИНН: 7707083893 → [INN_1]
+    - ФИО: Иванов Иван Иванович → [CLIENT_NAME_1]
+    - Телефон: +7(499)123-45-67 → [PHONE_1]
+    - Email: test@example.com → [EMAIL_1]
+    - Адрес: г. Москва, ул. Ленина, д. 1 → [ADDRESS_1]
+
+    **Уровни маскирования:**
+    - `low`: только финансовые идентификаторы (ИНН, ОГРН, карты)
+    - `medium`: финансовые + контакты (телефон, email)
+    - `high`: все PII данные включая ФИО, адреса, паспорта
+
+    Args:
+        data: Запрос с текстом и параметрами маскирования
+
+    Returns:
+        Замаскированный текст с метаданными и маппингом для восстановления
+    """
+    try:
+        from app.shared import pii_protection
+
+        result = pii_protection.mask_pii(
+            text=data.text,
+            language=data.language,
+            mask_level=data.mask_level,
+        )
+
+        return MaskTextResponse(
+            original_text=result.original_text,
+            masked_text=result.masked_text,
+            pii_detected=result.pii_detected,
+            pii_count=result.pii_count,
+            detected_pii_types=result.detected_pii_types,
+            replacements=result.replacements,
+        )
+
+    except Exception as e:
+        logger.error(f"PII masking failed: {e}", component="llm_api", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка маскирования PII: {str(e)}",
+        )
 
 
 __all__ = ["llm_router"]

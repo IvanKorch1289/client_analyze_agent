@@ -37,6 +37,7 @@ def render(api: ApiClient, *, admin_token: str) -> None:
             "Внешние сервисы",
             "Логи и трассировки",
             "Управление отчётами",
+            "🔒 Тестирование PII маскирования",
         ],
         index=0,
     )
@@ -55,6 +56,8 @@ def render(api: ApiClient, *, admin_token: str) -> None:
         _render_logs_traces(api, admin_token)
     elif section == "Управление отчётами":
         _render_reports_management(api, admin_token)
+    elif section == "🔒 Тестирование PII маскирования":
+        _render_pii_masking(api, admin_token)
 
 
 def _render_health_config(api: ApiClient, admin_token: str) -> None:
@@ -516,3 +519,141 @@ def _render_reports_management(api: ApiClient, admin_token: str) -> None:
                 st.json(resp)
     else:
         st.info("Отчётов в Tarantool нет или не загружены")
+
+
+def _render_pii_masking(api: ApiClient, admin_token: str) -> None:
+    """Интерфейс для тестирования маскирования PII данных."""
+    st.subheader("🔒 Тестирование PII маскирования")
+
+    st.info(
+        """
+        **Reversible Pseudonymization** - маскирование персональных данных перед отправкой в LLM.
+
+        Система автоматически заменяет PII данные на нумерованные псевдонимы:
+        - ИНН: `7707083893` → `[INN_1]`
+        - ФИО: `Иванов Иван Иванович` → `[CLIENT_NAME_1]`
+        - Телефон: `+7(499)123-45-67` → `[PHONE_1]`
+        - Email: `test@example.com` → `[EMAIL_1]`
+
+        После получения ответа от LLM данные автоматически восстанавливаются.
+        """
+    )
+
+    st.divider()
+
+    # Форма для ввода текста
+    st.markdown("### 📝 Тест маскирования")
+
+    # Примеры текста
+    example_texts = {
+        "Пример 1: Компания": "ООО 'Рога и Копыта', ИНН 7707083893, ОГРН 1027700132195, "
+        "генеральный директор Иванов Иван Иванович, телефон +7(499)123-45-67, email test@example.com",
+        "Пример 2: Физлицо": "Петров Петр Петрович, паспорт 45 03 123456, СНИЛС 123-456-789-01, "
+        "тел 8(916)765-43-21, адрес: г. Москва, ул. Ленина, д. 1",
+        "Пример 3: Смешанный": "Компания Ромашка (ИНН 1234567890) под руководством Сидорова С.С. "
+        "находится по адресу 101000, г. Москва, ул. Мясницкая, д. 13. Контакты: +7(495)111-22-33",
+        "Свой текст": "",
+    }
+
+    selected_example = st.selectbox(
+        "Выберите пример или введите свой текст:",
+        options=list(example_texts.keys()),
+        index=0,
+    )
+
+    default_text = example_texts[selected_example]
+    input_text = st.text_area(
+        "Текст для маскирования:",
+        value=default_text,
+        height=150,
+        placeholder="Введите текст с персональными данными...",
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        mask_level = st.selectbox(
+            "Уровень маскирования:",
+            options=["high", "medium", "low"],
+            index=0,
+            help="low: только ИНН/ОГРН/карты\nmedium: + телефоны/email\nhigh: все PII включая ФИО",
+        )
+    with col2:
+        language = st.selectbox(
+            "Язык текста:",
+            options=["ru", "en"],
+            index=0,
+        )
+
+    if st.button("🔒 Замаскировать текст", type="primary", disabled=not input_text.strip()):
+        with st.spinner("Маскирование..."):
+            payload = api.post(
+                "/llm/mask-text",
+                json={
+                    "text": input_text,
+                    "language": language,
+                    "mask_level": mask_level,
+                },
+                admin_token=admin_token,
+            )
+
+            if payload is not None:
+                st.success("✅ Маскирование выполнено!")
+
+                # Метрики
+                pii_detected = payload.get("pii_detected", False)
+                pii_count = payload.get("pii_count", 0)
+                detected_types = payload.get("detected_pii_types", [])
+
+                if pii_detected:
+                    col_m1, col_m2 = st.columns(2)
+                    with col_m1:
+                        st.metric("Найдено PII:", pii_count)
+                    with col_m2:
+                        st.metric("Типов данных:", len(detected_types))
+
+                    if detected_types:
+                        st.info(f"**Обнаруженные типы PII:** {', '.join(detected_types)}")
+                else:
+                    st.warning("⚠️ PII данные не обнаружены в тексте")
+
+                # Показываем результаты
+                st.markdown("### 📤 Оригинальный текст:")
+                st.code(payload.get("original_text", ""), language="text")
+
+                st.markdown("### 🔒 Замаскированный текст (отправляется в LLM):")
+                st.code(payload.get("masked_text", ""), language="text")
+
+                # Показываем маппинг
+                replacements = payload.get("replacements", [])
+                if replacements:
+                    with st.expander("🔑 Маппинг для размаскирования", expanded=False):
+                        st.json(replacements)
+
+                    # Объяснение
+                    st.markdown("### ℹ️ Как это работает:")
+                    st.markdown(
+                        """
+                        1. **Маскирование**: Перед отправкой в LLM все PII данные заменяются на нумерованные псевдонимы
+                        2. **Обработка**: LLM видит только псевдонимы, реальные данные защищены
+                        3. **Размаскирование**: После получения ответа псевдонимы автоматически заменяются обратно
+
+                        **Преимущества:**
+                        - ✅ Защита персональных данных при обращении к внешним LLM
+                        - ✅ Полная обратимость (в отличие от хеширования)
+                        - ✅ Сохранение контекста для LLM (псевдонимы читаемые)
+                        - ✅ Соответствие 152-ФЗ и GDPR
+                        """
+                    )
+            else:
+                st.error("❌ Ошибка маскирования. Проверьте логи.")
+
+    st.divider()
+
+    # Предупреждение о безопасности
+    st.warning(
+        """
+        ⚠️ **ВАЖНО:**
+        Маскирование работает автоматически для всех обращений к внешним LLM.
+        Эта страница предназначена только для тестирования и preview.
+        """
+    )

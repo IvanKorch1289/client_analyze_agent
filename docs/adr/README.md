@@ -1,45 +1,45 @@
-# Architecture Decision Records (ADR)
+# Записи об архитектурных решениях (ADR)
 
-This directory contains Architecture Decision Records for the Client Analysis Agent project.
+В этой директории содержатся Записи об архитектурных решениях для проекта Client Analysis Agent.
 
-## What is an ADR?
+## Что такое ADR?
 
-An Architecture Decision Record (ADR) is a document that captures an important architectural decision made along with its context and consequences.
+Запись об архитектурном решении (ADR) — это документ, который фиксирует важное архитектурное решение вместе с его контекстом и последствиями.
 
-## ADR Index
+## Индекс ADR
 
-| ADR | Title | Status | Date |
+| ADR | Название | Статус | Дата |
 |-----|-------|--------|------|
-| [ADR-001](001-tarantool-over-redis.md) | Use Tarantool instead of Redis for caching | Accepted | 2024-01 |
-| [ADR-002](002-langgraph-orchestration.md) | Use LangGraph for multi-agent orchestration | Accepted | 2024-01 |
-| [ADR-003](003-llm-fallback-chain.md) | LLM provider fallback chain strategy | Accepted | 2024-02 |
-| [ADR-004](004-pii-protection-presidio.md) | Use Presidio for PII protection | Accepted | 2026-01 |
-| [ADR-005](005-circuit-breaker-pattern.md) | Circuit breaker pattern for external services | Accepted | 2024-02 |
+| [ADR-001](001-tarantool-over-redis.md) | Использование Tarantool вместо Redis для кэширования | Принято | 2024-01 |
+| [ADR-002](002-langgraph-orchestration.md) | Использование LangGraph для мультиагентной оркестрации | Принято | 2024-01 |
+| [ADR-003](003-llm-fallback-chain.md) | Стратегия цепочки резервных LLM-провайдеров | Принято | 2024-02 |
+| [ADR-004](004-pii-protection-presidio.md) | Использование Presidio для защиты персональных данных | Принято | 2026-01 |
+| [ADR-005](005-circuit-breaker-pattern.md) | Шаблон Circuit breaker для внешних сервисов | Принято | 2024-02 |
 
-## ADR Template
+## Шаблон ADR
 
-When creating a new ADR, use the following template:
+При создании нового ADR используйте следующий шаблон:
 
 ```markdown
-# ADR-XXX: Title
+# ADR-XXX: Название
 
-## Status
-[Proposed | Accepted | Deprecated | Superseded]
+## Статус
+[Предложено | Принято | Устарело | Заменено]
 
-## Context
-What is the issue that we're seeing that is motivating this decision?
+## Контекст
+Какая проблема мотивирует это решение?
 
-## Decision
-What is the change that we're proposing and/or doing?
+## Решение
+Какое изменение мы предлагаем и/или делаем?
 
-## Consequences
-What becomes easier or more difficult to do because of this change?
+## Последствия
+Что становится проще или сложнее делать благодаря этому изменению?
 
-## Alternatives Considered
-What other options were considered and why were they rejected?
+## Рассмотренные альтернативы
+Какие другие варианты рассматривались и почему они были отклонены?
 ```
 
-## References
+## Ссылки
 
 - [ADR GitHub Organization](https://adr.github.io/)
-- [Michael Nygard's article on ADRs](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
+- [Статья Майкла Найгарда об ADR](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)

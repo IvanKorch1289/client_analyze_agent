@@ -31,6 +31,35 @@ ANALYSIS_STEPS = [
 
 ESTIMATED_ANALYSIS_SECONDS = 45
 
+# Маппинг этапов анализа к используемым моделям
+STEP_MODEL_INFO = {
+    "orchestrating": {
+        "model": "Claude 3.5 Sonnet",
+        "provider": "OpenRouter",
+        "task": "Планирование поисковых запросов",
+    },
+    "collecting": {
+        "model": "Perplexity + Tavily",
+        "provider": "API",
+        "task": "Сбор данных из веб-источников",
+    },
+    "searching": {
+        "model": "Perplexity Sonar",
+        "provider": "Perplexity AI",
+        "task": "Веб-поиск и анализ",
+    },
+    "analyzing": {
+        "model": "Claude 3.5 Sonnet",
+        "provider": "OpenRouter",
+        "task": "Анализ данных и оценка рисков",
+    },
+    "saving": {
+        "model": "—",
+        "provider": "File System",
+        "task": "Сохранение отчёта",
+    },
+}
+
 
 def _get_token() -> str:
     """Получить admin token из session_state."""
@@ -64,12 +93,31 @@ def render(api: ApiClient) -> None:
 def _render_run_analysis_now(api: ApiClient) -> None:
     section_header("Запустить анализ сейчас", emoji="🔍")
 
+    # Sprint 2+: Favorites - быстрый доступ к частым компаниям
+    _render_favorites_selector(api)
+
+    st.divider()
+
+    # Sprint 2+: Smart INN suggestions - автодополнение при вводе
+    _render_inn_suggestions(api)
+
+    st.divider()
+
     with st.form("run_analysis_now"):
         col1, col2 = st.columns([2, 1])
         with col1:
-            client_name = st.text_input("Название компании", placeholder="ООО Ромашка")
+            # Используем значения из session_state если они были выбраны из избранного
+            default_name = st.session_state.get("selected_company_name", "")
+            client_name = st.text_input("Название компании", placeholder="ООО Ромашка", value=default_name)
         with col2:
-            inn = st.text_input("ИНН (опционально)", placeholder="7707083893", max_chars=12)
+            # Используем ИНН из session_state если он был выбран из избранного
+            default_inn = st.session_state.get("selected_company_inn", "")
+            inn = st.text_input(
+                "ИНН (опционально)",
+                placeholder="7707083893",
+                max_chars=12,
+                value=default_inn,
+            )
         additional_notes = st.text_area("Дополнительные заметки (опционально)", height=120)
         run_now = st.form_submit_button("Запустить", type="primary")
 
@@ -106,86 +154,240 @@ def _render_run_analysis_now(api: ApiClient) -> None:
 
 
 def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None:
-    """Run analysis with progress indicator and status updates."""
+    """Run analysis with real-time streaming progress indicator and model info."""
     progress_container = st.empty()
-    time_container = st.empty()
+    status_container = st.empty()
+    model_info_container = st.empty()
+    info_container = st.empty()
+    cancel_button_container = st.empty()  # Контейнер для кнопки отмены
 
     start_time = time.time()
-    estimated_remaining = ESTIMATED_ANALYSIS_SECONDS
-
-    progress_container.progress(0.05, text="🚀 Запуск анализа...")
-    time_container.caption(f"⏱️ Примерное время: ~{ESTIMATED_ANALYSIS_SECONDS} сек")
-
     result = None
     error_occurred = False
 
     try:
-        with safe_api_call("Запуск анализа клиента", show_error=False, log_error=True):
-            import threading
+        import httpx
 
-            result_holder: Dict[str, Any] = {
-                "result": None,
-                "error": None,
-                "done": False,
-            }
+        # Используем streaming API для получения real-time прогресса
+        url = api.url("/agent/analyze-client") + "?stream=true"
+        headers = api._headers(admin_token=_get_token())
+        headers["Accept"] = "text/event-stream"
 
-            def api_call():
-                try:
-                    result_holder["result"] = api.post("/agent/analyze-client", json=payload, admin_token=_get_token())
-                except Exception as e:
-                    result_holder["error"] = str(e)
-                finally:
-                    result_holder["done"] = True
+        progress_container.progress(0.05, text="🚀 Запуск анализа...")
 
-            thread = threading.Thread(target=api_call, daemon=True)
-            thread.start()
+        with httpx.Client(timeout=180.0) as client:
+            with client.stream("POST", url, json=payload, headers=headers) as response:
+                if response.status_code != 200:
+                    error_text = response.text
+                    raise Exception(f"API error {response.status_code}: {error_text}")
 
-            step_idx = 0
-            while not result_holder["done"]:
-                elapsed = time.time() - start_time
-                progress_fraction = min(0.9, elapsed / ESTIMATED_ANALYSIS_SECONDS)
+                current_step = ""
+                current_progress = 0.05
+                sources_info = ""
 
-                while step_idx < len(ANALYSIS_STEPS) - 1 and progress_fraction >= ANALYSIS_STEPS[step_idx + 1][1]:
-                    step_idx += 1
+                for line in response.iter_lines():
+                    if not line or not line.strip():
+                        continue
 
-                step_name, _ = ANALYSIS_STEPS[step_idx]
-                progress_container.progress(progress_fraction, text=step_name)
+                    # Парсинг SSE событий
+                    if line.startswith("event:"):
+                        event_type = line[6:].strip()
+                        continue
+                    elif line.startswith("data:"):
+                        try:
+                            data = json.loads(line[5:].strip())
 
-                estimated_remaining = max(0, ESTIMATED_ANALYSIS_SECONDS - int(elapsed))
-                if estimated_remaining >= 60:
-                    minutes = estimated_remaining // 60
-                    seconds = estimated_remaining % 60
-                    time_text = f"~{minutes} мин {seconds} сек"
-                elif estimated_remaining > 0:
-                    time_text = f"~{estimated_remaining} сек"
-                else:
-                    time_text = "завершается..."
-                time_container.caption(f"⏱️ Примерное время: {time_text}")
+                            # Обработка различных типов событий
+                            if event_type == "start":
+                                session_id = data.get("session_id", "")
+                                cancellable = data.get("cancellable", False)
 
-                time.sleep(0.5)
+                                info_container.caption(f"🔑 Session ID: `{session_id[:16]}...`")
 
-            thread.join(timeout=1)
+                                # Показываем инструкцию по отмене если анализ можно отменить
+                                if cancellable:
+                                    cancel_button_container.info(
+                                        "💡 **Для отмены анализа:** перейдите на вкладку **'📊 Мониторинг'** → **'🔄 Активные анализы'**"
+                                    )
 
-            if result_holder["error"]:
-                raise Exception(result_holder["error"])
+                            elif event_type == "progress":
+                                step = data.get("step", "")
+                                message = data.get("message", "")
+                                progress_val = data.get("progress", 0) / 100.0
+                                current_progress = progress_val
 
-            result = result_holder["result"]
+                                step_emoji = {
+                                    "orchestrating": "🧠",
+                                    "collecting": "📥",
+                                    "searching": "🔍",
+                                    "analyzing": "📊",
+                                    "saving": "💾",
+                                }.get(step, "⚙️")
+
+                                current_step = f"{step_emoji} {message}"
+                                progress_container.progress(progress_val, text=current_step)
+
+                                elapsed = int(time.time() - start_time)
+
+                                # Показываем информацию о модели для текущего этапа
+                                model_info = STEP_MODEL_INFO.get(step, {})
+                                if model_info:
+                                    model_name = model_info.get("model", "")
+                                    provider = model_info.get("provider", "")
+                                    task = model_info.get("task", "")
+
+                                    # Используем expander для компактного отображения в углу
+                                    with model_info_container.container():
+                                        st.caption(
+                                            f"⏱️ **{elapsed} сек** | 🤖 **{model_name}** ({provider})\n\n📝 {task}"
+                                        )
+                                else:
+                                    status_container.caption(f"⏱️ Время выполнения: {elapsed} сек | Этап: {step}")
+
+                            elif event_type == "orchestrator":
+                                intents_count = data.get("intents_count", 0)
+                                intents = data.get("intents", [])
+                                info_text = f"🎯 Сформировано запросов: {intents_count}"
+                                if intents:
+                                    info_text += f"\n\n📋 Категории: {', '.join(intents[:5])}"
+                                info_container.info(info_text)
+
+                            elif event_type == "data_collected":
+                                sources = data.get("sources", [])
+                                successful = data.get("successful", [])
+                                duration_ms = data.get("duration_ms", 0)
+
+                                sources_info = f"✅ Источники: {len(successful)}/{len(sources)}\n"
+                                sources_info += f"📦 Успешно: {', '.join(successful)}"
+                                info_container.success(sources_info)
+
+                                current_progress = data.get("progress", 60) / 100.0
+                                progress_container.progress(current_progress, text="📥 Данные собраны")
+
+                                # Обновляем информацию о модели
+                                with model_info_container.container():
+                                    st.caption(
+                                        f"⏱️ Сбор данных: {duration_ms / 1000:.1f} сек | "
+                                        f"Источников: {len(successful)}/{len(sources)}"
+                                    )
+
+                            elif event_type == "source_preview":
+                                # Sprint 2: Live Data Preview - показываем данные по мере поступления
+                                sources_previews = data.get("sources", {})
+                                successful_count = data.get("successful_count", 0)
+                                total_count = data.get("total_count", 0)
+
+                                if sources_previews:
+                                    preview_text = (
+                                        f"📊 **Предпросмотр данных** ({successful_count}/{total_count} источников):\n\n"
+                                    )
+
+                                    for (
+                                        source_name,
+                                        preview_data,
+                                    ) in sources_previews.items():
+                                        icon = preview_data.get("icon", "📄")
+                                        preview = preview_data.get("preview", "")
+                                        status = preview_data.get("status", "unknown")
+
+                                        if status == "success":
+                                            preview_text += f"{icon} **{source_name.upper()}**: {preview}\n\n"
+                                        elif status == "error":
+                                            preview_text += f"⚠️ **{source_name.upper()}**: {preview}\n\n"
+
+                                    # Показываем в expander для компактности
+                                    with info_container.expander(
+                                        "📊 Предпросмотр данных (обновляется в реальном времени)",
+                                        expanded=True,
+                                    ):
+                                        st.markdown(preview_text)
+
+                            elif event_type == "analysis_progress":
+                                # Sprint 2: Progressive analysis updates - показываем что LLM анализирует
+                                substep = data.get("substep", "")
+                                message = data.get("message", "")
+                                progress_val = data.get("progress", 70) / 100.0
+                                elapsed_seconds = data.get("elapsed_seconds", 0)
+
+                                if substep == "llm_thinking":
+                                    # Показываем что LLM думает с elapsed time
+                                    info_container.info(
+                                        f"🤔 **LLM анализ в процессе**\n\n{message}\n\n⏱️ Время анализа: {elapsed_seconds} сек"
+                                    )
+                                else:
+                                    info_container.info(f"📊 {message}")
+
+                                current_progress = progress_val
+                                progress_container.progress(progress_val, text=f"🧠 {message}")
+
+                            elif event_type == "report":
+                                risk_score = data.get("risk_score", 0)
+                                risk_level = data.get("risk_level", "unknown")
+                                findings_count = data.get("findings_count", 0)
+
+                                info_container.warning(
+                                    f"⚠️ Риск-скор: **{risk_score}/100** ({risk_level})\n\n"
+                                    f"📋 Обнаружено факторов: {findings_count}"
+                                )
+
+                                current_progress = data.get("progress", 85) / 100.0
+                                progress_container.progress(current_progress, text="📊 Отчёт сформирован")
+
+                            elif event_type == "result":
+                                result = data
+                                current_progress = 1.0
+                                progress_container.progress(1.0, text="✅ Анализ завершён!")
+                                elapsed = int(time.time() - start_time)
+
+                                with model_info_container.container():
+                                    st.caption(f"⏱️ **Общее время: {elapsed} сек** | ✅ **Завершено успешно**")
+
+                            elif event_type == "error":
+                                error_msg = data.get("error", "Неизвестная ошибка")
+                                raise Exception(error_msg)
+
+                            elif event_type == "cancelled":
+                                cancel_button_container.empty()  # Убираем кнопку отмены
+                                progress_container.empty()
+                                status_container.empty()
+                                model_info_container.empty()
+                                info_container.warning("🛑 Анализ был отменён")
+                                st.info("Вы можете запустить новый анализ в любое время")
+                                return  # Выходим из функции
+
+                            elif event_type == "complete":
+                                cancel_button_container.empty()  # Убираем кнопку отмены
+                                if result is None:
+                                    # Если result не был получен ранее, делаем финальный запрос
+                                    logger.warning("Stream completed without result event")
+
+                        except json.JSONDecodeError as e:
+                            logger.error(f"Failed to parse SSE data: {line}, error: {e}")
+                            continue
+
     except Exception as e:
         error_occurred = True
         logger.error(f"Analysis error: {e}")
+        cancel_button_container.empty()  # Убираем кнопку отмены при ошибке
         progress_container.empty()
-        time_container.empty()
+        status_container.empty()
+        model_info_container.empty()
+        info_container.empty()
         st.error(f"❌ Ошибка при выполнении анализа: {str(e)}")
         st.info("💡 Попробуйте повторить запрос или обратитесь к администратору")
 
     if not error_occurred:
-        progress_container.progress(1.0, text="✅ Анализ завершён!")
-        time_container.empty()
-
         if result is not None:
             st.session_state["last_analysis_result"] = result
+
+            # Sprint 2+: Favorites - предлагаем добавить в избранное после успешного анализа
+            result_inn = result.get("inn", "")
+            result_name = result.get("client_name", "")
+            if result_inn and result_name:
+                st.divider()
+                _add_to_favorites_button(api, result_name, result_inn)
         else:
-            st.warning("⚠️ Анализ завершён, но данные не получены. Попробуйте обновить страницу.")
+            st.warning("⚠️ Анализ завершён, но финальные данные не получены. Попробуйте обновить страницу.")
 
 
 def _render_schedule_analysis(api: ApiClient) -> None:
@@ -533,6 +735,12 @@ def _render_report_details(api: ApiClient, opened: Dict[str, Any], selected_repo
     with col3:
         st.metric("Риск-скор", opened.get("risk_score", 0))
 
+    # Sprint 2+: Favorites - быстрое добавление в избранное
+    company_name = opened.get("client_name", "")
+    inn = opened.get("inn", "")
+    if company_name and inn:
+        _add_to_favorites_button(api, company_name, inn)
+
     report_data = opened.get("report_data") or {}
 
     if report_data.get("summary"):
@@ -754,3 +962,158 @@ def _render_feedback_section(api: ApiClient, opened: Dict[str, Any], selected_re
                 else:
                     st.warning(f"Статус: {status}")
                     st.json(feedback_result)
+
+
+def _render_favorites_selector(api: ApiClient) -> None:
+    """
+    Рендерит селектор избранных компаний для быстрого выбора.
+
+    Sprint 2+: Favorites feature for recurring analyses.
+    """
+    st.subheader("⭐ Избранные компании")
+
+    # Получаем список избранных
+    try:
+        favorites = api.get("/favorites")
+
+        if not favorites:
+            st.info("💡 У вас пока нет избранных компаний. Добавьте после анализа!")
+            return
+
+        # Форматируем для selectbox
+        options = [""] + [f"{fav['company_name']} (ИНН: {fav['inn']})" for fav in favorites]
+
+        selected = st.selectbox(
+            "Выбрать компанию из избранного",
+            options=options,
+            help="Быстрый доступ к часто анализируемым компаниям",
+        )
+
+        if selected:
+            # Парсим выбор
+            for fav in favorites:
+                if f"{fav['company_name']} (ИНН: {fav['inn']})" == selected:
+                    # Сохраняем в session_state для автозаполнения формы
+                    st.session_state["selected_company_name"] = fav["company_name"]
+                    st.session_state["selected_company_inn"] = fav["inn"]
+
+                    # Показываем информацию
+                    col1, col2, col3 = st.columns([3, 2, 1])
+
+                    with col1:
+                        st.success(f"✅ Выбрана: **{fav['company_name']}**")
+
+                    with col2:
+                        last_analyzed = fav.get("last_analyzed_at")
+                        if last_analyzed:
+                            st.caption(f"Последний анализ: {last_analyzed[:19]}")
+                        else:
+                            st.caption("Ещё не анализировалась")
+
+                    with col3:
+                        if st.button("🗑️ Удалить", key="remove_favorite"):
+                            try:
+                                api.delete(f"/favorites/{fav['inn']}")
+                                st.success("Удалено из избранного")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Ошибка: {e}")
+
+                    # Заметки если есть
+                    if fav.get("notes"):
+                        with st.expander("📝 Заметки"):
+                            st.markdown(fav["notes"])
+
+                    break
+
+    except Exception as e:
+        st.warning(f"⚠️ Не удалось загрузить избранное: {e}")
+
+
+def _add_to_favorites_button(api: ApiClient, client_name: str, inn: str) -> None:
+    """
+    Кнопка для добавления компании в избранное.
+
+    Sprint 2+: Favorites feature.
+    """
+    if not inn:
+        return  # Нельзя добавить без ИНН
+
+    # Проверяем, не в избранном ли уже
+    try:
+        favorites = api.get("/favorites") or []
+        is_favorite = any(f.get("inn") == inn for f in favorites)
+
+        if is_favorite:
+            st.info("⭐ Эта компания уже в избранном")
+            return
+
+        # Кнопка добавления
+        if st.button("⭐ Добавить в избранное", key="add_to_favorites"):
+            with st.spinner("Добавляю в избранное..."):
+                try:
+                    api.post(
+                        "/favorites",
+                        json={"company_name": client_name, "inn": inn, "notes": None},
+                    )
+                    st.success("✅ Добавлено в избранное!")
+                    st.rerun()
+                except Exception as e:
+                    if "409" in str(e):
+                        st.info("⭐ Эта компания уже в избранном")
+                    else:
+                        st.error(f"Ошибка: {e}")
+
+    except Exception as e:
+        logger.warning(f"Failed to check favorites: {e}")
+        # Не блокируем UI если favorites API недоступен
+
+
+def _render_inn_suggestions(api: ApiClient) -> None:
+    """
+    Умные подсказки при вводе ИНН или названия компании.
+
+    Sprint 2+: Autocomplete feature.
+    """
+    st.subheader("🔍 Быстрый поиск компании")
+
+    search_query = st.text_input(
+        "Введите ИНН или название компании",
+        placeholder="7707083893 или Сбербанк",
+        help="Начните вводить ИНН (минимум 3 цифры) или название для подсказок",
+        key="company_search_input",
+    )
+
+    # Показываем подсказки только если ввели достаточно символов
+    if search_query and len(search_query) >= 3:
+        with st.spinner("Поиск..."):
+            try:
+                suggestions = api.get("/favorites/suggest", params={"query": search_query, "limit": 5})
+
+                if suggestions:
+                    st.markdown("💡 **Найденные компании:**")
+
+                    for sugg in suggestions:
+                        col1, col2, col3 = st.columns([3, 2, 1])
+
+                        with col1:
+                            source_emoji = "⭐" if sugg["source"] == "favorites" else "📊"
+                            st.markdown(f"{source_emoji} **{sugg['company_name']}**")
+
+                        with col2:
+                            st.caption(f"ИНН: {sugg['inn']}")
+
+                        with col3:
+                            if st.button("Выбрать", key=f"select_{sugg['inn']}"):
+                                # Сохраняем в session_state для автозаполнения формы
+                                st.session_state["selected_company_name"] = sugg["company_name"]
+                                st.session_state["selected_company_inn"] = sugg["inn"]
+                                st.success(f"✅ Выбрана: {sugg['company_name']}")
+                                st.rerun()
+
+                elif len(search_query) >= 5:
+                    st.info("💡 Компании не найдены в истории. Введите полные данные в форму ниже.")
+
+            except Exception as e:
+                logger.debug(f"Suggestions failed (non-critical): {e}")
+                # Не показываем ошибку пользователю - autocomplete не критичный

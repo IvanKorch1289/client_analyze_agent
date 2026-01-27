@@ -1,8 +1,9 @@
 """
-PII Protection Module
+Модуль защиты персональных данных (PII)
 
-Masks personally identifiable information before sending to external LLMs.
-Uses Microsoft Presidio for detection and anonymization with custom Russian recognizers.
+Маскирует персональные данные перед отправкой во внешние LLM.
+Использует Microsoft Presidio с кастомными распознавателями для русского языка.
+Поддерживает Reversible Pseudonymization с нумерованными псевдонимами.
 """
 
 import hashlib
@@ -17,13 +18,14 @@ _recognizers_registered = False
 
 @dataclass
 class PIIMaskingResult:
-    """Result of PII masking operation."""
+    """Результат операции маскирования PII с обратимой псевдонимизацией."""
 
     masked_text: str
     original_text: str
-    replacements: List[Dict[str, Any]]
+    replacements: List[Dict[str, Any]]  # Содержит маппинг для размаскирования
     detected_pii_types: List[str]
     pii_count: int
+    pii_detected: bool  # Флаг обнаружения PII
 
 
 def _create_russian_recognizers():
@@ -223,17 +225,44 @@ def _register_russian_recognizers(analyzer):
 
 
 def get_analyzer():
-    """Lazy initialization of Presidio Analyzer with Russian recognizers."""
+    """
+    Lazy initialization of Presidio Analyzer with Russian recognizers.
+
+    Tries to use ru_core_news_lg (large model for better Russian name recognition),
+    falls back to ru_core_news_sm if large model is not available.
+    """
     global _analyzer
     if _analyzer is None:
         from presidio_analyzer import AnalyzerEngine
         from presidio_analyzer.nlp_engine import NlpEngineProvider
 
+        # Попытка использовать большую модель для лучшего распознавания русских ФИО
+        # Fallback на маленькую модель, если большая не установлена
+        ru_model = "ru_core_news_lg"  # Предпочтительная большая модель
+
+        try:
+            import spacy
+
+            try:
+                spacy.load(ru_model)
+            except OSError:
+                # Большая модель не установлена, используем маленькую
+                ru_model = "ru_core_news_sm"
+                import logging
+
+                logging.warning(
+                    f"Large Russian spaCy model not found, using {ru_model}. "
+                    "Install ru_core_news_lg for better recognition: "
+                    "python -m spacy download ru_core_news_lg"
+                )
+        except ImportError:
+            ru_model = "ru_core_news_sm"
+
         # Configure NLP engine to support both Russian and English
         configuration = {
             "nlp_engine_name": "spacy",
             "models": [
-                {"lang_code": "ru", "model_name": "ru_core_news_sm"},
+                {"lang_code": "ru", "model_name": ru_model},
                 {"lang_code": "en", "model_name": "en_core_web_sm"},
             ],
         }
@@ -284,7 +313,12 @@ def mask_pii(
     entities: Optional[List[str]] = None,
 ) -> PIIMaskingResult:
     """
-    Mask PII in text using Presidio with custom Russian recognizers.
+    Mask PII in text using Reversible Pseudonymization.
+
+    Использует нумерованные псевдонимы вместо простых тегов для обеспечения
+    полной обратимости маскирования. Например:
+    - "Иванов Иван" → "[CLIENT_NAME_1]"
+    - "Петров Петр" → "[CLIENT_NAME_2]"
 
     Args:
         text: Text to mask
@@ -293,14 +327,13 @@ def mask_pii(
         entities: Custom list of entities to mask (overrides mask_level)
 
     Returns:
-        PIIMaskingResult with masked text and metadata
+        PIIMaskingResult with masked text and reversible mapping
 
     Example:
-        >>> result = mask_pii("ИНН 7707083893, директор Иванов Иван Иванович")
+        >>> result = mask_pii("ИНН 7707083893, директор Иванов Иван, тел +7(499)123-45-67")
         >>> print(result.masked_text)
-        "ИНН <RU_INN>, директор <RU_PERSON>"
-        >>> print(result.detected_pii_types)
-        ["RU_INN", "RU_PERSON"]
+        "ИНН [INN_1], директор [CLIENT_NAME_1], тел [PHONE_1]"
+        >>> print(result.replacements)  # Содержит маппинг для размаскирования
     """
     if not text or not text.strip():
         return PIIMaskingResult(
@@ -309,6 +342,7 @@ def mask_pii(
             replacements=[],
             detected_pii_types=[],
             pii_count=0,
+            pii_detected=False,
         )
 
     # Determine entities to detect based on mask_level
@@ -338,7 +372,6 @@ def mask_pii(
         entities_to_detect = entities
 
     analyzer = get_analyzer()
-    anonymizer = get_anonymizer()
 
     # Analyze text
     # Use "ru" for Russian recognizers, they support multiple languages
@@ -352,24 +385,59 @@ def mask_pii(
             replacements=[],
             detected_pii_types=[],
             pii_count=0,
+            pii_detected=False,
         )
 
-    # Build replacements map BEFORE anonymization to capture original positions
-    # Sort by start position to process in order
-    sorted_results = sorted(results, key=lambda r: r.start)
+    # Build replacements map with NUMBERED pseudonyms for reversibility
+    # Sort by start position to process in reverse order (preserve offsets)
+    sorted_results = sorted(results, key=lambda r: r.start, reverse=True)
 
+    # Счетчики для каждого типа сущностей
+    entity_counters: Dict[str, int] = {}
     replacements = []
     detected_types = set()
 
+    # Маппинг entity_type -> читаемое имя для псевдонима
+    ENTITY_PSEUDONYM_NAMES = {
+        "RU_INN": "INN",
+        "RU_OGRN": "OGRN",
+        "RU_SNILS": "SNILS",
+        "RU_PERSON": "CLIENT_NAME",
+        "PERSON": "PERSON_NAME",
+        "RU_ADDRESS": "ADDRESS",
+        "LOCATION": "LOCATION",
+        "RU_PASSPORT": "PASSPORT",
+        "RU_PHONE": "PHONE",
+        "PHONE_NUMBER": "PHONE",
+        "EMAIL_ADDRESS": "EMAIL",
+        "CREDIT_CARD": "CARD",
+        "IBAN_CODE": "IBAN",
+        "IP_ADDRESS": "IP",
+        "DATE_TIME": "DATE",
+        "URL": "URL",
+    }
+
+    # Создаем маскированный текст, заменяя с конца (чтобы сохранить оффсеты)
+    masked_text = text
     for r in sorted_results:
         entity_type = r.entity_type
         detected_types.add(entity_type)
 
-        # Get original text (before anonymization) using analyzer positions
+        # Получаем оригинальное значение
         original_value = text[r.start : r.end]
-        # Masked value will be <ENTITY_TYPE>
-        masked_value = f"<{entity_type}>"
 
+        # Получаем счетчик для этого типа сущности
+        entity_counters[entity_type] = entity_counters.get(entity_type, 0) + 1
+        counter = entity_counters[entity_type]
+
+        # Создаем читаемый псевдоним с номером
+        pseudonym_base = ENTITY_PSEUDONYM_NAMES.get(entity_type, entity_type)
+        masked_value = f"[{pseudonym_base}_{counter}]"
+
+        # Заменяем в тексте (с конца, чтобы не сбить оффсеты)
+        masked_text = masked_text[: r.start] + masked_value + masked_text[r.end :]
+
+        # Сохраняем маппинг для размаскирования
         replacements.append(
             {
                 "start": r.start,
@@ -381,44 +449,54 @@ def mask_pii(
             }
         )
 
-    # Anonymize with angle brackets format: <ENTITY_TYPE>
-    anonymized = anonymizer.anonymize(text=text, analyzer_results=results)
+    # Переворачиваем replacements обратно (для логичного порядка)
+    replacements = list(reversed(replacements))
 
     return PIIMaskingResult(
-        masked_text=anonymized.text,
+        masked_text=masked_text,
         original_text=text,
         replacements=replacements,
         detected_pii_types=sorted(detected_types),
         pii_count=len(replacements),
+        pii_detected=len(replacements) > 0,
     )
 
 
 def unmask_pii(masked_text: str, replacements: List[Dict[str, Any]]) -> str:
     """
-    Restore original PII in masked text.
+    Restore original PII in masked text using reversible pseudonymization mapping.
+
+    Использует маппинг из mask_pii() для точного восстановления оригинальных
+    значений PII. Поддерживает нумерованные псевдонимы.
 
     Args:
-        masked_text: Text with masked PII (e.g., "ИНН <RU_INN>")
-        replacements: List of replacements from mask_pii()
+        masked_text: Text with masked PII (e.g., "ИНН [INN_1], директор [CLIENT_NAME_1]")
+        replacements: List of replacements from mask_pii() with mapping
 
     Returns:
         Text with original PII restored
 
     Example:
-        >>> masked = "ИНН <RU_INN>, директор <RU_PERSON>"
-        >>> replacements = [...]
+        >>> masked = "ИНН [INN_1], директор [CLIENT_NAME_1], тел [PHONE_1]"
+        >>> replacements = [
+        ...     {"masked": "[INN_1]", "original": "7707083893"},
+        ...     {"masked": "[CLIENT_NAME_1]", "original": "Иванов Иван"},
+        ...     {"masked": "[PHONE_1]", "original": "+7(499)123-45-67"}
+        ... ]
         >>> unmask_pii(masked, replacements)
-        "ИНН 7707083893, директор Иванов Иван Иванович"
+        "ИНН 7707083893, директор Иванов Иван, тел +7(499)123-45-67"
     """
     result = masked_text
 
-    # Process in reverse order to preserve offsets
-    for repl in reversed(replacements):
+    # Заменяем все псевдонимы на оригинальные значения
+    # Порядок не важен, т.к. псевдонимы уникальны (нумерованные)
+    for repl in replacements:
         masked_value = repl["masked"]
         original_value = repl["original"]
 
-        # Replace first occurrence (should be only one at correct position)
-        result = result.replace(masked_value, original_value, 1)
+        # Заменяем ВСЕ вхождения этого псевдонима (обычно одно)
+        # В ответе LLM может быть повторено несколько раз
+        result = result.replace(masked_value, original_value)
 
     return result
 

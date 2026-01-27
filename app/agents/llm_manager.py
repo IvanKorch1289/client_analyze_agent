@@ -158,17 +158,37 @@ class LLMManager:
             LLMProvider.YANDEXGPT,
         ]
 
+        # Кэш доступности моделей OpenRouter
+        self._model_availability_cache: Dict[str, tuple[bool, float]] = {}
+        self._current_openrouter_model: Optional[str] = None
+
         logger.info("LLMManager initialized", component="llm_manager")
 
-    def _get_openrouter_llm(self) -> Any:
+    def _get_openrouter_llm(self, model: Optional[str] = None) -> Any:
         """
-        Получить OpenRouter LLM (primary).
+        Получить OpenRouter LLM (primary) с поддержкой выбора модели.
 
         Если включен Jay Guard прокси (JAYGUARD_ENABLED=true), запросы идут через него.
+
+        Args:
+            model: Название модели (если None, используется выбранная или дефолтная)
 
         Returns:
             LLM: Настроенный LLM для OpenRouter (через Jay Guard если включен)
         """
+        # Используем указанную модель или текущую выбранную, или дефолтную
+        selected_model = model or self._current_openrouter_model or settings.openrouter.model
+
+        # Если модель изменилась, пересоздаём LLM
+        if self._openrouter_llm is not None:
+            current_model = getattr(self._openrouter_llm, "model_name", None)
+            if current_model and current_model != selected_model:
+                logger.info(
+                    f"OpenRouter model changed from {current_model} to {selected_model}, recreating LLM",
+                    component="llm_manager",
+                )
+                self._openrouter_llm = None
+
         if self._openrouter_llm is None:
             from langchain_openai import ChatOpenAI
 
@@ -180,7 +200,7 @@ class LLMManager:
                 self._openrouter_llm = ChatOpenAI(
                     api_key=jayguard_key,
                     base_url=jayguard_url,
-                    model=settings.openrouter.model,
+                    model=selected_model,
                     temperature=settings.openrouter.temperature,
                     max_tokens=settings.openrouter.max_tokens,
                     timeout=settings.jayguard.timeout,
@@ -191,7 +211,7 @@ class LLMManager:
                 )
 
                 logger.info(
-                    f"OpenRouter LLM via Jay Guard proxy: {settings.openrouter.model}",
+                    f"OpenRouter LLM via Jay Guard proxy: {selected_model}",
                     component="llm_manager",
                 )
             else:
@@ -201,7 +221,7 @@ class LLMManager:
                 self._openrouter_llm = ChatOpenAI(
                     api_key=settings.openrouter.api_key,
                     base_url=settings.openrouter.api_url,
-                    model=settings.openrouter.model,
+                    model=selected_model,
                     temperature=settings.openrouter.temperature,
                     max_tokens=settings.openrouter.max_tokens,
                     timeout=settings.openrouter.timeout,
@@ -212,7 +232,7 @@ class LLMManager:
                 )
 
                 logger.info(
-                    f"OpenRouter LLM initialized: {settings.openrouter.model}",
+                    f"OpenRouter LLM initialized: {selected_model}",
                     component="llm_manager",
                 )
 
@@ -300,12 +320,13 @@ class LLMManager:
 
         return self._yandexgpt_llm
 
-    def _get_llm_by_provider(self, provider: LLMProvider) -> Any:
+    def _get_llm_by_provider(self, provider: LLMProvider, model: Optional[str] = None) -> Any:
         """
         Получить LLM по имени провайдера.
 
         Args:
             provider: Имя провайдера
+            model: Название модели (только для OpenRouter)
 
         Returns:
             LLM: Настроенный LLM
@@ -314,7 +335,7 @@ class LLMManager:
             ValueError: Если провайдер не поддерживается или не сконфигурирован
         """
         if provider == LLMProvider.OPENROUTER:
-            return self._get_openrouter_llm()
+            return self._get_openrouter_llm(model=model)
         elif provider == LLMProvider.HUGGINGFACE:
             return self._get_huggingface_llm()
         elif provider == LLMProvider.GIGACHAT:
@@ -324,9 +345,110 @@ class LLMManager:
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
+    async def _check_openrouter_model_availability(self, model: str) -> bool:
+        """
+        Проверить доступность модели в OpenRouter.
+
+        Args:
+            model: Название модели для проверки
+
+        Returns:
+            bool: True если модель доступна, False иначе
+        """
+        # Проверяем кэш доступности
+        if model in self._model_availability_cache:
+            is_available, cached_at = self._model_availability_cache[model]
+            cache_age = time.time() - cached_at
+
+            if cache_age < settings.openrouter.availability_cache_ttl:
+                logger.debug(
+                    f"Model availability cache hit: {model} = {is_available}",
+                    component="llm_manager",
+                )
+                return is_available
+
+        # Проверяем доступность модели через OpenRouter API
+        try:
+            import httpx
+
+            url = "https://openrouter.ai/api/v1/models"
+            headers = {"Authorization": f"Bearer {settings.openrouter.api_key}"}
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(url, headers=headers)
+
+                if response.status_code == 200:
+                    models_data = response.json()
+                    available_models = [m.get("id") for m in models_data.get("data", [])]
+
+                    is_available = model in available_models
+
+                    # Кэшируем результат
+                    self._model_availability_cache[model] = (is_available, time.time())
+
+                    logger.info(
+                        f"OpenRouter model '{model}' availability: {is_available}",
+                        component="llm_manager",
+                    )
+
+                    return is_available
+                else:
+                    logger.warning(
+                        f"Failed to check OpenRouter models: HTTP {response.status_code}",
+                        component="llm_manager",
+                    )
+                    # При ошибке проверки считаем модель доступной (optimistic)
+                    return True
+
+        except Exception as e:
+            logger.error(
+                f"Error checking OpenRouter model availability: {e}",
+                component="llm_manager",
+                exc_info=True,
+            )
+            # При ошибке проверки считаем модель доступной (optimistic)
+            return True
+
+    async def _select_best_openrouter_model(self) -> str:
+        """
+        Выбрать лучшую доступную модель OpenRouter из fallback списка.
+
+        Returns:
+            str: Название доступной модели
+        """
+        if not settings.openrouter.check_availability:
+            # Если проверка отключена, возвращаем основную модель
+            return settings.openrouter.model
+
+        # Если уже есть выбранная модель и кэш актуален, используем её
+        if self._current_openrouter_model:
+            if await self._check_openrouter_model_availability(self._current_openrouter_model):
+                return self._current_openrouter_model
+
+        # Проверяем модели из fallback списка в порядке приоритета
+        fallback_models = settings.openrouter.fallback_models
+
+        for model in fallback_models:
+            if await self._check_openrouter_model_availability(model):
+                logger.info(
+                    f"Selected OpenRouter model: {model}",
+                    component="llm_manager",
+                )
+                self._current_openrouter_model = model
+                return model
+
+        # Если ни одна модель не доступна, возвращаем основную (последняя попытка)
+        logger.warning(
+            f"No OpenRouter models available from fallback list, using primary: {settings.openrouter.model}",
+            component="llm_manager",
+        )
+        return settings.openrouter.model
+
     async def ainvoke_with_provider(self, prompt: str, provider: LLMProvider, **kwargs) -> str:
         """
         Вызов LLM с явным указанием провайдера.
+
+        Для OpenRouter автоматически выбирает лучшую доступную модель.
 
         Args:
             prompt: Запрос для LLM
@@ -339,7 +461,12 @@ class LLMManager:
         Raises:
             Exception: При ошибке вызова LLM
         """
-        llm = self._get_llm_by_provider(provider)
+        # Для OpenRouter выбираем лучшую доступную модель
+        if provider == LLMProvider.OPENROUTER and settings.openrouter.check_availability:
+            best_model = await self._select_best_openrouter_model()
+            llm = self._get_openrouter_llm(model=best_model)
+        else:
+            llm = self._get_llm_by_provider(provider)
 
         logger.debug(
             f"Invoking {provider} with prompt length: {len(prompt)}",
@@ -363,6 +490,19 @@ class LLMManager:
                 exc_info=True,
             )
             self._provider_status[provider] = False
+
+            # Если OpenRouter упал, пробуем следующую модель из fallback списка
+            if provider == LLMProvider.OPENROUTER and settings.openrouter.check_availability:
+                current_model = self._current_openrouter_model
+                logger.warning(
+                    f"OpenRouter model {current_model} failed, marking as unavailable",
+                    component="llm_manager",
+                )
+                # Помечаем текущую модель как недоступную
+                if current_model:
+                    self._model_availability_cache[current_model] = (False, time.time())
+                    self._current_openrouter_model = None
+
             raise
 
     # ============================================================
@@ -430,10 +570,23 @@ class LLMManager:
         """
         Mask PII in prompt before sending to LLM.
 
+        КРИТИЧЕСКИ ВАЖНО: Маскирование работает ВСЕГДА при обращении к внешней LLM,
+        независимо от настроек аудита. Аудит и маскирование - разные функции.
+
         Returns:
             Tuple of (masked_prompt, pii_result or None)
         """
-        if not settings.secure.llm_audit_enabled:
+        # ИСПРАВЛЕНО: Маскирование работает всегда, не зависит от llm_audit_enabled
+        # Проверяем настройку PII protection (если есть отдельная настройка)
+        # Если нет настройки - маскируем по умолчанию для безопасности
+        pii_masking_enabled = getattr(settings.secure, "pii_masking_enabled", True)
+
+        if not pii_masking_enabled:
+            # Маскирование явно отключено в настройках (только для dev/test)
+            logger.warning(
+                "PII masking is DISABLED - personal data will be sent to external LLM!",
+                component="llm_manager",
+            )
             return prompt, None
 
         try:
@@ -448,8 +601,19 @@ class LLMManager:
 
             return pii_result.masked_text, pii_result
         except Exception as e:
-            logger.error(f"PII masking failed: {e}", component="llm_manager")
-            return prompt, None
+            # КРИТИЧЕСКИ ВАЖНО: При ошибке маскирования НЕ отправляем промпт в LLM
+            # Блокируем вызов для предотвращения утечки PII
+            logger.critical(
+                f"PII masking FAILED - BLOCKING LLM call to prevent PII leak: {e}",
+                component="llm_manager",
+                exc_info=True,
+            )
+            # В dev режиме можно вернуть оригинал с предупреждением
+            if getattr(settings.app, "debug", False):
+                logger.warning("DEBUG mode: allowing unmasked prompt", component="llm_manager")
+                return prompt, None
+            # В production блокируем вызов
+            raise Exception("PII masking failed - cannot proceed with LLM call") from e
 
     async def _call_providers_with_fallback(
         self, masked_prompt: str, pii_result: Optional[Any], start_time: float, **kwargs

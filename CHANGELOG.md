@@ -1,133 +1,162 @@
-# Changelog
+# Журнал изменений
 
-All notable changes to this project will be documented in this file.
+Все значительные изменения в этом проекте будут документированы в этом файле.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
+и этот проект придерживается [Семантического версионирования](https://semver.org/lang/ru/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
-- Multi-stage Dockerfile for optimized image size (~350MB vs ~800MB)
-- AlertManager integration for Prometheus alerts
-- Comprehensive CI/CD pipeline with security scanning (bandit, pip-audit, Trivy)
-- Docker resource limits and logging configuration
-- Container vulnerability scanning with Trivy
+### Добавлено
+- Многоэтапный Dockerfile для оптимизации размера образа (~350MB против ~800MB)
+- Интеграция AlertManager для алертов Prometheus
+- Комплексный CI/CD конвейер со сканированием безопасности (bandit, pip-audit, Trivy)
+- Ограничения ресурсов Docker и конфигурация логирования
+- Сканирование уязвимостей контейнеров с помощью Trivy
+- **Проверка доступности моделей OpenRouter с автоматическим переключением** (2026-01-22)
+  - Проверка доступности моделей в реальном времени через OpenRouter API
+  - Настраиваемый список резервных моделей (Claude, GPT-4, Gemini, Llama)
+  - Кэширование доступности моделей (TTL 5 минут) для снижения нагрузки на API
+  - Умное переключение моделей при сбоях с нулевым временем простоя
+  - Опции конфигурации:
+    - `OPENROUTER_CHECK_AVAILABILITY` (по умолчанию: true)
+    - `OPENROUTER_FALLBACK_MODELS` (6 моделей по умолчанию)
+    - `OPENROUTER_AVAILABILITY_CACHE_TTL` (по умолчанию: 300s)
+- **Потоковый UI с прогрессом в реальном времени** (2026-01-22)
+  - Индикатор прогресса на основе Server-Sent Events (SSE)
+  - Отображение текущего этапа выполнения в реальном времени с emoji-индикаторами
+  - Информация о модели для каждой стадии анализа:
+    - Оркестрация: Claude 3.5 Sonnet (OpenRouter)
+    - Сбор данных: Perplexity + Tavily (API)
+    - Анализ: Claude 3.5 Sonnet (OpenRouter)
+  - Статистика в реальном времени: время выполнения, источники данных, оценка риска
+  - Отслеживание ID сессии для отладки
 
-### Changed
-- Improved Docker Compose configuration with environment variable secrets
-- Enhanced Prometheus configuration with AlertManager target
+### Изменено
+- Улучшена конфигурация Docker Compose с секретами переменных окружения
+- Расширена конфигурация Prometheus с целью AlertManager
+- **Рефакторинг вкладки анализа в Streamlit UI** для использования потокового API вместо потоков
+  - Заменен опрос прогресса на SSE-потоки
+  - Добавлен httpx клиент для HTTP/2 и поддержки потоков
+  - Улучшена обработка ошибок с подробным контекстом
+  - Лучшая обратная связь с пользователем с пошаговыми обновлениями прогресса
+
+### Исправлено
+- **Ошибка импорта отсутствующей функции `validate_inn`** во фронтенде Streamlit (2026-01-22)
+  - Добавлена функция-обертка `validate_inn()` в `app/frontend/lib/validators.py`
+  - Функция возвращает кортеж `(is_valid, error_message)` для совместимости
+  - Сохранена обратная совместимость с существующим кодом
 
 ## [0.1.0] - 2026-01-22
 
-### Added
+### Добавлено
 
-#### Core Features
-- Multi-agent workflow orchestration with LangGraph
-- 7 data sources integration:
-  - DaData (EGRUL registry data)
-  - Casebook (arbitration court cases)
-  - InfoSphere (12+ databases: FSSP, bankruptcy, Central Bank, FNS)
-  - Perplexity AI (web search with LLM analysis)
-  - Tavily (extended search + web scraping)
-- Normalized risk scoring system (0-100 scale)
-- PDF and JSON report generation
-- Streamlit UI for interactive analysis
-- MCP Server for IDE integration
+#### Основные функции
+- Оркестрация мультиагентного workflow с помощью LangGraph
+- Интеграция 7 источников данных:
+  - DaData (данные реестра ЕГРЮЛ)
+  - Casebook (дела арбитражных судов)
+  - InfoSphere (12+ баз данных: ФССП, банкротство, ЦБ РФ, ФНС)
+  - Perplexity AI (веб-поиск с анализом LLM)
+  - Tavily (расширенный поиск + веб-скрейпинг)
+- Нормализованная система оценки рисков (шкала 0-100)
+- Генерация отчетов в PDF и JSON
+- Streamlit UI для интерактивного анализа
+- MCP сервер для интеграции с IDE
 
-#### Security & Compliance (Sprint 2)
-- PII protection with 7 custom Russian recognizers:
-  - RU_INN (tax identification numbers)
-  - RU_OGRN (registration numbers)
-  - RU_SNILS (social security numbers)
-  - RU_PERSON (Russian names in Cyrillic)
-  - RU_ADDRESS (Russian addresses)
-  - RU_PASSPORT (passport numbers)
-  - RU_PHONE (Russian phone numbers)
-- LLM Audit Trail with hash-only mode for compliance
-- 152-FZ compliance (Russian personal data law)
-- Presidio NLP engine configured for Russian language
+#### Безопасность и соответствие требованиям (Спринт 2)
+- Защита персональных данных с 7 пользовательскими распознавателями для России:
+  - RU_INN (налоговые идентификационные номера)
+  - RU_OGRN (регистрационные номера)
+  - RU_SNILS (номера социального страхования)
+  - RU_PERSON (российские имена кириллицей)
+  - RU_ADDRESS (российские адреса)
+  - RU_PASSPORT (номера паспортов)
+  - RU_PHONE (российские телефоны)
+- Аудит LLM с режимом только хешей для соответствия требованиям
+- Соответствие 152-ФЗ (российский закон о персональных данных)
+- NLP-движок Presidio настроен для русского языка
 
-#### Resilience & Performance
-- Circuit breakers with per-service configuration
-- Retry with exponential backoff (max 3 attempts)
-- Configurable timeouts per data source:
-  - DaData: 30s
-  - InfoSphere/Casebook: 360s (6 minutes)
-  - LLM: 60-120s
-- Rate limiting with Retry-After header support
-- Connection pooling with HTTP/2 support
+#### Устойчивость и производительность
+- Circuit breakers с настройкой для каждого сервиса
+- Повторные попытки с экспоненциальной задержкой (максимум 3 попытки)
+- Настраиваемые таймауты для каждого источника данных:
+  - DaData: 30с
+  - InfoSphere/Casebook: 360с (6 минут)
+  - LLM: 60-120с
+- Rate limiting с поддержкой заголовка Retry-After
+- Пулинг соединений с поддержкой HTTP/2
 
-#### LLM Integration
-- Multi-provider fallback chain:
+#### Интеграция LLM
+- Цепочка резервных провайдеров:
   1. OpenRouter (Claude 3.5 Sonnet)
   2. HuggingFace (Llama 3.1 70B)
-  3. GigaChat (Sber)
+  3. GigaChat (Сбер)
   4. YandexGPT
-- Jay Guard proxy support (optional)
-- Lazy provider initialization
+- Поддержка прокси Jay Guard (опционально)
+- Ленивая инициализация провайдеров
 
-#### Caching (Tarantool)
-- In-memory cache with TTL and msgpack+gzip compression
-- Batch operations (set_many, get_many)
-- Search result caching with MD5 hash
-- In-memory fallback when Tarantool unavailable
-- Lua procedures for fast operations
-- Smart cache invalidation on negative feedback
+#### Кэширование (Tarantool)
+- In-memory кэш с TTL и сжатием msgpack+gzip
+- Пакетные операции (set_many, get_many)
+- Кэширование результатов поиска с MD5-хешем
+- Резервное хранение в памяти при недоступности Tarantool
+- Lua-процедуры для быстрых операций
+- Интеллектуальная инвалидация кэша при отрицательной обратной связи
 
-#### Infrastructure
-- Docker Compose with health checks for all services
-- RabbitMQ message broker for async tasks
-- Prometheus metrics instrumentation
-- OpenTelemetry tracing
-- Structured logging with Rich + JSON
+#### Инфраструктура
+- Docker Compose с проверками работоспособности для всех сервисов
+- Брокер сообщений RabbitMQ для асинхронных задач
+- Инструментирование метрик Prometheus
+- Трассировка OpenTelemetry
+- Структурированное логирование с Rich + JSON
 
-#### Testing (Sprints 13-14)
-- E2E workflow tests
-- Integration tests (Tarantool, RabbitMQ)
-- API tests (20+ test cases)
-- Performance tests (timeout validation)
-- Load/performance tests
-- Security tests
+#### Тестирование (Спринты 13-14)
+- E2E тесты workflow
+- Интеграционные тесты (Tarantool, RabbitMQ)
+- API тесты (20+ тест-кейсов)
+- Тесты производительности (валидация таймаутов)
+- Нагрузочные/производительные тесты
+- Тесты безопасности
 
-#### Documentation
-- API Reference documentation
-- User Guide with step-by-step instructions
-- Troubleshooting guide
-- Deployment Runbook
-- AsyncAPI specification for RabbitMQ
+#### Документация
+- Справочная документация API
+- Руководство пользователя с пошаговыми инструкциями
+- Руководство по устранению неполадок
+- Руководство по развертыванию
+- Спецификация AsyncAPI для RabbitMQ
 
-### Changed
-- Optimized Tavily web scraping with parallel execution
-- Increased cache TTL for Perplexity/Tavily from 5 minutes to 1 hour
-- Improved code quality with P1/P2 fixes
+### Изменено
+- Оптимизирован веб-скрейпинг Tavily с параллельным выполнением
+- Увеличен TTL кэша для Perplexity/Tavily с 5 минут до 1 часа
+- Улучшено качество кода с исправлениями P1/P2
 
-### Security
-- Fixed CVE-2025-68664 (langchain >= 1.2.3)
-- Fixed CVE-2025-69223 through CVE-2025-69230 (aiohttp >= 3.13.3)
-- Fixed CVE-2026-21441 (urllib3 >= 2.6.3)
-- Admin endpoints protected with ADMIN_TOKEN
-- Security headers (CSP, HSTS, X-Frame-Options)
-- Rate limiting with SlowAPI
-- Input validation with Pydantic schemas
-- HashiCorp Vault support for secrets (optional)
+### Безопасность
+- Исправлен CVE-2025-68664 (langchain >= 1.2.3)
+- Исправлены CVE-2025-69223 - CVE-2025-69230 (aiohttp >= 3.13.3)
+- Исправлен CVE-2026-21441 (urllib3 >= 2.6.3)
+- Административные эндпоинты защищены с помощью ADMIN_TOKEN
+- Заголовки безопасности (CSP, HSTS, X-Frame-Options)
+- Rate limiting с SlowAPI
+- Валидация ввода с помощью Pydantic-схем
+- Поддержка HashiCorp Vault для секретов (опционально)
 
-## Version History
+## История версий
 
-### Sprint Timeline
+### Временная шкала спринтов
 
-| Sprint | Focus | Status |
+| Спринт | Фокус | Статус |
 |--------|-------|--------|
-| Sprint 0 | MVP Core | Completed |
-| Sprint 1 | Data Sources | Completed |
-| Sprint 2 | Security (PII, Audit) | Completed |
-| Sprint 3 | Performance Optimization | Completed |
-| Sprint 4 | Code Quality | Completed |
-| Sprint 5 | Advanced Features | Completed |
-| Sprint 6-9 | UI, Observability, Enterprise | Completed |
-| Sprint 10-11 | Refactoring, Exception Handling | Completed |
-| Sprint 13 | API Tests | Completed |
-| Sprint 14 | Load/Security Tests | Completed |
+| Спринт 0 | Основное ядро MVP | Завершен |
+| Спринт 1 | Источники данных | Завершен |
+| Спринт 2 | Безопасность (PII, Аудит) | Завершен |
+| Спринт 3 | Оптимизация производительности | Завершен |
+| Спринт 4 | Качество кода | Завершен |
+| Спринт 5 | Расширенные функции | Завершен |
+| Спринт 6-9 | UI, Наблюдаемость, Enterprise | Завершен |
+| Спринт 10-11 | Рефакторинг, Обработка исключений | Завершен |
+| Спринт 13 | Тесты API | Завершен |
+| Спринт 14 | Нагрузочные/безопасность тесты | Завершен |
 
 ---
 

@@ -186,15 +186,61 @@ async def report_analyzer_agent(
                 component="analyzer",
             )
 
+        # Вычисляем качество данных и failed источники
+        total_sources = len(search_results) + len([v for v in source_data.values() if v])
+        successful_sources_count = sum(1 for r in search_results if r.get("success")) + sum(
+            1 for v in source_data.values() if v and v.get("success")
+        )
+        data_quality_percent = round(
+            ((successful_sources_count / total_sources * 100) if total_sources > 0 else 0),
+            1,
+        )
+
+        # Список failed источников для диагностики
+        failed_sources = []
+        for r in search_results:
+            if not r.get("success"):
+                failed_sources.append(
+                    {
+                        "source": r.get("source", "unknown"),
+                        "intent": r.get("intent_id", ""),
+                        "error": r.get("error", "Unknown error"),
+                    }
+                )
+        for source_name, source_result in source_data.items():
+            if source_result and not source_result.get("success"):
+                failed_sources.append(
+                    {
+                        "source": source_name,
+                        "error": source_result.get("error", "Unknown error"),
+                    }
+                )
+
+        # Предупреждения если качество данных низкое
+        data_warnings = []
+        if data_quality_percent < 50:
+            data_warnings.append(
+                f"⚠️ ВНИМАНИЕ: Доступно только {successful_sources_count}/{total_sources} источников ({data_quality_percent}%). "
+                "Анализ может быть неполным."
+            )
+        elif data_quality_percent < 80:
+            data_warnings.append(
+                f"⚠️ Некоторые источники недоступны ({successful_sources_count}/{total_sources}, {data_quality_percent}%). "
+                "Результаты основаны на доступных данных."
+            )
+
         # Добавляем метаданные
         report = {
             "metadata": {
                 "client_name": client_name,
                 "inn": inn,
                 "analysis_date": datetime.now().isoformat(),
-                "data_sources_count": len(search_results) + len([v for v in source_data.values() if v]),
-                "successful_sources": sum(1 for r in search_results if r.get("success"))
-                + sum(1 for v in source_data.values() if v and v.get("success")),
+                "data_sources_count": total_sources,
+                "successful_sources": successful_sources_count,
+                "failed_sources_count": len(failed_sources),
+                "data_quality_percent": data_quality_percent,
+                "data_warnings": data_warnings,
+                "failed_sources": failed_sources,  # Для debugging
                 "llm_generated": True,
                 "verbose_reasoning": verbose_reasoning,
                 "has_reasoning_trace": reasoning_trace is not None,
@@ -422,15 +468,56 @@ async def _generate_report_fallback(
                 }
             )
 
-    successful_sources = sum(1 for v in source_data.values() if v and v.get("success"))
+    # Вычисляем качество данных (аналогично основному пути)
+    total_sources = len(search_results) + len([v for v in source_data.values() if v])
+    successful_sources_count = sum(1 for r in search_results if r.get("success")) + sum(
+        1 for v in source_data.values() if v and v.get("success")
+    )
+    data_quality_percent = round((successful_sources_count / total_sources * 100) if total_sources > 0 else 0, 1)
+
+    # Список failed источников
+    failed_sources = []
+    for r in search_results:
+        if not r.get("success"):
+            failed_sources.append(
+                {
+                    "source": r.get("source", "unknown"),
+                    "error": r.get("error", "Unknown error"),
+                }
+            )
+    for source_name, source_result in source_data.items():
+        if source_result and not source_result.get("success"):
+            failed_sources.append(
+                {
+                    "source": source_name,
+                    "error": source_result.get("error", "Unknown error"),
+                }
+            )
+
+    # Предупреждения
+    data_warnings = []
+    if data_quality_percent < 50:
+        data_warnings.append(
+            f"⚠️ ВНИМАНИЕ: Доступно только {successful_sources_count}/{total_sources} источников ({data_quality_percent}%). "
+            "Анализ может быть неполным."
+        )
+    elif data_quality_percent < 80:
+        data_warnings.append(
+            f"⚠️ Некоторые источники недоступны ({successful_sources_count}/{total_sources}, {data_quality_percent}%). "
+            "Результаты основаны на доступных данных."
+        )
 
     return {
         "metadata": {
             "client_name": client_name,
             "inn": inn,
             "analysis_date": datetime.now().isoformat(),
-            "data_sources_count": len(search_results) + len([v for v in source_data.values() if v]),
-            "successful_sources": sum(1 for r in search_results if r.get("success")) + successful_sources,
+            "data_sources_count": total_sources,
+            "successful_sources": successful_sources_count,
+            "failed_sources_count": len(failed_sources),
+            "data_quality_percent": data_quality_percent,
+            "data_warnings": data_warnings,
+            "failed_sources": failed_sources,
             "llm_generated": False,
         },
         "company_info": source_analysis.get("company_info", {}),

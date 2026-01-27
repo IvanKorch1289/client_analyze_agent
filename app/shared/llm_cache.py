@@ -41,29 +41,79 @@ def _get_tarantool_client():
 
 def normalize_prompt(prompt: str) -> str:
     """
-    Нормализует промпт для семантического хэширования.
+    Агрессивная нормализация промпта для максимизации cache hit rate.
 
-    Убирает:
+    Убирает все динамические паттерны которые делают промпты уникальными:
+    - ISO timestamps (2024-01-27T14:30:00Z)
+    - Даты (2024-01-27, 27.01.2024, 27/01/2024)
+    - Время (14:30:45, 14:30)
+    - Request IDs (req_123, request_456, request-id-789)
+    - UUIDs/GUIDs (550e8400-e29b-41d4-a716-446655440000)
+    - Session IDs (session_*, sess_*, sid:*)
+    - Номера дел/документов (№ 123456, дело А40-12345/2024)
     - Лишние пробелы и переносы
     - Case sensitivity
-    - Специальные символы (кроме букв, цифр, пунктуации)
+
+    ЦЕЛЬ: Повысить cache hit rate с 5% до 60%+ за счет удаления уникальных идентификаторов.
+
+    БЕЗОПАСНОСТЬ: Нормализация применяется ТОЛЬКО к кэш-ключу, не к самому промпту.
+    Оригинальный промпт с PII остается в кэше для корректного unmask.
 
     Args:
         prompt: Оригинальный промпт
 
     Returns:
-        Нормализованный промпт
+        Агрессивно нормализованный промпт для хэширования
     """
     if not prompt:
         return ""
 
-    # Lowercase
     normalized = prompt.lower()
 
-    # Убираем лишние пробелы и переносы
+    # 1. ISO timestamps (2024-01-27T14:30:00Z, 2024-01-27T14:30:00+03:00)
+    normalized = re.sub(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?",
+        "[TIMESTAMP]",
+        normalized,
+    )
+
+    # 2. Даты (2024-01-27, 27.01.2024, 27/01/2024, 2024.01.27)
+    normalized = re.sub(r"\d{4}[-./]\d{2}[-./]\d{2}", "[DATE]", normalized)
+    normalized = re.sub(r"\d{2}[-./]\d{2}[-./]\d{4}", "[DATE]", normalized)
+
+    # 3. Время (14:30:45, 14:30, HH:MM:SS)
+    normalized = re.sub(r"\d{1,2}:\d{2}(?::\d{2})?", "[TIME]", normalized)
+
+    # 4. Request IDs (req_*, request_*, request-id-*, rid:*)
+    normalized = re.sub(r"\b(?:req|request|rid)[-_:]?\w+\b", "[REQID]", normalized)
+
+    # 5. UUIDs/GUIDs (8-4-4-4-12 формат)
+    normalized = re.sub(
+        r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+        "[UUID]",
+        normalized,
+    )
+
+    # 6. Session IDs (session_*, sess_*, sid:*)
+    normalized = re.sub(r"\b(?:session|sess|sid)[-_:]?\w+\b", "[SESSID]", normalized)
+
+    # 7. Номера дел/документов (№ 123456, дело А40-12345/2024, дело №А40-12345/24)
+    normalized = re.sub(r"№\s*\d+", "[DOCNUM]", normalized)
+    normalized = re.sub(r"дело\s+[а-я]\d{2}-\d+/\d{2,4}", "[CASENUMBER]", normalized)
+
+    # 8. Длинные последовательности цифр (>8 символов) - похожи на ID
+    normalized = re.sub(r"\b\d{9,}\b", "[LONGNUM]", normalized)
+
+    # 9. Хэши MD5/SHA (32+ hex символов)
+    normalized = re.sub(r"\b[0-9a-f]{32,}\b", "[HASH]", normalized)
+
+    # 10. Unix timestamps (10+ цифр подряд, похожие на epoch time)
+    normalized = re.sub(r"\b1[6-9]\d{8,}\b", "[UNIXTIME]", normalized)
+
+    # 11. Убираем лишние пробелы и переносы
     normalized = re.sub(r"\s+", " ", normalized)
 
-    # Trim
+    # 12. Trim
     normalized = normalized.strip()
 
     return normalized
@@ -76,10 +126,10 @@ def compute_cache_key(
     max_tokens: int = 4000,
 ) -> str:
     """
-    Вычисляет ключ кэша для промпта.
+    Вычисляет ключ кэша для промпта с агрессивной нормализацией.
 
     Учитывает:
-    - Нормализованный текст промпта
+    - Нормализованный текст промпта (без timestamps, IDs, дат)
     - Provider (openrouter, huggingface, etc.)
     - Temperature (округляется до 0.1)
     - Max tokens (округляется до 100)
@@ -91,9 +141,21 @@ def compute_cache_key(
         max_tokens: Максимум токенов
 
     Returns:
-        Hex digest SHA256 (первые 16 символов)
+        Hex digest SHA256 (первые 16 символов) с префиксом llm_cache:
     """
     normalized = normalize_prompt(prompt)
+
+    # Debug logging (метрики нормализации для аналитики)
+    if len(prompt) != len(normalized):
+        logger.debug(
+            f"Prompt normalized for cache: {len(prompt)} → {len(normalized)} chars",
+            component="llm_cache",
+            extra={
+                "original_length": len(prompt),
+                "normalized_length": len(normalized),
+                "reduction_pct": round((1 - len(normalized) / len(prompt)) * 100, 1),
+            },
+        )
 
     # Округляем параметры для лучшего cache hit rate
     temp_rounded = round(temperature, 1)
@@ -191,7 +253,7 @@ async def set_cached_response(
             key=cache_key,
             value={
                 "response": response,
-                "prompt_hash": hashlib.md5(prompt.encode()).hexdigest()[:8],
+                "prompt_hash": hashlib.md5(prompt.encode(), usedforsecurity=False).hexdigest()[:8],
             },
             ttl=ttl,
             source="llm_cache",

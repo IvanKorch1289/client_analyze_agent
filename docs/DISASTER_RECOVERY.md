@@ -1,4 +1,4 @@
-# Disaster Recovery Plan - Client Analysis Agent
+# План восстановления после сбоев — Client Analysis Agent
 
 **Версия:** 1.0
 **Дата:** 2026-01-20

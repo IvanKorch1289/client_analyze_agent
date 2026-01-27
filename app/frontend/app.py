@@ -26,6 +26,7 @@ else:
 from app.frontend.api_client import get_api_client
 from app.frontend.router import TAB_BY_KEY, TAB_DEFS, enforce_access, set_tab
 from app.frontend.tabs import analysis as tab_analysis
+from app.frontend.tabs import comparison as tab_comparison
 from app.frontend.tabs import data as tab_data
 from app.frontend.tabs import docs as tab_docs
 from app.frontend.tabs import llm as tab_llm
@@ -186,6 +187,8 @@ def main() -> None:
 
     if tab == "analysis":
         tab_analysis.render(api)
+    elif tab == "comparison":
+        tab_comparison.render_comparison_tab(api)
     elif tab == "data":
         tab_data.render(api)
     elif tab == "llm":

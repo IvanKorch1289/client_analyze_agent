@@ -47,6 +47,7 @@ def render(api: ApiClient, *, admin_token: str) -> None:
     # Секции мониторинга
     tabs = st.tabs(
         [
+            "🔄 Активные анализы",
             "📈 Системные метрики",
             "🧠 Статистика LLM",
             "💾 Статистика кэша",
@@ -55,16 +56,86 @@ def render(api: ApiClient, *, admin_token: str) -> None:
     )
 
     with tabs[0]:
-        _render_system_metrics(api, admin_token)
+        _render_running_analyses(api, admin_token)
 
     with tabs[1]:
-        _render_llm_statistics(api, admin_token)
+        _render_system_metrics(api, admin_token)
 
     with tabs[2]:
-        _render_cache_statistics(api, admin_token)
+        _render_llm_statistics(api, admin_token)
 
     with tabs[3]:
+        _render_cache_statistics(api, admin_token)
+
+    with tabs[4]:
         _render_health_status(api, admin_token)
+
+
+def _render_running_analyses(api: ApiClient, admin_token: str) -> None:
+    """Управление активными анализами клиентов."""
+    st.subheader("🔄 Активные анализы")
+
+    st.info("Здесь отображаются все запущенные анализы. Вы можете отменить любой запущенный анализ.")
+
+    try:
+        response = api.get("/agent/analyze/running", admin_token=admin_token)
+
+        if not response:
+            st.warning("⚠️ Не удалось получить список активных анализов")
+            return
+
+        running = response.get("running", [])
+        total = response.get("total_running", 0)
+
+        if total == 0:
+            st.success("✅ Нет активных анализов в данный момент")
+            return
+
+        st.metric("Активных анализов", total)
+        st.divider()
+
+        # Отображаем каждый активный анализ с кнопкой отмены
+        for analysis in running:
+            session_id = analysis.get("session_id", "unknown")
+            client_name = analysis.get("client_name", "Неизвестный клиент")
+            started_at = analysis.get("started_at", "")
+            duration = analysis.get("duration_seconds", 0)
+
+            with st.container():
+                col1, col2, col3 = st.columns([3, 2, 1])
+
+                with col1:
+                    st.write(f"**{client_name}**")
+                    st.caption(f"Session: `{session_id[:16]}...`")
+
+                with col2:
+                    if started_at:
+                        st.caption(f"Запущен: {started_at}")
+                    st.caption(f"Длительность: {duration} сек")
+
+                with col3:
+                    if st.button("🛑 Отменить", key=f"cancel_{session_id}", type="secondary"):
+                        _cancel_analysis(api, admin_token, session_id)
+                        st.rerun()
+
+                st.divider()
+
+    except Exception as e:
+        st.error(f"❌ Ошибка при получении списка активных анализов: {str(e)}")
+
+
+def _cancel_analysis(api: ApiClient, admin_token: str, session_id: str) -> None:
+    """Отменить анализ по session_id."""
+    try:
+        result = api.delete(f"/agent/analyze/{session_id}", admin_token=admin_token)
+
+        if result and result.get("status") == "cancelled":
+            st.success(f"✅ {result.get('message', 'Анализ отменён успешно')}")
+        else:
+            st.warning("⚠️ Не удалось отменить анализ или он уже завершён")
+
+    except Exception as e:
+        st.error(f"❌ Ошибка при отмене анализа: {str(e)}")
 
 
 def _render_system_metrics(api: ApiClient, admin_token: str) -> None:
@@ -141,7 +212,80 @@ def _render_system_metrics(api: ApiClient, admin_token: str) -> None:
         help="Количество открытых файловых дескрипторов",
     )
 
+    # Connection Pool Stats (Sprint 2)
+    st.divider()
+    st.subheader("🔗 HTTP Connection Pool (Sprint 2 Optimization)")
+
+    pool_stats = api.get("/admin/metrics/connection-pool", admin_token=admin_token)
+
+    if pool_stats and pool_stats.get("status") == "success":
+        pool = pool_stats.get("connection_pool", {})
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            max_connections = pool.get("max_connections", 0)
+            st.metric(
+                label="🎯 Max Connections",
+                value=max_connections,
+                delta="+50 от baseline",
+                delta_color="normal",
+                help="Максимальное количество параллельных соединений (было 50, стало 100)",
+            )
+
+        with col2:
+            max_keepalive = pool.get("max_keepalive_connections", 0)
+            st.metric(
+                label="♻️ Max Keepalive",
+                value=max_keepalive,
+                delta="+30 от baseline",
+                delta_color="normal",
+                help="Максимум keepalive соединений для reuse (было 20, стало 50)",
+            )
+
+        with col3:
+            keepalive_expiry = pool.get("keepalive_expiry_seconds", 0)
+            st.metric(
+                label="⏱️ Keepalive Expiry",
+                value=f"{keepalive_expiry}s",
+                help="Время жизни keepalive соединений (оптимизировано для InfoSphere/Casebook)",
+            )
+
+        with col4:
+            http2_enabled = pool.get("http2_enabled", False)
+            st.metric(
+                label="🚀 HTTP/2",
+                value="✅ Enabled" if http2_enabled else "❌ Disabled",
+                help="HTTP/2 поддержка для мультиплексирования",
+            )
+
+        # Pool utilization (если доступно)
+        if "pool_utilization_pct" in pool:
+            utilization = pool.get("pool_utilization_pct", 0)
+            connections_count = pool.get("connections_count", 0)
+
+            st.progress(
+                utilization / 100,
+                text=f"Pool Utilization: {utilization}% ({connections_count}/{max_connections} connections)",
+            )
+
+            if utilization > 90:
+                st.warning(
+                    f"⚠️ Высокая утилизация connection pool ({utilization}%)! Возможно, нужно увеличить max_connections."
+                )
+            elif utilization > 0:
+                st.info(f"✅ Connection reuse работает! Активно {connections_count} соединений из {max_connections}.")
+
+        # Оптимизации
+        with st.expander("📝 Применённые оптимизации (Sprint 2)"):
+            for note in pool_stats.get("notes", []):
+                st.write(f"• {note}")
+
+    else:
+        st.warning("⚠️ Не удалось получить статистику connection pool")
+
     # Предупреждения
+    st.divider()
     if mem_percent > 80:
         st.warning("⚠️ Высокое использование памяти (>80%)!")
 
