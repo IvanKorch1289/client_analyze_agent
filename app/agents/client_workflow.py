@@ -268,6 +268,17 @@ async def _run_streaming_analysis(
         collection_stats = current_state.get("collection_stats", {})
         successful_sources = collection_stats.get("successful_sources", [])
 
+        # Sprint 2: Live Data Preview - показываем ключевые факты сразу
+        yield {
+            "type": "source_preview",
+            "data": {
+                "step": "live_preview",
+                "sources": _extract_source_previews(source_data),
+                "successful_count": len(successful_sources),
+                "total_count": len(source_data),
+            },
+        }
+
         yield {
             "type": "data_collected",
             "data": {
@@ -424,3 +435,162 @@ async def _run_batch_analysis(
         "error": final_state.get("error") or final_state.get("search_error"),
         "timestamp": time.time(),
     }
+
+
+def _extract_source_previews(source_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """
+    Извлекает ключевые факты из каждого источника для live preview.
+
+    Sprint 2: Live Data Preview - показываем пользователю данные
+    по мере их поступления, до генерации финального отчёта.
+
+    Args:
+        source_data: Dict с данными из всех источников
+
+    Returns:
+        Dict с preview для каждого источника:
+        {
+            "dadata": {"status": "success", "preview": "ООО Рога и Копыта, действующая"},
+            "infosphere": {"status": "success", "preview": "Найдено 3 записи ФССП"},
+            ...
+        }
+    """
+    previews = {}
+
+    # DaData preview
+    if "dadata" in source_data:
+        dadata = source_data["dadata"]
+        if dadata.get("status") == "success" and "data" in dadata:
+            data = dadata["data"]
+            name = data.get("name", {}).get("full_with_opf") or data.get("name", {}).get("short_with_opf", "")
+            status = data.get("state", {}).get("status", "")
+            reg_date = data.get("state", {}).get("registration_date", "")
+
+            status_map = {
+                "ACTIVE": "✅ Действующая",
+                "LIQUIDATING": "⚠️ В процессе ликвидации",
+                "LIQUIDATED": "❌ Ликвидирована",
+                "BANKRUPT": "🚨 Банкрот",
+            }
+            status_text = status_map.get(status, status)
+
+            preview = f"{name}"
+            if status:
+                preview += f", {status_text}"
+            if reg_date:
+                preview += f" (с {reg_date})"
+
+            previews["dadata"] = {
+                "status": "success",
+                "preview": preview,
+                "icon": "🏢",
+            }
+        elif "error" in dadata:
+            previews["dadata"] = {
+                "status": "error",
+                "preview": f"Ошибка: {dadata['error']}",
+                "icon": "⚠️",
+            }
+
+    # InfoSphere preview
+    if "infosphere" in source_data:
+        infosphere = source_data["infosphere"]
+        if infosphere.get("status") == "success" and "data" in infosphere:
+            data = infosphere["data"]
+            findings = []
+
+            # Check FSSP
+            if isinstance(data, list):
+                fssp_records = [s for s in data if s.get("source") == "fssp"]
+                if fssp_records and fssp_records[0].get("Count"):
+                    count = fssp_records[0]["Count"]
+                    findings.append(f"🚨 ФССП: {count} записей")
+
+            # Check bankruptcy
+            bankrot_records = [s for s in data if s.get("source") == "bankrot"] if isinstance(data, list) else []
+            if bankrot_records and bankrot_records[0].get("Count"):
+                findings.append("🚨 Банкротство")
+
+            preview = ", ".join(findings) if findings else "✅ Чисто по гос. реестрам"
+            previews["infosphere"] = {
+                "status": "success",
+                "preview": preview,
+                "icon": "🏛️",
+            }
+        elif "error" in infosphere:
+            previews["infosphere"] = {
+                "status": "error",
+                "preview": f"Ошибка: {infosphere['error']}",
+                "icon": "⚠️",
+            }
+
+    # Casebook preview
+    if "casebook" in source_data:
+        casebook = source_data["casebook"]
+        if casebook.get("status") == "success" and "data" in casebook:
+            cases = casebook["data"]
+            cases_count = len(cases) if isinstance(cases, list) else 0
+
+            if cases_count > 0:
+                preview = f"⚖️ Найдено {cases_count} судебных дел"
+            else:
+                preview = "✅ Судебных дел не найдено"
+
+            previews["casebook"] = {
+                "status": "success",
+                "preview": preview,
+                "icon": "⚖️",
+            }
+        elif "error" in casebook:
+            previews["casebook"] = {
+                "status": "error",
+                "preview": f"Ошибка: {casebook['error']}",
+                "icon": "⚠️",
+            }
+
+    # Perplexity preview
+    if "perplexity" in source_data:
+        perplexity = source_data["perplexity"]
+        if perplexity.get("status") == "success" and "data" in perplexity:
+            data = perplexity["data"]
+            answer = data.get("answer", "") if isinstance(data, dict) else ""
+
+            # Extract first sentence or first 150 chars
+            preview = answer.split(".")[0][:150] if answer else "Данные получены"
+            if len(answer) > 150:
+                preview += "..."
+
+            previews["perplexity"] = {
+                "status": "success",
+                "preview": preview,
+                "icon": "🔍",
+            }
+        elif "error" in perplexity:
+            previews["perplexity"] = {
+                "status": "error",
+                "preview": f"Ошибка: {perplexity['error']}",
+                "icon": "⚠️",
+            }
+
+    # Tavily preview
+    if "tavily" in source_data:
+        tavily = source_data["tavily"]
+        if tavily.get("status") == "success" and "data" in tavily:
+            data = tavily["data"]
+            results_count = len(data.get("results", [])) if isinstance(data, dict) else 0
+
+            preview = f"📰 Найдено {results_count} новостей и статей" if results_count > 0 else "Новостей не найдено"
+
+            previews["tavily"] = {
+                "status": "success",
+                "preview": preview,
+                "icon": "📰",
+            }
+        elif "error" in tavily:
+            previews["tavily"] = {
+                "status": "error",
+                "preview": f"Ошибка: {tavily['error']}",
+                "icon": "⚠️",
+            }
+
+    return previews

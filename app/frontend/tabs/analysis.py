@@ -252,6 +252,37 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
                                         f"Источников: {len(successful)}/{len(sources)}"
                                     )
 
+                            elif event_type == "source_preview":
+                                # Sprint 2: Live Data Preview - показываем данные по мере поступления
+                                sources_previews = data.get("sources", {})
+                                successful_count = data.get("successful_count", 0)
+                                total_count = data.get("total_count", 0)
+
+                                if sources_previews:
+                                    preview_text = (
+                                        f"📊 **Предпросмотр данных** ({successful_count}/{total_count} источников):\n\n"
+                                    )
+
+                                    for (
+                                        source_name,
+                                        preview_data,
+                                    ) in sources_previews.items():
+                                        icon = preview_data.get("icon", "📄")
+                                        preview = preview_data.get("preview", "")
+                                        status = preview_data.get("status", "unknown")
+
+                                        if status == "success":
+                                            preview_text += f"{icon} **{source_name.upper()}**: {preview}\n\n"
+                                        elif status == "error":
+                                            preview_text += f"⚠️ **{source_name.upper()}**: {preview}\n\n"
+
+                                    # Показываем в expander для компактности
+                                    with info_container.expander(
+                                        "📊 Предпросмотр данных (обновляется в реальном времени)",
+                                        expanded=True,
+                                    ):
+                                        st.markdown(preview_text)
+
                             elif event_type == "report":
                                 risk_score = data.get("risk_score", 0)
                                 risk_level = data.get("risk_level", "unknown")
