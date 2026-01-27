@@ -519,4 +519,165 @@ async def bulk_export_reports(
         raise HTTPException(status_code=500, detail=f"Failed to bulk export: {str(e)}") from e
 
 
+@reports_router.get("/compare/{report_id_1}/{report_id_2}")
+@limiter.limit(f"{RATE_LIMIT_SEARCH_PER_MINUTE}/minute")
+async def compare_reports(
+    request: Request,
+    report_id_1: str,
+    report_id_2: str,
+) -> Dict[str, Any]:
+    """
+    Сравнить два отчёта side-by-side.
+
+    Sprint 2: Analysis Comparison feature.
+
+    Args:
+        report_id_1: ID первого отчёта (обычно старый)
+        report_id_2: ID второго отчёта (обычно новый)
+
+    Returns:
+        Структурированное сравнение с diff по всем ключевым метрикам
+    """
+    try:
+        client = await TarantoolClient.get_instance()
+        reports_repo = client.get_reports_repository()
+
+        # Получаем оба отчёта
+        report1 = await reports_repo.get(report_id_1)
+        report2 = await reports_repo.get(report_id_2)
+
+        if not report1:
+            raise HTTPException(status_code=404, detail=f"Report {report_id_1} not found")
+        if not report2:
+            raise HTTPException(status_code=404, detail=f"Report {report_id_2} not found")
+
+        # Проверяем что отчёты для одной компании
+        report1_data = report1.get("report_data", {})
+        report2_data = report2.get("report_data", {})
+
+        client_name_1 = report1.get("client_name", "")
+        client_name_2 = report2.get("client_name", "")
+
+        if client_name_1 != client_name_2:
+            logger.warning(
+                f"Comparing reports for different clients: '{client_name_1}' vs '{client_name_2}'",
+                component="reports_api",
+            )
+
+        # Извлекаем ключевые метрики для сравнения
+        def extract_metrics(report_data: Dict[str, Any]) -> Dict[str, Any]:
+            risk = report_data.get("risk_assessment", {})
+            metadata = report_data.get("metadata", {})
+
+            return {
+                "risk_score": risk.get("score", 0),
+                "risk_level": risk.get("level", "unknown"),
+                "risk_factors": risk.get("factors", []),
+                "findings_count": len(report_data.get("findings", [])),
+                "findings": report_data.get("findings", []),
+                "recommendations_count": len(report_data.get("recommendations", [])),
+                "recommendations": report_data.get("recommendations", []),
+                "data_quality_percent": metadata.get("data_quality_percent", 100.0),
+                "successful_sources": metadata.get("successful_sources", 0),
+                "version": report_data.get("version", 1),
+                "analysis_date": metadata.get("analysis_date", ""),
+            }
+
+        metrics1 = extract_metrics(report1_data)
+        metrics2 = extract_metrics(report2_data)
+
+        # Вычисляем diff
+        diff = {
+            "risk_score": {
+                "old": metrics1["risk_score"],
+                "new": metrics2["risk_score"],
+                "delta": metrics2["risk_score"] - metrics1["risk_score"],
+                "changed": metrics1["risk_score"] != metrics2["risk_score"],
+            },
+            "risk_level": {
+                "old": metrics1["risk_level"],
+                "new": metrics2["risk_level"],
+                "changed": metrics1["risk_level"] != metrics2["risk_level"],
+            },
+            "risk_factors": {
+                "old": metrics1["risk_factors"],
+                "new": metrics2["risk_factors"],
+                "added": list(set(metrics2["risk_factors"]) - set(metrics1["risk_factors"])),
+                "removed": list(set(metrics1["risk_factors"]) - set(metrics2["risk_factors"])),
+                "changed": set(metrics1["risk_factors"]) != set(metrics2["risk_factors"]),
+            },
+            "findings_count": {
+                "old": metrics1["findings_count"],
+                "new": metrics2["findings_count"],
+                "delta": metrics2["findings_count"] - metrics1["findings_count"],
+                "changed": metrics1["findings_count"] != metrics2["findings_count"],
+            },
+            "data_quality": {
+                "old": metrics1["data_quality_percent"],
+                "new": metrics2["data_quality_percent"],
+                "delta": round(
+                    metrics2["data_quality_percent"] - metrics1["data_quality_percent"],
+                    1,
+                ),
+                "changed": metrics1["data_quality_percent"] != metrics2["data_quality_percent"],
+            },
+        }
+
+        # Определяем общее направление изменений
+        improvements = []
+        regressions = []
+
+        if diff["risk_score"]["delta"] < 0:
+            improvements.append(f"Risk score decreased by {abs(diff['risk_score']['delta'])} points")
+        elif diff["risk_score"]["delta"] > 0:
+            regressions.append(f"Risk score increased by {diff['risk_score']['delta']} points")
+
+        if diff["data_quality"]["delta"] > 0:
+            improvements.append(f"Data quality improved by {diff['data_quality']['delta']}%")
+        elif diff["data_quality"]["delta"] < 0:
+            regressions.append(f"Data quality decreased by {abs(diff['data_quality']['delta'])}%")
+
+        if diff["risk_factors"]["removed"]:
+            improvements.append(f"Removed {len(diff['risk_factors']['removed'])} risk factors")
+        if diff["risk_factors"]["added"]:
+            regressions.append(f"Added {len(diff['risk_factors']['added'])} new risk factors")
+
+        logger.structured(
+            "info",
+            "reports_compared",
+            component="reports_api",
+            report_id_1=report_id_1,
+            report_id_2=report_id_2,
+            risk_score_delta=diff["risk_score"]["delta"],
+        )
+
+        return {
+            "status": "success",
+            "report1": {
+                "id": report_id_1,
+                "client_name": client_name_1,
+                "created_at": report1.get("created_at"),
+                "metrics": metrics1,
+            },
+            "report2": {
+                "id": report_id_2,
+                "client_name": client_name_2,
+                "created_at": report2.get("created_at"),
+                "metrics": metrics2,
+            },
+            "diff": diff,
+            "summary": {
+                "improvements": improvements,
+                "regressions": regressions,
+                "total_changes": sum(1 for v in diff.values() if v.get("changed", False)),
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Compare reports error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to compare reports: {str(e)}") from e
+
+
 __all__ = ["reports_router"]

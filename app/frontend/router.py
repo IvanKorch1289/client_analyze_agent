@@ -15,6 +15,7 @@ class TabDef:
 
 TABS = [
     "Анализ клиента",
+    "Сравнение отчётов",
     "Внешние данные",
     "Доступ к LLM",
     "Мониторинг",
@@ -24,6 +25,7 @@ TABS = [
 
 TAB_DEFS: List[TabDef] = [
     TabDef(key="analysis", label="Анализ клиента", admin_only=False),
+    TabDef(key="comparison", label="Сравнение отчётов", admin_only=False),
     TabDef(key="data", label="Внешние данные", admin_only=False),
     TabDef(key="llm", label="Доступ к LLM", admin_only=False),
     TabDef(key="monitor", label="Мониторинг", admin_only=True),
@@ -76,6 +78,9 @@ def normalize_tab(tab: Optional[str]) -> Optional[str]:
         "client": "analysis",
         "home": "analysis",
         "main": "analysis",
+        "comparison": "comparison",
+        "compare": "comparison",
+        "diff": "comparison",
         "data": "data",
         "external": "data",
         "llm": "llm",
