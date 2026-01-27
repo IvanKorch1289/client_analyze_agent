@@ -140,10 +140,12 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
     status_container = st.empty()
     model_info_container = st.empty()
     info_container = st.empty()
+    cancel_button_container = st.empty()  # Контейнер для кнопки отмены
 
     start_time = time.time()
     result = None
     error_occurred = False
+    current_session_id = None  # Для отслеживания текущей сессии
 
     try:
         import httpx
@@ -180,7 +182,16 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
                             # Обработка различных типов событий
                             if event_type == "start":
                                 session_id = data.get("session_id", "")
+                                current_session_id = session_id
+                                cancellable = data.get("cancellable", False)
+
                                 info_container.caption(f"🔑 Session ID: `{session_id[:16]}...`")
+
+                                # Показываем инструкцию по отмене если анализ можно отменить
+                                if cancellable:
+                                    cancel_button_container.info(
+                                        "💡 **Для отмены анализа:** перейдите на вкладку **'📊 Мониторинг'** → **'🔄 Активные анализы'**"
+                                    )
 
                             elif event_type == "progress":
                                 step = data.get("step", "")
@@ -269,7 +280,17 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
                                 error_msg = data.get("error", "Неизвестная ошибка")
                                 raise Exception(error_msg)
 
+                            elif event_type == "cancelled":
+                                cancel_button_container.empty()  # Убираем кнопку отмены
+                                progress_container.empty()
+                                status_container.empty()
+                                model_info_container.empty()
+                                info_container.warning("🛑 Анализ был отменён")
+                                st.info("Вы можете запустить новый анализ в любое время")
+                                return  # Выходим из функции
+
                             elif event_type == "complete":
+                                cancel_button_container.empty()  # Убираем кнопку отмены
                                 if result is None:
                                     # Если result не был получен ранее, делаем финальный запрос
                                     logger.warning("Stream completed without result event")
@@ -281,6 +302,7 @@ def _run_analysis_with_progress(api: ApiClient, payload: Dict[str, Any]) -> None
     except Exception as e:
         error_occurred = True
         logger.error(f"Analysis error: {e}")
+        cancel_button_container.empty()  # Убираем кнопку отмены при ошибке
         progress_container.empty()
         status_container.empty()
         model_info_container.empty()

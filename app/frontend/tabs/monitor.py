@@ -47,6 +47,7 @@ def render(api: ApiClient, *, admin_token: str) -> None:
     # Секции мониторинга
     tabs = st.tabs(
         [
+            "🔄 Активные анализы",
             "📈 Системные метрики",
             "🧠 Статистика LLM",
             "💾 Статистика кэша",
@@ -55,16 +56,86 @@ def render(api: ApiClient, *, admin_token: str) -> None:
     )
 
     with tabs[0]:
-        _render_system_metrics(api, admin_token)
+        _render_running_analyses(api, admin_token)
 
     with tabs[1]:
-        _render_llm_statistics(api, admin_token)
+        _render_system_metrics(api, admin_token)
 
     with tabs[2]:
-        _render_cache_statistics(api, admin_token)
+        _render_llm_statistics(api, admin_token)
 
     with tabs[3]:
+        _render_cache_statistics(api, admin_token)
+
+    with tabs[4]:
         _render_health_status(api, admin_token)
+
+
+def _render_running_analyses(api: ApiClient, admin_token: str) -> None:
+    """Управление активными анализами клиентов."""
+    st.subheader("🔄 Активные анализы")
+
+    st.info("Здесь отображаются все запущенные анализы. Вы можете отменить любой запущенный анализ.")
+
+    try:
+        response = api.get("/agent/analyze/running", admin_token=admin_token)
+
+        if not response:
+            st.warning("⚠️ Не удалось получить список активных анализов")
+            return
+
+        running = response.get("running", [])
+        total = response.get("total_running", 0)
+
+        if total == 0:
+            st.success("✅ Нет активных анализов в данный момент")
+            return
+
+        st.metric("Активных анализов", total)
+        st.divider()
+
+        # Отображаем каждый активный анализ с кнопкой отмены
+        for analysis in running:
+            session_id = analysis.get("session_id", "unknown")
+            client_name = analysis.get("client_name", "Неизвестный клиент")
+            started_at = analysis.get("started_at", "")
+            duration = analysis.get("duration_seconds", 0)
+
+            with st.container():
+                col1, col2, col3 = st.columns([3, 2, 1])
+
+                with col1:
+                    st.write(f"**{client_name}**")
+                    st.caption(f"Session: `{session_id[:16]}...`")
+
+                with col2:
+                    if started_at:
+                        st.caption(f"Запущен: {started_at}")
+                    st.caption(f"Длительность: {duration} сек")
+
+                with col3:
+                    if st.button("🛑 Отменить", key=f"cancel_{session_id}", type="secondary"):
+                        _cancel_analysis(api, admin_token, session_id)
+                        st.rerun()
+
+                st.divider()
+
+    except Exception as e:
+        st.error(f"❌ Ошибка при получении списка активных анализов: {str(e)}")
+
+
+def _cancel_analysis(api: ApiClient, admin_token: str, session_id: str) -> None:
+    """Отменить анализ по session_id."""
+    try:
+        result = api.delete(f"/agent/analyze/{session_id}", admin_token=admin_token)
+
+        if result and result.get("status") == "cancelled":
+            st.success(f"✅ {result.get('message', 'Анализ отменён успешно')}")
+        else:
+            st.warning("⚠️ Не удалось отменить анализ или он уже завершён")
+
+    except Exception as e:
+        st.error(f"❌ Ошибка при отмене анализа: {str(e)}")
 
 
 def _render_system_metrics(api: ApiClient, admin_token: str) -> None:
