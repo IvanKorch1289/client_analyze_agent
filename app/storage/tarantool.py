@@ -239,9 +239,9 @@ class TarantoolClient:
             self._metrics.bytes_saved_by_compression = stats["bytes_saved_by_compression"]
         return result
 
-    def _decompress(self, data: bytes) -> bytes:
+    def _decompress(self, data: bytes | bytearray) -> bytes:
         """Decompress data using the compression handler."""
-        return self._compression.decompress(data)
+        return self._compression.decompress(bytes(data) if isinstance(data, bytearray) else data)
 
     def _generate_search_key(self, query: str, service: str = "default") -> str:
         normalized = query.lower().strip()
@@ -263,6 +263,9 @@ class TarantoolClient:
                     value_packed, expires_at = None, 0
                 if time.time() > expires_at:
                     del _memory_cache[key]
+                    self._metrics.misses += 1
+                    return None
+                if value_packed is None:
                     self._metrics.misses += 1
                     return None
                 self._metrics.hits += 1
@@ -398,12 +401,13 @@ class TarantoolClient:
                         packed_tuple[0] if isinstance(packed_tuple, tuple) and len(packed_tuple) >= 2 else None
                     )
                     expires_at = packed_tuple[1] if isinstance(packed_tuple, tuple) and len(packed_tuple) >= 2 else 0
-                    if now <= expires_at:
+                    if now <= expires_at and value_packed is not None:
                         data = self._decompress(value_packed)
                         results[key] = msgpack.unpackb(data, raw=False)
                         self._metrics.hits += 1
                     else:
-                        del _memory_cache[key]
+                        if key in _memory_cache and now > expires_at:
+                            del _memory_cache[key]
                         self._metrics.misses += 1
                 else:
                     self._metrics.misses += 1
