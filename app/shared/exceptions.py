@@ -92,6 +92,23 @@ class SecurityError(AnalyzeAgentError):
     pass
 
 
+class PIIMaskingError(SecurityError):
+    """
+    Ошибка маскирования персональных данных (PII).
+
+    Возникает при невозможности безопасно замаскировать PII перед отправкой в LLM.
+    При возникновении этой ошибки запрос к LLM ДОЛЖЕН быть заблокирован.
+    """
+
+    def __init__(
+        self,
+        message: str = "PII masking failed",
+        original_error: Exception | None = None,
+    ):
+        super().__init__(message)
+        self.original_error = original_error
+
+
 class DataCollectionError(AnalyzeAgentError):
     """Error during data collection from sources."""
 

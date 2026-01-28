@@ -30,10 +30,19 @@ class PIIMaskingResult:
 
 def _create_russian_recognizers():
     """
-    Create custom Presidio recognizers for Russian PII entities.
+    Создание кастомных распознавателей PII для русского языка.
+
+    Создаёт 7 распознавателей:
+    - RU_INN (ИНН) - 10/12 цифр
+    - RU_OGRN (ОГРН/ОГРНИП) - 13/15 цифр
+    - RU_SNILS - XXX-XXX-XXX XX
+    - RU_PERSON (ФИО кириллицей)
+    - RU_ADDRESS (российские адреса)
+    - RU_PASSPORT (серия и номер паспорта)
+    - RU_PHONE (телефоны +7/8)
 
     Returns:
-        List of PatternRecognizer instances
+        List[PatternRecognizer]: Список распознавателей для Presidio
     """
     from presidio_analyzer import Pattern, PatternRecognizer
 
@@ -207,10 +216,13 @@ def _create_russian_recognizers():
 
 def _register_russian_recognizers(analyzer):
     """
-    Register custom Russian recognizers with the analyzer.
+    Регистрация кастомных русских распознавателей в анализаторе.
+
+    Вызывается один раз при инициализации. Добавляет 7 распознавателей
+    для российских персональных данных.
 
     Args:
-        analyzer: AnalyzerEngine instance
+        analyzer: Экземпляр AnalyzerEngine из Presidio
     """
     global _recognizers_registered
     if _recognizers_registered:
@@ -226,10 +238,13 @@ def _register_russian_recognizers(analyzer):
 
 def get_analyzer():
     """
-    Lazy initialization of Presidio Analyzer with Russian recognizers.
+    Ленивая инициализация Presidio Analyzer с русскими распознавателями.
 
-    Tries to use ru_core_news_lg (large model for better Russian name recognition),
-    falls back to ru_core_news_sm if large model is not available.
+    Пытается использовать ru_core_news_lg (большая модель для лучшего
+    распознавания русских ФИО), при отсутствии - ru_core_news_sm.
+
+    Returns:
+        AnalyzerEngine: Настроенный анализатор с поддержкой русского и английского
     """
     global _analyzer
     if _analyzer is None:
@@ -274,7 +289,7 @@ def get_analyzer():
 
 
 def get_anonymizer():
-    """Lazy initialization of Presidio Anonymizer."""
+    """Ленивая инициализация Presidio Anonymizer для анонимизации текста."""
     global _anonymizer
     if _anonymizer is None:
         from presidio_anonymizer import AnonymizerEngine
@@ -313,7 +328,7 @@ def mask_pii(
     entities: Optional[List[str]] = None,
 ) -> PIIMaskingResult:
     """
-    Mask PII in text using Reversible Pseudonymization.
+    Маскирование персональных данных с обратимой псевдонимизацией.
 
     Использует нумерованные псевдонимы вместо простых тегов для обеспечения
     полной обратимости маскирования. Например:
@@ -321,13 +336,16 @@ def mask_pii(
     - "Петров Петр" → "[CLIENT_NAME_2]"
 
     Args:
-        text: Text to mask
-        language: Language code ("ru", "en")
-        mask_level: "low" (ИНН/ОГРН), "medium" (+ phone/email), "high" (all PII)
-        entities: Custom list of entities to mask (overrides mask_level)
+        text: Текст для маскирования
+        language: Код языка ("ru" для русского, "en" для английского)
+        mask_level: Уровень маскирования:
+            - "low": только ИНН/ОГРН/банковские данные
+            - "medium": + телефоны и email
+            - "high": все типы PII (рекомендуется)
+        entities: Явный список типов PII для маскирования (переопределяет mask_level)
 
     Returns:
-        PIIMaskingResult with masked text and reversible mapping
+        PIIMaskingResult: Результат с замаскированным текстом и маппингом для восстановления
 
     Example:
         >>> result = mask_pii("ИНН 7707083893, директор Иванов Иван, тел +7(499)123-45-67")
