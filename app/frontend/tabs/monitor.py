@@ -221,7 +221,7 @@ def _render_system_metrics(api: ApiClient, admin_token: str) -> None:
     if pool_stats and pool_stats.get("status") == "success":
         pool = pool_stats.get("connection_pool", {})
 
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
 
         with col1:
             max_connections = pool.get("max_connections", 0)
@@ -244,14 +244,6 @@ def _render_system_metrics(api: ApiClient, admin_token: str) -> None:
             )
 
         with col3:
-            keepalive_expiry = pool.get("keepalive_expiry_seconds", 0)
-            st.metric(
-                label="⏱️ Keepalive Expiry",
-                value=f"{keepalive_expiry}s",
-                help="Время жизни keepalive соединений (оптимизировано для InfoSphere/Casebook)",
-            )
-
-        with col4:
             http2_enabled = pool.get("http2_enabled", False)
             st.metric(
                 label="🚀 HTTP/2",
