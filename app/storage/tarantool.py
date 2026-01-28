@@ -878,6 +878,84 @@ class TarantoolClient:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(_executor, do_scan)
 
+    async def search_threads_by_field(
+        self,
+        field_name: str,
+        field_value: str,
+        limit: int = 50,
+        partial_match: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Поиск тредов по значению поля с ранней фильтрацией.
+
+        Оптимизация: фильтрация происходит во время итерации,
+        а не после загрузки всех данных в память.
+
+        Args:
+            field_name: Имя поля для поиска (inn, client_name, etc.)
+            field_value: Искомое значение
+            limit: Максимальное количество результатов
+            partial_match: True для частичного совпадения (contains)
+
+        Returns:
+            Список тредов, соответствующих критерию
+        """
+        await self._ensure_connection()
+        threads: List[Dict[str, Any]] = []
+
+        if self._use_memory:
+            for key, packed in _memory_persistent.items():
+                if len(threads) >= limit:
+                    break
+                if isinstance(key, str) and key.startswith("thread:"):
+                    try:
+                        value = msgpack.unpackb(packed, raw=False)
+                        if isinstance(value, dict):
+                            stored_value = value.get(field_name)
+                            if stored_value is not None:
+                                if partial_match:
+                                    if field_value.lower() in str(stored_value).lower():
+                                        threads.append(value)
+                                elif str(stored_value) == str(field_value):
+                                    threads.append(value)
+                    except Exception:
+                        continue
+            threads.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+            return threads
+
+        def do_search():
+            result_threads: List[Dict[str, Any]] = []
+            try:
+                rows = self._connection.select("persistent")
+                for row in rows:
+                    if len(result_threads) >= limit:
+                        break
+                    if len(row) >= 2 and isinstance(row[0], str) and row[0].startswith("thread:"):
+                        packed = row[1]
+                        if isinstance(packed, (bytes, bytearray)):
+                            try:
+                                value = msgpack.unpackb(packed, raw=False)
+                                if isinstance(value, dict):
+                                    stored_value = value.get(field_name)
+                                    if stored_value is not None:
+                                        if partial_match:
+                                            if field_value.lower() in str(stored_value).lower():
+                                                result_threads.append(value)
+                                        elif str(stored_value) == str(field_value):
+                                            result_threads.append(value)
+                            except Exception:
+                                continue
+            except Exception as e:
+                logger.error(
+                    f"Failed to search threads by {field_name}: {e}",
+                    component="tarantool",
+                )
+            result_threads.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+            return result_threads
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, do_search)
+
     async def invalidate_all_keys(self, confirm: bool = False):
         """Полная инвалидация всех ключей."""
         if not confirm:

@@ -242,13 +242,14 @@ class ThreadsRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Список threads для данного ИНН
         """
-        # TODO: Implement через прямое обращение к Tarantool
-        # Нужно использовать inn_idx индекс
         logger.debug(f"Get threads by INN: {inn}", component="threads_repo")
-        # Пока фильтруем in-memory (неоптимально)
-        all_threads = await self.list(limit=limit * 2)  # Берем больше для фильтрации
-        filtered = [t for t in all_threads if t.get("inn") == inn]
-        return filtered[:limit]
+        # Оптимизированный поиск с ранней фильтрацией
+        return await self.client.search_threads_by_field(
+            field_name="inn",
+            field_value=inn,
+            limit=limit,
+            partial_match=False,
+        )
 
     async def list_threads_by_client_name(self, client_name: str, limit: int = 50) -> List[Dict[str, Any]]:
         """
@@ -261,13 +262,14 @@ class ThreadsRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Список threads для данного клиента
         """
-        # TODO: Implement через прямое обращение к Tarantool
-        # Нужно использовать client_idx индекс
         logger.debug(f"Get threads by client name: {client_name}", component="threads_repo")
-        # Пока фильтруем in-memory
-        all_threads = await self.list(limit=limit * 2)
-        filtered = [t for t in all_threads if t.get("client_name") == client_name]
-        return filtered[:limit]
+        # Оптимизированный поиск с ранней фильтрацией
+        return await self.client.search_threads_by_field(
+            field_name="client_name",
+            field_value=client_name,
+            limit=limit,
+            partial_match=False,
+        )
 
     async def search_threads(self, filters: Optional[Dict[str, Any]] = None, limit: int = 50) -> List[Dict[str, Any]]:
         """
@@ -287,19 +289,49 @@ class ThreadsRepository(BaseRepository[Dict[str, Any]]):
         if not filters:
             return await self.list(limit=limit)
 
-        # TODO: Implement эффективный поиск через Tarantool
-        # Пока простая фильтрация
-        all_threads = await self.list(limit=limit * 2)
+        # Оптимизация: используем поиск по полю с ранней фильтрацией
+        # если есть только один фильтр (INN или client_name)
+        has_date_filters = "date_from" in filters or "date_to" in filters
 
-        filtered = all_threads
+        # Если только INN фильтр - используем оптимизированный поиск
+        if "inn" in filters and "client_name" not in filters and not has_date_filters:
+            return await self.client.search_threads_by_field(
+                field_name="inn",
+                field_value=filters["inn"],
+                limit=limit,
+                partial_match=False,
+            )
 
+        # Если только client_name фильтр - используем оптимизированный поиск
+        if "client_name" in filters and "inn" not in filters and not has_date_filters:
+            return await self.client.search_threads_by_field(
+                field_name="client_name",
+                field_value=filters["client_name"],
+                limit=limit,
+                partial_match=True,  # partial match для client_name
+            )
+
+        # Для комбинированных фильтров: сначала фильтруем по главному полю,
+        # затем применяем остальные фильтры
         if "inn" in filters:
-            filtered = [t for t in filtered if t.get("inn") == filters["inn"]]
+            filtered = await self.client.search_threads_by_field(
+                field_name="inn",
+                field_value=filters["inn"],
+                limit=limit * 2,  # берем больше для последующей фильтрации
+                partial_match=False,
+            )
+        elif "client_name" in filters:
+            filtered = await self.client.search_threads_by_field(
+                field_name="client_name",
+                field_value=filters["client_name"],
+                limit=limit * 2,
+                partial_match=True,
+            )
+        else:
+            # Только date фильтры - загружаем все
+            filtered = await self.list(limit=limit * 2)
 
-        if "client_name" in filters:
-            name = filters["client_name"].lower()
-            filtered = [t for t in filtered if name in t.get("client_name", "").lower()]
-
+        # Применяем оставшиеся фильтры
         if "date_from" in filters:
             filtered = [t for t in filtered if t.get("created_at", 0) >= filters["date_from"]]
 

@@ -16,6 +16,7 @@ from typing import Any, Dict, List
 
 from app.services.llm_provider import llm_generate_json
 from app.mcp_server.prompts.system_prompts import AnalyzerRole, get_system_prompt
+from app.shared.pii_protection import mask_pii
 from app.shared.utils import safe_dict_get
 from app.shared.utils.formatters import truncate
 from app.schemas.report import ClientAnalysisReport
@@ -331,6 +332,25 @@ def generate_recommendations(risk: Dict[str, Any]) -> List[str]:
 # =============================================================================
 
 
+def _sanitize_tavily_content(content: str) -> str:
+    """
+    Маскирует PII в контенте Tavily перед передачей в LLM.
+
+    Tavily full_texts содержат неструктурированный текст веб-страниц,
+    который может включать персональные данные третьих лиц.
+
+    Args:
+        content: Сырой текст страницы
+
+    Returns:
+        Текст с замаскированными персональными данными
+    """
+    if not content:
+        return ""
+    result = mask_pii(content)
+    return result.masked_text
+
+
 def _prepare_source_data_for_llm(source_data: Dict[str, Any], search_results: List[Dict]) -> str:
     """
     P0 ENHANCED: Подготовка данных для LLM анализа с полными текстами страниц.
@@ -389,6 +409,7 @@ def _prepare_source_data_for_llm(source_data: Dict[str, Any], search_results: Li
             parts.append("")
 
     # P0: НОВОЕ - Полные тексты страниц из Tavily (критично для глубокого анализа)
+    # P1: PII маскирование перед передачей в LLM
     tavily_full_texts = source_data.get("tavily_full_texts", [])
     if tavily_full_texts:
         parts.append("=== ПОЛНЫЕ ТЕКСТЫ СТРАНИЦ (TOP-5 Tavily) ===")
@@ -396,15 +417,17 @@ def _prepare_source_data_for_llm(source_data: Dict[str, Any], search_results: Li
         parts.append("")
 
         for idx, page in enumerate(tavily_full_texts, 1):
-            if page.get("full_content"):
+            raw_content = page.get("full_content", "")
+            if raw_content:
+                # Маскируем PII в контенте перед передачей в LLM
+                sanitized_content = _sanitize_tavily_content(raw_content)
                 parts.append(f"--- Страница {idx}: {page.get('title', 'N/A')} ---")
                 parts.append(f"URL: {page.get('url', 'N/A')}")
-                parts.append(f"Текст ({page.get('char_count', 0)} символов):")
-                # Включаем полный текст (до 10k символов на страницу)
-                parts.append(page.get("full_content", ""))
+                parts.append(f"Текст ({len(sanitized_content)} символов):")
+                parts.append(sanitized_content)
                 parts.append("")
 
-        total_chars = sum(len(p.get("full_content", "")) for p in tavily_full_texts)
+        total_chars = sum(len(_sanitize_tavily_content(p.get("full_content", ""))) for p in tavily_full_texts)
         parts.append(f"ИТОГО: {len(tavily_full_texts)} страниц, {total_chars} символов полного текста")
         parts.append("")
 
