@@ -21,6 +21,7 @@ from enum import Enum
 from typing import Any, Dict, Optional, Tuple
 
 from app.config import settings
+from app.shared.exceptions import PIIMaskingError
 from app.utility.logging_client import logger
 
 # Lazy imports для PII, audit, cache и metrics
@@ -601,19 +602,18 @@ class LLMManager:
 
             return pii_result.masked_text, pii_result
         except Exception as e:
-            # КРИТИЧЕСКИ ВАЖНО: При ошибке маскирования НЕ отправляем промпт в LLM
-            # Блокируем вызов для предотвращения утечки PII
+            # КРИТИЧЕСКИ ВАЖНО: При ошибке маскирования ВСЕГДА блокируем вызов LLM
+            # Это защита от утечки персональных данных в облачные LLM (152-ФЗ compliance)
             logger.critical(
                 f"PII masking FAILED - BLOCKING LLM call to prevent PII leak: {e}",
                 component="llm_manager",
                 exc_info=True,
             )
-            # В dev режиме можно вернуть оригинал с предупреждением
-            if getattr(settings.app, "debug", False):
-                logger.warning("DEBUG mode: allowing unmasked prompt", component="llm_manager")
-                return prompt, None
-            # В production блокируем вызов
-            raise Exception("PII masking failed - cannot proceed with LLM call") from e
+            # НЕ делаем исключений для DEBUG режима - PII утечки критичны везде
+            raise PIIMaskingError(
+                message="Невозможно замаскировать персональные данные - вызов LLM заблокирован",
+                original_error=e,
+            ) from e
 
     async def _call_providers_with_fallback(
         self, masked_prompt: str, pii_result: Optional[Any], start_time: float, **kwargs

@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional
 import plotly.graph_objects as go
 import streamlit as st
 
-
 # Цветовая схема для уровней риска
 RISK_COLORS = {
     "low": "#28a745",  # Зелёный

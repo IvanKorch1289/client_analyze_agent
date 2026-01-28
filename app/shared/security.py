@@ -14,7 +14,6 @@ from typing import Tuple
 
 from app.shared.exceptions import SecurityError, ValidationError
 
-
 # Known prompt injection patterns
 INJECTION_PATTERNS = [
     r"ignore\s+(previous|all|above)\s+instructions",

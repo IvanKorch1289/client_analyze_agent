@@ -398,9 +398,10 @@ async def submit_feedback(request: Request, data: FeedbackRequest) -> Dict[str, 
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-    # УМНЫЙ СБРОС КЭША: если rating < 3 (негативный feedback), очищаем кэш
+    # УМНЫЙ СБРОС КЭША: если rating негативный, очищаем кэш
     # для этого ИНН/компании, чтобы получить актуальные данные при переанализе
-    if data.rating < 3 and data.rerun_analysis and inn:
+    is_negative_feedback = data.rating in ("inaccurate", "partially_accurate")
+    if is_negative_feedback and data.rerun_analysis and inn:
         try:
             cache_repo = tarantool.get_cache_repository()
             cleared_sources = []

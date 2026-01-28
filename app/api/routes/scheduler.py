@@ -85,6 +85,9 @@ async def schedule_data_fetch(request: Request, req: ScheduleDataFetchRequest) -
 
         task_info = scheduler.get_task_info(task_id)
 
+        if not task_info:
+            raise HTTPException(status_code=500, detail="Task was scheduled but info is unavailable")
+
         logger.structured(
             "info",
             "data_fetch_scheduled",
@@ -92,7 +95,7 @@ async def schedule_data_fetch(request: Request, req: ScheduleDataFetchRequest) -
             task_id=task_id,
             inn=req.inn,
             sources=req.sources,
-            run_date=task_info["run_date"].isoformat() if task_info else None,
+            run_date=task_info["run_date"].isoformat(),
         )
 
         return ScheduleTaskResponse(
@@ -172,6 +175,9 @@ async def schedule_client_analysis(request: Request, req: ScheduleClientAnalysis
         # Получаем информацию о созданной задаче
         task_info = scheduler.get_task_info(task_id)
 
+        if not task_info:
+            raise HTTPException(status_code=500, detail="Task was scheduled but info is unavailable")
+
         logger.structured(
             "info",
             "analysis_scheduled",
@@ -179,7 +185,7 @@ async def schedule_client_analysis(request: Request, req: ScheduleClientAnalysis
             task_id=task_id,
             client_name=req.client_name,
             inn=req.inn,
-            run_date=task_info["run_date"].isoformat() if task_info else None,
+            run_date=task_info["run_date"].isoformat(),
         )
 
         return ScheduleTaskResponse(

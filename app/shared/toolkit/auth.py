@@ -12,7 +12,6 @@ from typing import Optional, Tuple
 
 from fastapi import Depends, Header, HTTPException, status
 
-
 # Weak/default tokens that should trigger warnings
 _WEAK_TOKENS = {
     "",

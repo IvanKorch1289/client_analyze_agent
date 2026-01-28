@@ -195,6 +195,10 @@ class AppLogger:
         self._ensure_daily_log()
         app_logger.exception(f"[{component.upper()}] {message}")
 
+    def critical(self, message: str, component: str = "app", exc_info: bool = False):
+        self._ensure_daily_log()
+        app_logger.critical(f"[{component.upper()}] {message}", exc_info=exc_info)
+
     def structured(self, level: str, event: str, component: str = "app", **extra: Any):
         self._ensure_daily_log()
         log_entry = {

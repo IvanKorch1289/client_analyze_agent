@@ -7,7 +7,6 @@ Contains enums, constants, and reference values used in analysis.
 from enum import Enum
 from typing import Any, Dict
 
-
 # ============================================================================
 # RISK ASSESSMENT
 # ============================================================================

@@ -362,7 +362,7 @@ def generate_analysis_pdf(
         for cite in citations[:10]:
             pdf.add_text(f"- {cite}")
 
-    return pdf.output()
+    return bytes(pdf.output())
 
 
 def save_pdf_report(
