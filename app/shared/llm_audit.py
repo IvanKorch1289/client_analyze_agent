@@ -9,17 +9,49 @@ LLM Audit Logging Module
 """
 
 import hashlib
+import re
 import time
 from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app.utility.logging_client import logger
 
 # Lazy imports
 _audit_storage = None
+
+# Regex для определения PII маркеров вида [ENTITY_TYPE_N], например [INN_1], [CLIENT_NAME_2]
+_PII_MARKER_PATTERN = re.compile(r"\[([A-Z_]+)_\d+\]")
+
+
+def detect_pii_markers(text: str) -> Tuple[bool, List[str]]:
+    """
+    Определяет наличие PII маркеров в тексте.
+
+    PII маркеры создаются модулем pii_protection при маскировании
+    персональных данных и имеют вид [ENTITY_TYPE_N], например:
+    - [INN_1], [INN_2] - ИНН
+    - [CLIENT_NAME_1] - ФИО клиента
+    - [PHONE_1] - телефон
+
+    Args:
+        text: Текст для проверки
+
+    Returns:
+        Tuple[bool, List[str]]: (обнаружены ли маркеры, список типов PII)
+    """
+    if not text:
+        return False, []
+
+    matches = _PII_MARKER_PATTERN.findall(text)
+    if not matches:
+        return False, []
+
+    # Уникальные типы PII (без номеров)
+    pii_types = sorted(set(matches))
+    return True, pii_types
 
 
 class PrivacyMode(str, Enum):
@@ -433,17 +465,22 @@ def audit_llm_call(operation: str):
                 # Вычисляем длительность
                 duration_ms = int((time.perf_counter() - start_time) * 1000)
 
+                # Определяем наличие PII маркеров в промпте
+                prompt_str = str(prompt)
+                pii_detected, pii_types = detect_pii_markers(prompt_str)
+
                 # Логируем
                 await logger_instance.log_llm_call(
                     provider=provider,
                     model=model,
                     operation=operation,
-                    prompt=str(prompt),
+                    prompt=prompt_str,
                     response=str(response) if response else None,
                     duration_ms=duration_ms,
                     success=success,
                     error=error,
-                    pii_detected=False,  # TODO: интегрировать с pii_protection
+                    pii_detected=pii_detected,
+                    pii_types=pii_types,
                     metadata={
                         "function": func.__name__,
                         "args_count": len(args),
@@ -462,4 +499,5 @@ __all__ = [
     "PrivacyMode",
     "get_audit_logger",
     "audit_llm_call",
+    "detect_pii_markers",
 ]

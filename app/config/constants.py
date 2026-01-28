@@ -264,3 +264,34 @@ class FeatureFlags:
     ENABLE_EMAIL_NOTIFICATIONS: Final[bool] = False  # По умолчанию выключено
     ENABLE_PREFETCHING: Final[bool] = True
     ENABLE_REQUEST_COALESCING: Final[bool] = True
+
+
+# =======================
+# Application Metadata
+# =======================
+
+
+def _get_version_from_pyproject() -> str:
+    """
+    Читает версию приложения из pyproject.toml.
+
+    Returns:
+        Версия из pyproject.toml или "0.0.0" если не удалось прочитать
+    """
+    import tomllib
+    from pathlib import Path
+
+    try:
+        pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
+        with open(pyproject_path, "rb") as f:
+            data = tomllib.load(f)
+        return data.get("tool", {}).get("poetry", {}).get("version", "0.0.0")
+    except Exception:
+        return "0.0.0"
+
+
+APP_VERSION: Final[str] = _get_version_from_pyproject()
+"""Версия приложения (читается из pyproject.toml)"""
+
+APP_NAME: Final[str] = "Client Analysis Agent"
+"""Название приложения"""

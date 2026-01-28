@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from fastmcp import FastMCP
 from fastmcp.prompts.prompt import Message
 
+from app.config.constants import APP_VERSION
 from app.services.app_actions import dispatch_cache_invalidate, dispatch_client_analysis
 
 MCP_HOST = os.getenv("MCP_HOST", "0.0.0.0")
@@ -262,7 +263,7 @@ async def _build_asyncapi_spec() -> Dict[str, Any]:
 
     from app.messaging.broker import broker
 
-    spec = AsyncAPI(broker, title="Client Analysis Messaging", version="1.0.0").to_specification()
+    spec = AsyncAPI(broker, title="Client Analysis Messaging", version=APP_VERSION).to_specification()
     return json.loads(spec.to_json())
 
 

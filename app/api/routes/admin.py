@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from app.config.constants import APP_VERSION
 from app.utility.auth import require_admin
 from app.utility.logging_client import logger
 
@@ -345,7 +346,7 @@ async def get_detailed_health() -> HealthDetailedResponse:
     return HealthDetailedResponse(
         status=overall_status,
         components=components,
-        version="1.0.0",  # TODO: read from package
+        version=APP_VERSION,
         uptime_seconds=int(time.time() - start_time),
     )
 
