@@ -856,6 +856,358 @@ async def lifespan(app: FastAPI):
 
 ---
 
+### 7.5 Анализ потока данных: External API → LLM
+
+#### 7.5.1 Карта потока данных
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    ПОТОК ДАННЫХ КЛИЕНТА → LLM                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ИСТОЧНИКИ ДАННЫХ              АГЕНТЫ                  LLM ВЫЗОВЫ           │
+│  ──────────────────            ──────                  ──────────           │
+│                                                                              │
+│  ┌─────────────┐              ┌──────────────┐                              │
+│  │   DaData    │─────────────▶│ Orchestrator │──▶ llm_generate_json() ──┐   │
+│  │  (ЕГРЮЛ)    │              │              │                          │   │
+│  └─────────────┘              └──────────────┘                          │   │
+│                                      │                                   │   │
+│  ┌─────────────┐                     │                                   │   │
+│  │  Casebook   │                     ▼                                   │   │
+│  │  (Суды)     │─────────────▶┌──────────────┐                          │   │
+│  └─────────────┘              │    Report    │                          │   │
+│                               │   Analyzer   │──▶ llm_generate_json() ──┤   │
+│  ┌─────────────┐              │              │                          │   │
+│  │ InfoSphere  │─────────────▶│              │                          │   │
+│  │ (Финансы)   │              └──────────────┘                          │   │
+│  └─────────────┘                     ▲                                   │   │
+│                                      │                                   │   │
+│  ┌─────────────┐                     │                                   │   │
+│  │ Perplexity  │─────────────────────┤                                   │   │
+│  │(AI Search)  │                     │                                   │   │
+│  └─────────────┘                     │                                   │   │
+│                                      │                                   │   │
+│  ┌─────────────┐                     │                                   │   │
+│  │   Tavily    │─────────────────────┘                                   │   │
+│  │(Web Scrape) │                                                         │   │
+│  └─────────────┘   tavily_full_texts (до 50K символов!)                  │   │
+│                                                                          │   │
+│  ┌─────────────┐              ┌──────────────┐                          │   │
+│  │  Feedback   │─────────────▶│  Adaptive    │──▶ llm_manager.ainvoke() ┤   │
+│  │ Repository  │              │Prompt Engine │                          │   │
+│  └─────────────┘              └──────────────┘                          │   │
+│                                                                          │   │
+│                                                                          ▼   │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                       LLMManager.ainvoke()                             │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │  │
+│  │  │  _mask_prompt_pii() → PII маскирование (7 русских recognizers)  │  │  │
+│  │  └─────────────────────────────────────────────────────────────────┘  │  │
+│  │                              │                                         │  │
+│  │                              ▼                                         │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │  │
+│  │  │     OpenRouter / HuggingFace / GigaChat / YandexGPT             │  │  │
+│  │  └─────────────────────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 7.5.2 Точки передачи данных в LLM
+
+| # | Агент | Файл | Данные из API | PII маскирование |
+|---|-------|------|---------------|------------------|
+| 1 | Orchestrator | `app/agents/orchestrator.py:184-195` | DaData (название, статус, дата) | ✅ Через `llm_generate_json()` |
+| 2 | Report Analyzer | `app/agents/report_analyzer.py:151-159` | DaData, Casebook, InfoSphere, Perplexity, Tavily | ✅ Через `llm_generate_json()` |
+| 3 | Report Analyzer | `app/agents/report_analyzer.py:391-409` | **tavily_full_texts** (полные тексты 5 страниц, до 50K символов) | ✅ Через `llm_generate_json()` |
+| 4 | Adaptive Prompt | `app/prompts/adaptive_prompt_engine.py:149` | **Feedback comments** (комментарии пользователей) | ⚠️ Через `ainvoke()`, но feedback может содержать PII |
+
+#### 7.5.3 Обнаруженные проблемы безопасности
+
+##### 🔴 P0: Debug режим обходит PII маскирование
+
+**Файл**: `app/agents/llm_manager.py:612-614`
+
+```python
+# ПРОБЛЕМА: В DEBUG режиме при ошибке маскирования - промпт отправляется без маски!
+if getattr(settings.app, "debug", False):
+    logger.warning("DEBUG mode: allowing unmasked prompt", component="llm_manager")
+    return prompt, None  # ⚠️ ОРИГИНАЛЬНЫЙ ПРОМПТ С PII ИДЁТ В LLM!
+```
+
+**Риск**: В dev/staging окружении при ошибке Presidio персональные данные могут попасть в облачный LLM.
+
+**Решение**:
+```python
+# Даже в DEBUG режиме блокировать отправку при ошибке маскирования
+if getattr(settings.app, "debug", False):
+    logger.critical("DEBUG mode: PII masking failed, returning sanitized error")
+    return "[PII_MASKING_ERROR: Data redacted for safety]", None
+```
+
+---
+
+##### 🟡 P1: Feedback comments не фильтруются на PII
+
+**Файл**: `app/prompts/adaptive_prompt_engine.py:183-184`
+
+```python
+# ПРОБЛЕМА: Комментарии пользователей могут содержать PII
+# и передаются напрямую в meta_prompt
+"""ПОСЛЕДНИЕ КОММЕНТАРИИ ПОЛЬЗОВАТЕЛЕЙ:
+{chr(10).join(f'- "{comment}"' for comment in patterns.get("sample_comments", [])[:3])}"""
+```
+
+**Риск**: Пользователь мог написать: "Иванов Иван (тел. +7-999-123-45-67) - мошенник"
+
+**Решение**: Маскировать comments перед включением в meta_prompt:
+```python
+from app.shared.pii_protection import mask_pii
+
+masked_comments = [mask_pii(c, language="ru").masked_text for c in sample_comments[:3]]
+```
+
+---
+
+##### 🟡 P1: tavily_full_texts содержат неструктурированный контент
+
+**Файл**: `app/agents/report_analyzer.py:391-409`
+
+**Риск**: Полные тексты веб-страниц (до 10K символов каждая) могут содержать:
+- ФИО сотрудников компании
+- Контактные данные (телефоны, email)
+- Адреса офисов
+
+**Текущее состояние**: Маскирование применяется, но нужно проверить полноту.
+
+**Рекомендация**: Добавить pre-filtering перед формированием промпта:
+```python
+def _sanitize_tavily_full_texts(texts: List[Dict]) -> List[Dict]:
+    """Pre-filter tavily full texts to remove obvious PII patterns."""
+    # ... дополнительная очистка перед маскированием
+```
+
+---
+
+### 7.6 Возможности улучшения LLM агента
+
+#### 7.6.1 Текущее состояние системы промптов
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║                  СИСТЕМА ПРОМПТОВ: 85%                            ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                   ║
+║  Chain-of-Thought (CoT)     ████████████████████░  100% ✅       ║
+║  Typed System Prompts       ████████████████████░  100% ✅       ║
+║  Адаптивные промпты         ████████████████░░░░░  80%  ⚠️       ║
+║  Feedback loop              ███████████████░░░░░░  75%  ⚠️       ║
+║  Версионирование            ████████████████████░  100% ✅       ║
+║  Динамические контексты     ██████████░░░░░░░░░░░  50%  ❌       ║
+║                                                                   ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+**Реализовано:**
+- ✅ Chain-of-Thought (CoT) анализ с трассировкой рассуждений
+- ✅ Типизированные промпты через `AnalyzerRole` enum
+- ✅ Версионирование промптов (v1.0, v1.2)
+- ✅ `AdaptivePromptEngine` для автоматической доработки на основе фидбека
+- ✅ `FeedbackRepository` для сбора оценок пользователей
+
+**Требует доработки:**
+- ⚠️ PII фильтрация в feedback loop
+- ⚠️ Динамические системные промпты на основе типа клиента
+- ❌ Контекстуальная память между сессиями
+
+#### 7.6.2 Рекомендации по улучшению агента
+
+##### 1. Безопасный Feedback Loop (P1)
+
+**Текущая проблема**: Комментарии пользователей передаются в LLM без фильтрации.
+
+**Решение**: Добавить PII маскирование в `AdaptivePromptEngine`:
+
+```python
+# app/prompts/adaptive_prompt_engine.py
+
+async def _generate_adaptive_instructions(self, ...):
+    # НОВОЕ: Маскировать комментарии перед отправкой в LLM
+    pii = _get_pii_protection()
+
+    masked_comments = []
+    for comment in recent_feedbacks[:5]:
+        original = comment.get("comment", "")
+        masked = pii.mask_pii(original, language="ru", mask_level="high")
+        masked_comments.append(masked.masked_text)
+
+    meta_prompt = self._build_meta_prompt(
+        template_name,
+        patterns,
+        masked_comments  # Используем замаскированные комментарии
+    )
+```
+
+**Метрика**: 0 PII в feedback → LLM потоке
+
+---
+
+##### 2. Динамические системные промпты на основе типа клиента (P2)
+
+**Идея**: Адаптировать промпт в зависимости от характеристик анализируемой компании.
+
+**Реализация**:
+
+```python
+# app/mcp_server/prompts/system_prompts.py
+
+def get_dynamic_system_prompt(
+    role: AnalyzerRole,
+    client_context: Dict[str, Any]
+) -> str:
+    """
+    Генерирует динамический промпт на основе контекста клиента.
+
+    Контекст включает:
+    - company_type: ИП / ООО / АО / ПАО
+    - industry: Строительство / IT / Торговля / Финансы
+    - company_age: Молодая (<3 лет) / Зрелая (3-10) / Стабильная (>10)
+    - revenue_scale: Микро / Малый / Средний / Крупный
+    """
+    base_prompt = get_system_prompt(role)
+
+    # Добавляем контекстуальные инструкции
+    context_instructions = []
+
+    if client_context.get("company_type") == "ИП":
+        context_instructions.append(
+            "⚠️ ОСОБЕННОСТИ ИП: Проверь наличие личного банкротства учредителя, "
+            "историю предыдущих ИП, отсутствие разделения личных и бизнес-активов."
+        )
+
+    if client_context.get("industry") == "Строительство":
+        context_instructions.append(
+            "⚠️ СТРОИТЕЛЬНАЯ ОТРАСЛЬ: Обязательно проверь членство в СРО, "
+            "наличие лицензий, историю госконтрактов, долги перед субподрядчиками."
+        )
+
+    if client_context.get("company_age", 0) < 3:
+        context_instructions.append(
+            "⚠️ МОЛОДАЯ КОМПАНИЯ (<3 лет): Повышенный риск. "
+            "Проверь учредителей на участие в других компаниях, массовый адрес."
+        )
+
+    if context_instructions:
+        dynamic_section = "\n\n" + "=" * 60 + "\n"
+        dynamic_section += "🎯 КОНТЕКСТУАЛЬНЫЕ ИНСТРУКЦИИ:\n"
+        dynamic_section += "\n".join(context_instructions)
+        dynamic_section += "\n" + "=" * 60
+
+        return base_prompt + dynamic_section
+
+    return base_prompt
+```
+
+**Безопасность**: Контекст формируется из структурированных данных DaData (не из пользовательского ввода).
+
+---
+
+##### 3. Улучшенный Feedback для обучения (P2)
+
+**Идея**: Собирать структурированный фидбек для улучшения качества анализа.
+
+**Текущая схема feedback**:
+```json
+{
+  "rating": "accurate|partially_accurate|inaccurate",
+  "comment": "свободный текст",  // ⚠️ Может содержать PII
+  "focus_areas": ["risk_score", "recommendations"]
+}
+```
+
+**Улучшенная схема**:
+```json
+{
+  "rating": "accurate|partially_accurate|inaccurate",
+  "structured_feedback": {
+    "risk_score_accuracy": "correct|too_high|too_low",
+    "missed_risks": ["выбор из списка"],
+    "false_positives": ["выбор из списка"],
+    "recommendations_quality": 1-5
+  },
+  "improvement_suggestions": ["выбор из списка"],  // Без свободного текста
+  "anonymous_comment": "..."  // Маскируется перед сохранением
+}
+```
+
+**Безопасность**: Структурированные поля не могут содержать PII.
+
+---
+
+##### 4. Контекстуальная память между сессиями (P3)
+
+**Идея**: Запоминать результаты предыдущих анализов той же компании.
+
+**Реализация**:
+```python
+async def get_historical_context(inn: str) -> Optional[str]:
+    """
+    Получить контекст предыдущих анализов компании.
+
+    БЕЗОПАСНОСТЬ: Возвращаем только агрегированные метрики,
+    не передаём исторические данные напрямую.
+    """
+    reports = await reports_repo.get_by_inn(inn, limit=5)
+
+    if not reports:
+        return None
+
+    # Агрегируем только метрики (без PII)
+    context = {
+        "previous_analyses": len(reports),
+        "risk_score_history": [r["risk_assessment"]["score"] for r in reports],
+        "trend": "improving" if scores[-1] < scores[0] else "worsening",
+        "last_analysis_date": reports[0]["metadata"]["analysis_date"]
+    }
+
+    return f"""
+ИСТОРИЧЕСКАЯ СПРАВКА (агрегированные данные, {context['previous_analyses']} анализов):
+- Тренд риска: {context['trend']}
+- История скоров: {context['risk_score_history']}
+- Последний анализ: {context['last_analysis_date']}
+"""
+```
+
+**Безопасность**: Передаём только агрегаты, не исторические промпты/ответы.
+
+---
+
+### 7.7 Обновлённый план с учётом безопасности данных
+
+#### Добавить в Этап 1 (P0):
+
+| # | Задача | Файл | Действие |
+|---|--------|------|----------|
+| 1.5 | Убрать bypass PII в DEBUG | `llm_manager.py:612-614` | Заменить `return prompt` на `return error_placeholder` |
+
+#### Добавить в Этап 2 (P1):
+
+| # | Задача | Файл | Действие |
+|---|--------|------|----------|
+| 2.6 | PII маскирование в feedback loop | `adaptive_prompt_engine.py` | Маскировать comments перед meta_prompt |
+| 2.7 | Pre-filtering tavily_full_texts | `report_analyzer.py` | Добавить `_sanitize_tavily_full_texts()` |
+
+#### Добавить в Этап 3 (P2):
+
+| # | Задача | Файл | Действие |
+|---|--------|------|----------|
+| 3.7 | Динамические промпты по типу клиента | `system_prompts.py` | Реализовать `get_dynamic_system_prompt()` |
+| 3.8 | Структурированный feedback | `schemas/requests.py` | Новая схема без свободного текста |
+| 3.9 | Контекстуальная память | `report_analyzer.py` | Добавить `get_historical_context()` |
+
+---
+
 ## 8. Заключение
 
 ### 8.1 Итоговая оценка
@@ -886,7 +1238,15 @@ async def lifespan(app: FastAPI):
 
 **Документ подготовлен**: Claude (Anthropic Opus 4.5)
 **Дата**: 28 января 2026 г.
-**Версия отчёта**: 1.1
+**Версия отчёта**: 1.2
+
+### Изменения в версии 1.2:
+- Добавлен раздел 7.5 «Анализ потока данных: External API → LLM»
+- Карта потока данных с точками передачи в LLM
+- Обнаружены 2 проблемы безопасности (P0: DEBUG bypass, P1: feedback PII)
+- Добавлен раздел 7.6 «Возможности улучшения LLM агента»
+- 4 рекомендации по улучшению: безопасный feedback, динамические промпты, структурированный feedback, контекстуальная память
+- Обновлён план с задачами 1.5, 2.6-2.7, 3.7-3.9
 
 ### Изменения в версии 1.1:
 - Добавлен раздел 7 «Анализ русификации и PII маскирования»
