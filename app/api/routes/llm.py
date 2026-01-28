@@ -13,7 +13,9 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.api.rate_limit import limiter_for_client_ip
 from app.config import settings
+from app.config.constants import RATE_LIMIT_LLM_PER_MINUTE
 from app.schemas.llm import (
     AsyncLLMAccepted,
     AsyncLLMRequest,
@@ -26,6 +28,7 @@ from app.schemas.llm import (
 from app.utility.logging_client import logger
 
 llm_router = APIRouter(prefix="/llm", tags=["LLM"])
+limiter = limiter_for_client_ip()
 
 
 def _generate_request_id() -> str:
@@ -169,6 +172,7 @@ async def _process_llm_request_background(
 
 
 @llm_router.post("/async", response_model=AsyncLLMAccepted, status_code=202)
+@limiter.limit(f"{RATE_LIMIT_LLM_PER_MINUTE}/minute")
 async def submit_async_llm_request(
     request: Request,
     data: AsyncLLMRequest,
@@ -240,7 +244,8 @@ async def submit_async_llm_request(
 
 
 @llm_router.get("/providers", response_model=LLMProvidersResponse)
-async def list_llm_providers() -> LLMProvidersResponse:
+@limiter.limit(f"{RATE_LIMIT_LLM_PER_MINUTE * 3}/minute")  # More relaxed for status check
+async def list_llm_providers(request: Request) -> LLMProvidersResponse:
     """
     Список доступных LLM провайдеров и их статус.
 
@@ -263,7 +268,8 @@ async def list_llm_providers() -> LLMProvidersResponse:
 
 
 @llm_router.post("/mask-text", response_model=MaskTextResponse)
-async def mask_text(data: MaskTextRequest) -> MaskTextResponse:
+@limiter.limit(f"{RATE_LIMIT_LLM_PER_MINUTE}/minute")
+async def mask_text(request: Request, data: MaskTextRequest) -> MaskTextResponse:
     """
     Маскирование PII данных в тексте.
 

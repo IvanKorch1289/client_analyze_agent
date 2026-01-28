@@ -279,3 +279,64 @@ async def handle_failed_cache(msg: CacheInvalidateRequest) -> None:
         f"Failed cache invalidation in DLQ: prefix={msg.prefix}, invalidate_all={msg.invalidate_all}",
         component="faststream_dlq",
     )
+
+
+@broker.subscriber(RabbitQueue("dlq.llm", durable=True, routing_key="dlq.llm"), exchange=_dlx)
+async def handle_failed_llm(msg: AsyncLLMQueueMessage) -> None:
+    """
+    P1-1: Обработчик failed LLM сообщений.
+
+    При неуспешной обработке LLM запроса:
+    1. Логируем ошибку
+    2. Пытаемся отправить callback с информацией об ошибке
+    3. Сохраняем в persistent storage для анализа
+    """
+    import httpx
+
+    logger.error(
+        f"Failed LLM request in DLQ: request_id={msg.request_id}, provider={msg.provider}",
+        component="faststream_dlq",
+    )
+
+    # Пытаемся уведомить callback URL об ошибке
+    try:
+        callback_payload = {
+            "request_id": msg.request_id,
+            "status": "error",
+            "provider_used": msg.provider,
+            "error": "Message processing failed and moved to DLQ",
+            "request_metadata": msg.request_metadata,
+        }
+
+        headers = dict(msg.callback_headers) if msg.callback_headers else {}
+        headers["Content-Type"] = "application/json"
+
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                msg.callback_url,
+                json=callback_payload,
+                headers=headers,
+                timeout=10.0,
+            )
+        logger.info(f"DLQ error callback sent for {msg.request_id}", component="faststream_dlq")
+    except Exception as e:
+        logger.warning(f"Failed to send DLQ callback: {e}", component="faststream_dlq")
+
+    # Сохраняем в persistent storage
+    try:
+        from app.storage.tarantool import TarantoolClient
+
+        client = await TarantoolClient.get_instance()
+
+        await client.set_persistent(
+            key=f"dlq:llm:{msg.request_id}",
+            value={
+                "type": "failed_llm",
+                "request_id": msg.request_id,
+                "provider": msg.provider,
+                "callback_url": msg.callback_url,
+                "timestamp": time.time(),
+            },
+        )
+    except Exception as e:
+        logger.error(f"Failed to save LLM DLQ message: {e}", component="faststream_dlq")

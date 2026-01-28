@@ -219,7 +219,7 @@ async def cancel_scheduled_task(request: Request, task_id: str) -> Dict[str, Any
     """
     scheduler = get_scheduler_service()
 
-    success = scheduler.cancel_task(task_id)
+    success = await scheduler.cancel_task(task_id)
 
     if not success:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found or already completed")

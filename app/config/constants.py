@@ -125,6 +125,12 @@ RATE_LIMIT_GENERAL_PER_MINUTE: Final[int] = 60
 RATE_LIMIT_ADMIN_PER_MINUTE: Final[int] = 60
 """Лимит для административных операций"""
 
+RATE_LIMIT_LLM_PER_MINUTE: Final[int] = 10
+"""Лимит для LLM операций (дорогие вызовы к внешним API)"""
+
+RATE_LIMIT_EXPORT_PER_MINUTE: Final[int] = 20
+"""Лимит для операций экспорта (генерация PDF/CSV)"""
+
 # =======================
 # Timeouts
 # =======================

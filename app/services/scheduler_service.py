@@ -23,6 +23,7 @@ Scheduler Service - управление отложенными задачами
     await scheduler.cancel_task(task_id)
 """
 
+import asyncio
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -32,6 +33,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 
 from app.utility.logging_client import logger
+
+# Ключ для хранения задач в Tarantool
+SCHEDULER_JOBS_KEY = "scheduler:pending_jobs"
 
 
 class SchedulerService:
@@ -61,6 +65,128 @@ class SchedulerService:
         self._started = False
 
         logger.info("SchedulerService initialized", component="scheduler")
+
+    async def _persist_task(self, task_id: str, task_data: Dict[str, Any]) -> None:
+        """
+        P1: Сохраняет задачу в Tarantool для персистентности.
+
+        При перезапуске сервиса задачи могут быть восстановлены из storage.
+        """
+        try:
+            from app.storage.tarantool import TarantoolClient
+
+            client = await TarantoolClient.get_instance()
+
+            # Получаем текущий список задач
+            jobs_data = await client.get_persistent(SCHEDULER_JOBS_KEY) or {"jobs": {}}
+            jobs = jobs_data.get("jobs", {})
+
+            # Добавляем/обновляем задачу
+            jobs[task_id] = {
+                **task_data,
+                "scheduled_at": (
+                    task_data["scheduled_at"].isoformat()
+                    if isinstance(task_data.get("scheduled_at"), datetime)
+                    else task_data.get("scheduled_at")
+                ),
+                "run_date": (
+                    task_data["run_date"].isoformat()
+                    if isinstance(task_data.get("run_date"), datetime)
+                    else task_data.get("run_date")
+                ),
+            }
+
+            await client.set_persistent(SCHEDULER_JOBS_KEY, {"jobs": jobs})
+            logger.debug(f"Task {task_id} persisted to storage", component="scheduler")
+
+        except Exception as e:
+            logger.warning(f"Failed to persist task {task_id}: {e}", component="scheduler")
+
+    async def _remove_persisted_task(self, task_id: str) -> None:
+        """Удаляет завершённую/отменённую задачу из persistent storage."""
+        try:
+            from app.storage.tarantool import TarantoolClient
+
+            client = await TarantoolClient.get_instance()
+            jobs_data = await client.get_persistent(SCHEDULER_JOBS_KEY) or {"jobs": {}}
+            jobs = jobs_data.get("jobs", {})
+
+            if task_id in jobs:
+                del jobs[task_id]
+                await client.set_persistent(SCHEDULER_JOBS_KEY, {"jobs": jobs})
+                logger.debug(
+                    f"Task {task_id} removed from persistent storage",
+                    component="scheduler",
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to remove persisted task {task_id}: {e}", component="scheduler")
+
+    async def restore_pending_jobs(self) -> int:
+        """
+        P1: Восстанавливает ожидающие задачи из persistent storage.
+
+        Вызывается при старте сервиса для восстановления задач после перезапуска.
+
+        Returns:
+            Количество восстановленных задач
+        """
+        try:
+            from app.storage.tarantool import TarantoolClient
+
+            client = await TarantoolClient.get_instance()
+            jobs_data = await client.get_persistent(SCHEDULER_JOBS_KEY) or {"jobs": {}}
+            jobs = jobs_data.get("jobs", {})
+
+            restored = 0
+            now = datetime.now()
+
+            for task_id, task_data in list(jobs.items()):
+                try:
+                    run_date_str = task_data.get("run_date")
+                    if not run_date_str:
+                        continue
+
+                    run_date = datetime.fromisoformat(run_date_str)
+
+                    # Пропускаем просроченные задачи
+                    if run_date < now:
+                        logger.warning(
+                            f"Skipping expired task {task_id} (was scheduled for {run_date})",
+                            component="scheduler",
+                        )
+                        await self._remove_persisted_task(task_id)
+                        continue
+
+                    # Для client_analysis задач - восстанавливаем
+                    func_name = task_data.get("func_name", "")
+                    metadata = task_data.get("metadata", {})
+
+                    if func_name == "_execute_analysis" and metadata:
+                        await self.schedule_client_analysis(
+                            client_name=metadata.get("client_name", "Unknown"),
+                            inn=metadata.get("inn", ""),
+                            additional_notes=metadata.get("additional_notes", ""),
+                            run_date=run_date,
+                            task_id=task_id,
+                        )
+                        restored += 1
+                        logger.info(f"Restored task {task_id}", component="scheduler")
+
+                except Exception as e:
+                    logger.error(f"Failed to restore task {task_id}: {e}", component="scheduler")
+
+            if restored > 0:
+                logger.info(
+                    f"Restored {restored} pending tasks from storage",
+                    component="scheduler",
+                )
+
+            return restored
+
+        except Exception as e:
+            logger.error(f"Failed to restore pending jobs: {e}", component="scheduler")
+            return 0
 
     @classmethod
     def get_instance(cls) -> "SchedulerService":
@@ -160,6 +286,9 @@ class SchedulerService:
             run_date=run_date.isoformat(),
             delay_seconds=(run_date - datetime.now()).total_seconds(),
         )
+
+        # P1: Сохраняем в persistent storage
+        asyncio.create_task(self._persist_task(task_id, self._tasks_metadata[task_id]))
 
         return task_id
 
@@ -272,6 +401,9 @@ class SchedulerService:
                     "completed_at": datetime.now(),
                 }
             )
+
+            # P1: Удаляем завершённую задачу из persistent storage
+            await self._remove_persisted_task(task_id)
 
     async def schedule_data_fetch(
         self,
@@ -422,7 +554,7 @@ class SchedulerService:
 
         return results
 
-    def cancel_task(self, task_id: str) -> bool:
+    async def cancel_task(self, task_id: str) -> bool:
         """
         Отменить запланированную задачу.
 
@@ -438,6 +570,9 @@ class SchedulerService:
             # Обновляем метаданные
             if task_id in self._tasks_metadata:
                 self._tasks_metadata[task_id]["status"] = "cancelled"
+
+            # P1: Удаляем из persistent storage
+            await self._remove_persisted_task(task_id)
 
             logger.info(f"Task cancelled: {task_id}", component="scheduler")
             return True
