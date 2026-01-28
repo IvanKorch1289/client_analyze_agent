@@ -25,15 +25,25 @@ async def dispatch_client_analysis(
     additional_notes: str = "",
     save_report: bool = True,
     session_id: Optional[str] = None,
+    correlation_id: Optional[str] = None,
     prefer_queue: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Выполнить анализ синхронно или поставить в очередь.
 
-    prefer_queue:
-      - None: автоматически (settings.queue.enabled)
-      - True: принудительно очередь (если доступна)
-      - False: принудительно in-process
+    Args:
+        client_name: Название компании
+        inn: ИНН компании
+        additional_notes: Дополнительные заметки
+        save_report: Сохранить отчёт
+        session_id: ID сессии для трекинга
+        correlation_id: ID корреляции для связи запрос-ответ при async взаимодействии.
+                       Особенно полезен при работе через RabbitMQ, когда вызывающая
+                       система должна сопоставить ответ с исходным запросом.
+        prefer_queue:
+          - None: автоматически (settings.queue.enabled)
+          - True: принудительно очередь (если доступна)
+          - False: принудительно in-process
     """
     use_queue = settings.queue.enabled if prefer_queue is None else bool(prefer_queue)
 
@@ -44,12 +54,14 @@ async def dispatch_client_analysis(
             additional_notes=additional_notes,
             save_report=save_report,
             session_id=session_id,
+            correlation_id=correlation_id,
         )
         return {
             "status": "accepted",
             "queued": True,
             "queue": settings.queue.analysis_queue,
             "session_id": session_id,
+            "correlation_id": correlation_id,
         }
 
     result = await execute_client_analysis(
@@ -58,6 +70,7 @@ async def dispatch_client_analysis(
         additional_notes=additional_notes,
         save_report=save_report,
         session_id=session_id,
+        correlation_id=correlation_id,
     )
     result["queued"] = False
     return result

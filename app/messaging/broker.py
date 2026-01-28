@@ -87,10 +87,14 @@ async def handle_client_analysis(msg: ClientAnalysisRequest) -> ClientAnalysisRe
 
     На вход принимает `ClientAnalysisRequest`, на выход возвращает `ClientAnalysisResult`.
 
+    Поддержка correlation_id:
+    - Входящий запрос может содержать correlation_id для отслеживания
+    - Ответ возвращает тот же correlation_id для связи запрос-ответ
+
     P1-1: При ошибке сообщение автоматически отправляется в DLQ.
     """
     logger.info(
-        f"Получено сообщение анализа: {msg.client_name} (ИНН: {msg.inn})",
+        f"Получено сообщение анализа: {msg.client_name} (ИНН: {msg.inn}), correlation_id={msg.correlation_id}",
         component="faststream",
     )
 
@@ -100,11 +104,13 @@ async def handle_client_analysis(msg: ClientAnalysisRequest) -> ClientAnalysisRe
         additional_notes=msg.additional_notes,
         save_report=msg.save_report,
         session_id=msg.session_id,
+        correlation_id=msg.correlation_id,
     )
 
     return ClientAnalysisResult(
         status=str(result.get("status", "unknown")),
         session_id=result.get("session_id"),
+        correlation_id=result.get("correlation_id"),
         summary=result.get("summary"),
         raw_result=result,
     )
@@ -247,9 +253,11 @@ async def handle_failed_analysis(msg: ClientAnalysisRequest) -> None:
     P1-1: Обработчик failed сообщений из analysis очереди.
 
     Логирует ошибку и сохраняет в persistent storage для анализа.
+    Включает correlation_id для отслеживания failed запросов.
     """
     logger.error(
-        f"Failed message in DLQ: {msg.client_name} (INN: {msg.inn}), session_id={msg.session_id}",
+        f"Failed message in DLQ: {msg.client_name} (INN: {msg.inn}), "
+        f"session_id={msg.session_id}, correlation_id={msg.correlation_id}",
         component="faststream_dlq",
     )
 

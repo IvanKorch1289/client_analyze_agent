@@ -16,6 +16,7 @@ class ClientAnalysisResult(BaseModel):
 
     status: str = Field(..., description="Статус выполнения (completed/failed/...)")
     session_id: Optional[str] = Field(default=None, description="ID сессии workflow")
+    correlation_id: Optional[str] = Field(default=None, description="ID корреляции для отслеживания запрос-ответ")
     summary: Optional[str] = Field(default=None, description="Короткое резюме")
     raw_result: Dict[str, Any] = Field(default_factory=dict, description="Полный результат workflow")
 
@@ -27,6 +28,7 @@ class ClientAnalysisRequest(BaseModel):
     inn: str = Field(default="", description="ИНН компании")
     additional_notes: str = Field(default="", description="Дополнительные заметки")
     session_id: Optional[str] = Field(default=None, description="ID сессии")
+    correlation_id: Optional[str] = Field(default=None, description="ID корреляции для отслеживания запрос-ответ")
     save_report: bool = Field(default=True, description="Сохранить отчёт")
 
 
