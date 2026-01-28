@@ -1208,26 +1208,565 @@ async def get_historical_context(inn: str) -> Optional[str]:
 
 ---
 
-## 8. Заключение
+## 8. Оценка API, шины событий и интеграционных возможностей
 
-### 8.1 Итоговая оценка
+### 8.1 Общая оценка интеграционного слоя
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║              ИНТЕГРАЦИОННЫЙ СЛОЙ ПРОЕКТА: 91%                     ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                   ║
+║  REST API (FastAPI)       ████████████████████░  95%  ✅ Отлично ║
+║  Message Broker           ████████████████████░  92%  ✅ Отлично ║
+║  MCP Server (IDE)         ████████████████████░  95%  ✅ Отлично ║
+║  Scheduler Service        █████████████████░░░░  85%  ⚠️ Хорошо  ║
+║  Export/Import            ████████████████████░  90%  ✅ Отлично ║
+║  Webhook Support          ████████████████░░░░░  80%  ⚠️ Хорошо  ║
+║                                                                   ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+---
+
+### 8.2 REST API (FastAPI)
+
+#### 8.2.1 Архитектура API
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     API ARCHITECTURE                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │                     FastAPI Router                           │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+│                              │                                    │
+│      ┌───────────┬───────────┼───────────┬───────────┐          │
+│      ▼           ▼           ▼           ▼           ▼          │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐        │
+│  │ /agent │ │/reports│ │ /data  │ │/utility│ │/schedu-│        │
+│  │        │ │        │ │        │ │        │ │  ler   │        │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘        │
+│       │          │          │          │          │             │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │   Middlewares: Auth | Rate Limit | CORS | Security Headers  │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+│       │          │          │          │          │             │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │            Pydantic Response Models (Typed)                  │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### 8.2.2 Оценка по критериям
+
+| Критерий | Оценка | Комментарий |
+|----------|--------|-------------|
+| **Удобство использования** | ⭐⭐⭐⭐⭐ | Swagger UI + ReDoc, логичные URL, понятные параметры |
+| **Читаемость кода** | ⭐⭐⭐⭐⭐ | Pydantic models, typing, docstrings |
+| **Лёгкость сопровождения** | ⭐⭐⭐⭐☆ | Хорошая структура, но много дублирования в роутах |
+| **Версионирование** | ⭐⭐⭐⭐⭐ | `/api/v1/` prefix, готовность к v2 |
+| **Документирование** | ⭐⭐⭐⭐⭐ | OpenAPI auto-gen + markdown docs |
+
+#### 8.2.3 Сильные стороны API
+
+1. **Типизированные Response Models**:
+   ```python
+   # app/api/routes/admin.py - хороший пример
+   class CacheStatsResponse(BaseModel):
+       status: Literal["success"]
+       stats: Dict[str, Any]
+       message: Optional[str] = None
+
+   @router.get("/cache/stats", response_model=CacheStatsResponse)
+   async def get_cache_stats(...) -> CacheStatsResponse:
+       return CacheStatsResponse(status="success", stats=stats)
+   ```
+
+2. **Защита административных эндпоинтов**:
+   ```python
+   # Dependency для проверки admin token
+   require_admin = Depends(verify_admin_token)
+
+   @router.post("/cache/clear", dependencies=[require_admin])
+   async def clear_cache(...):
+       ...
+   ```
+
+3. **Rate Limiting по группам**:
+   ```
+   /agent/analyze-client  → 5 req/min   (тяжёлые операции)
+   /data/*, /analytics/*  → 30 req/min  (средние операции)
+   /utility/*, /cache/*   → 60 req/min  (лёгкие операции)
+   Глобальный лимит       → 100 req/min, 2000/час
+   ```
+
+4. **SSE Streaming для длинных операций**:
+   ```python
+   @router.post("/agent/analyze-client")
+   async def analyze_client(..., stream: bool = False):
+       if stream:
+           return EventSourceResponse(progress_generator())
+   ```
+
+5. **Экспорт в множество форматов**:
+   - JSON (структурированные данные)
+   - CSV (табличные данные)
+   - Excel (openpyxl, форматированные отчёты)
+   - Word (python-docx, документы)
+   - PDF (fpdf2, финальные отчёты)
+
+#### 8.2.4 Области для улучшения API
+
+| # | Проблема | Текущее состояние | Рекомендация |
+|---|----------|-------------------|--------------|
+| 1 | Дублирование response models | Каждый роут свои модели | Централизовать в `schemas/responses.py` |
+| 2 | Отсутствие HATEOAS | Нет связей между ресурсами | Добавить `_links` в responses |
+| 3 | Нет GraphQL | Только REST | Рассмотреть для сложных запросов |
+| 4 | Нет bulk operations | По одному клиенту | Добавить batch analysis endpoint |
+
+---
+
+### 8.3 Message Broker (FastStream + RabbitMQ)
+
+#### 8.3.1 Архитектура очередей
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     MESSAGE BROKER ARCHITECTURE                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  PRODUCERS                    RABBITMQ                CONSUMERS   │
+│  ─────────                    ────────                ─────────   │
+│                                                                   │
+│  ┌──────────┐    ┌────────────────────────────────┐              │
+│  │ Scheduler│───▶│ analysis_queue (durable)       │───▶ Workers  │
+│  │ Service  │    │ • TTL: 1 hour                  │              │
+│  └──────────┘    │ • DLQ: dlq.analysis            │              │
+│                  └────────────────────────────────┘              │
+│                                                                   │
+│  ┌──────────┐    ┌────────────────────────────────┐              │
+│  │   API    │───▶│ cache_queue (durable)          │───▶ Cache    │
+│  │ Routes   │    │ • TTL: 1 hour                  │    Workers   │
+│  └──────────┘    │ • DLQ: dlq.cache               │              │
+│                  └────────────────────────────────┘              │
+│                                                                   │
+│  ┌──────────┐    ┌────────────────────────────────┐              │
+│  │  Agents  │───▶│ llm_queue (durable)            │───▶ LLM      │
+│  │          │    │ • TTL: 1 hour                  │    Workers   │
+│  └──────────┘    │ • DLQ: dlq.llm                 │              │
+│                  └────────────────────────────────┘              │
+│                                                                   │
+│                  ┌────────────────────────────────┐              │
+│                  │ Dead Letter Exchange (DLX)     │              │
+│                  │ • dlq.analysis                 │──▶ Monitoring│
+│                  │ • dlq.cache                    │              │
+│                  │ • dlq.llm                      │              │
+│                  └────────────────────────────────┘              │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### 8.3.2 Оценка по критериям
+
+| Критерий | Оценка | Комментарий |
+|----------|--------|-------------|
+| **Удобство использования** | ⭐⭐⭐⭐⭐ | FastStream обёртка, простой API |
+| **Читаемость кода** | ⭐⭐⭐⭐⭐ | Декораторы, type hints, Pydantic models |
+| **Лёгкость сопровождения** | ⭐⭐⭐⭐☆ | Хорошо, но DLQ handlers не реализованы |
+| **Надёжность** | ⭐⭐⭐⭐⭐ | Durable queues, DLQ, TTL |
+| **Масштабируемость** | ⭐⭐⭐⭐☆ | Horizontal scaling ready, но нет партиционирования |
+
+#### 8.3.3 Сильные стороны Message Broker
+
+1. **Pydantic модели для сообщений**:
+   ```python
+   # app/messaging/models.py
+   class ClientAnalysisMessage(BaseModel):
+       request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+       client_name: str
+       inn: Optional[str] = None
+       additional_notes: Optional[str] = None
+       callback_url: Optional[str] = None  # Webhook для результата
+
+   class AsyncLLMQueueMessage(BaseModel):
+       request_id: str
+       prompt: str
+       system_prompt: Optional[str] = None
+       provider: str = "openrouter"
+       callback_url: str
+       callback_headers: Optional[Dict[str, str]] = None
+   ```
+
+2. **Dead Letter Queue (DLQ) для отладки**:
+   ```python
+   # app/messaging/broker.py
+   _analysis_queue = RabbitQueue(
+       settings.queue.analysis_queue,
+       durable=True,
+       arguments={
+           "x-dead-letter-exchange": "dlx",
+           "x-dead-letter-routing-key": "dlq.analysis",
+           "x-message-ttl": 3600000,  # 1 hour TTL
+       },
+   )
+   ```
+
+3. **Graceful shutdown**:
+   ```python
+   async def close(self) -> None:
+       """Закрытие брокера с graceful shutdown."""
+       if self._broker:
+           await self._broker.close()
+   ```
+
+4. **Асинхронная публикация**:
+   ```python
+   async def publish_analysis_task(self, message: ClientAnalysisMessage):
+       await self._broker.publish(
+           message.model_dump_json(),
+           queue=self._analysis_queue
+       )
+   ```
+
+#### 8.3.4 Области для улучшения Message Broker
+
+| # | Проблема | Приоритет | Рекомендация |
+|---|----------|-----------|--------------|
+| 1 | DLQ handlers не реализованы | P1 | Добавить consumers для DLQ с алертами |
+| 2 | Нет retry с backoff | P2 | Добавить x-retry-count header |
+| 3 | Отсутствует message tracing | P2 | Добавить correlation_id propagation |
+| 4 | Нет приоритизации | P3 | Добавить priority queues для VIP клиентов |
+
+---
+
+### 8.4 MCP Server (Model Context Protocol)
+
+#### 8.4.1 Возможности интеграции с IDE
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     MCP SERVER CAPABILITIES                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  TOOLS (11 штук)           RESOURCES (5 штук)                    │
+│  ──────────────            ────────────────                       │
+│  • run_client_analysis     • openapi_spec                        │
+│  • queue_client_analysis   • asyncapi_spec                       │
+│  • get_report_by_id        • api_best_practices                  │
+│  • list_reports            • api_usage_examples                  │
+│  • search_reports          • quick_reference                     │
+│  • get_client_info                                               │
+│  • read_file               PROMPTS (6 штук)                      │
+│  • write_file              ────────────────                       │
+│  • list_directory          • system_orchestrator                 │
+│  • get_system_health       • system_data_collector               │
+│  • schedule_analysis       • system_report_analyzer              │
+│                            • system_file_writer                  │
+│                            • analyze_client_prompt               │
+│                            • risk_assessment_prompt              │
+│                                                                   │
+│  SECURITY                                                         │
+│  ────────                                                         │
+│  ✓ Path traversal protection                                     │
+│  ✓ Allowed directories whitelist                                 │
+│  ✓ Admin token validation                                        │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### 8.4.2 Оценка MCP Server
+
+| Критерий | Оценка | Комментарий |
+|----------|--------|-------------|
+| **Полнота API** | ⭐⭐⭐⭐⭐ | Все основные операции доступны |
+| **Безопасность** | ⭐⭐⭐⭐⭐ | Path traversal protection, whitelists |
+| **Документирование** | ⭐⭐⭐⭐⭐ | Каждый tool с описанием |
+| **Интеграция с IDE** | ⭐⭐⭐⭐⭐ | Cursor, VS Code, Claude Desktop |
+
+#### 8.4.3 Пример использования MCP
+
+```python
+# Запуск анализа через MCP (например, из Cursor IDE)
+@mcp.tool()
+async def run_client_analysis(
+    client_name: str,
+    inn: Optional[str] = None,
+    additional_notes: Optional[str] = None
+) -> str:
+    """
+    Запустить анализ клиента синхронно.
+
+    Args:
+        client_name: Название компании
+        inn: ИНН (10 или 12 цифр)
+        additional_notes: Дополнительные инструкции
+
+    Returns:
+        JSON с результатами анализа
+    """
+    # ... реализация
+```
+
+---
+
+### 8.5 Scheduler Service (APScheduler)
+
+#### 8.5.1 Архитектура планировщика
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     SCHEDULER SERVICE ARCHITECTURE                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │                  APScheduler (AsyncIOScheduler)              │ │
+│  │                                                               │ │
+│  │  Job Types:                                                   │ │
+│  │  • date     - однократное выполнение в указанное время       │ │
+│  │  • interval - периодическое выполнение                       │ │
+│  │  • cron     - расписание по cron-выражению                   │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+│                              │                                    │
+│              ┌───────────────┼───────────────┐                   │
+│              ▼               ▼               ▼                   │
+│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐        │
+│  │ Analysis Job  │  │ Data Fetch    │  │ Cleanup Job   │        │
+│  │               │  │ Job           │  │               │        │
+│  │ • client_name │  │ • inn         │  │ • retention   │        │
+│  │ • inn         │  │ • sources[]   │  │ • target      │        │
+│  │ • notes       │  │ • query       │  │               │        │
+│  └───────────────┘  └───────────────┘  └───────────────┘        │
+│         │                   │                   │                │
+│         │                   │                   │                │
+│         └─────────┬─────────┘                   │                │
+│                   ▼                             ▼                │
+│  ┌────────────────────────────┐   ┌────────────────────────────┐│
+│  │     Message Queue          │   │    Direct Execution        ││
+│  │  (для горизонтального      │   │  (для однократных задач)   ││
+│  │   масштабирования)         │   │                            ││
+│  └────────────────────────────┘   └────────────────────────────┘│
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### 8.5.2 Оценка по критериям
+
+| Критерий | Оценка | Комментарий |
+|----------|--------|-------------|
+| **Удобство использования** | ⭐⭐⭐⭐☆ | Хороший API, но нет UI для управления |
+| **Читаемость кода** | ⭐⭐⭐⭐⭐ | Чистый код, хорошая документация |
+| **Лёгкость сопровождения** | ⭐⭐⭐⭐☆ | In-memory job store не персистентный |
+| **Масштабируемость** | ⭐⭐⭐⭐☆ | Queue integration для horizontal scaling |
+| **Мониторинг** | ⭐⭐⭐☆☆ | Базовый, нет dashboard |
+
+#### 8.5.3 Сильные стороны Scheduler
+
+1. **Гибкое планирование**:
+   ```python
+   # Отложенный запуск через N минут
+   await scheduler.schedule_analysis(
+       client_name="ООО Ромашка",
+       inn="7707083893",
+       delay_minutes=30
+   )
+
+   # Запуск в конкретное время
+   await scheduler.schedule_analysis(
+       client_name="ООО Ромашка",
+       run_date=datetime(2026, 2, 1, 9, 0, 0)
+   )
+   ```
+
+2. **Метаданные задач**:
+   ```python
+   class ScheduledTaskInfo(BaseModel):
+       task_id: str
+       task_type: str
+       status: Literal["pending", "running", "completed", "failed"]
+       scheduled_time: datetime
+       client_name: Optional[str]
+       inn: Optional[str]
+       created_at: datetime
+   ```
+
+3. **Интеграция с очередями**:
+   ```python
+   async def _execute_analysis_via_queue(self, task_id: str, ...):
+       """Выполнение через очередь для горизонтального масштабирования."""
+       message = ClientAnalysisMessage(
+           client_name=client_name,
+           inn=inn,
+           callback_url=f"{settings.app.base_url}/api/v1/scheduler/callback/{task_id}"
+       )
+       await self._broker.publish_analysis_task(message)
+   ```
+
+4. **API для управления**:
+   - `POST /scheduler/schedule-analysis` — запланировать анализ
+   - `POST /scheduler/schedule-data-fetch` — запланировать сбор данных
+   - `GET /scheduler/tasks` — список задач
+   - `GET /scheduler/task/{id}` — статус задачи
+   - `DELETE /scheduler/task/{id}` — отмена задачи
+
+#### 8.5.4 Области для улучшения Scheduler
+
+| # | Проблема | Приоритет | Рекомендация |
+|---|----------|-----------|--------------|
+| 1 | In-memory job store | P1 | Перейти на Redis/PostgreSQL job store |
+| 2 | Нет UI для управления | P2 | Добавить tab в Streamlit UI |
+| 3 | Нет recurring jobs | P2 | Добавить поддержку cron expressions |
+| 4 | Отсутствует retry policy | P2 | Добавить retry с exponential backoff |
+| 5 | Нет job dependencies | P3 | Добавить DAG-like dependencies |
+
+---
+
+### 8.6 Интеграционные возможности
+
+#### 8.6.1 Матрица интеграций
+
+| Интеграция | Протокол | Статус | Качество |
+|------------|----------|--------|----------|
+| **REST API** | HTTP/JSON | ✅ Реализовано | ⭐⭐⭐⭐⭐ |
+| **OpenAPI** | Swagger 3.0 | ✅ Реализовано | ⭐⭐⭐⭐⭐ |
+| **AsyncAPI** | AsyncAPI 2.6 | ✅ Реализовано | ⭐⭐⭐⭐☆ |
+| **MCP** | Model Context Protocol | ✅ Реализовано | ⭐⭐⭐⭐⭐ |
+| **Webhooks** | HTTP callbacks | ⚠️ Частично | ⭐⭐⭐⭐☆ |
+| **SSE** | Server-Sent Events | ✅ Реализовано | ⭐⭐⭐⭐⭐ |
+| **RabbitMQ** | AMQP | ✅ Реализовано | ⭐⭐⭐⭐☆ |
+| **Prometheus** | HTTP scraping | ✅ Реализовано | ⭐⭐⭐⭐⭐ |
+
+#### 8.6.2 Сценарии интеграции
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    INTEGRATION SCENARIOS                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  СЦЕНАРИЙ 1: Web-приложение                                      │
+│  ─────────────────────────────                                   │
+│  Frontend → REST API → SSE (progress) → JSON result              │
+│                                                                   │
+│  СЦЕНАРИЙ 2: Backend-to-Backend                                  │
+│  ────────────────────────────────                                │
+│  External System → REST API → Webhook callback                   │
+│                                                                   │
+│  СЦЕНАРИЙ 3: IDE Integration                                     │
+│  ────────────────────────────                                    │
+│  Cursor/VS Code → MCP Server → Analysis result                   │
+│                                                                   │
+│  СЦЕНАРИЙ 4: Batch Processing                                    │
+│  ─────────────────────────────                                   │
+│  Scheduler → RabbitMQ Queue → Workers → Results to DB            │
+│                                                                   │
+│  СЦЕНАРИЙ 5: Monitoring                                          │
+│  ────────────────────────────                                    │
+│  Prometheus → /metrics endpoint → Grafana dashboards             │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### 8.6.3 Примеры интеграции
+
+**1. REST API с webhook callback:**
+```python
+# Внешняя система запрашивает анализ с callback
+POST /api/v1/agent/analyze-client
+{
+  "client_name": "ООО Ромашка",
+  "inn": "7707083893",
+  "callback_url": "https://your-system.com/webhook/analysis-result"
+}
+
+# Система отправляет результат на callback_url
+POST https://your-system.com/webhook/analysis-result
+{
+  "session_id": "analysis_abc123",
+  "status": "success",
+  "report": { ... }
+}
+```
+
+**2. Интеграция через MCP (IDE):**
+```
+User: Проанализируй компанию с ИНН 7707083893
+↓
+MCP Server → run_client_analysis(inn="7707083893")
+↓
+Result: JSON отчёт с риск-скором 45 (medium)
+```
+
+**3. Интеграция через очереди:**
+```python
+# Публикация задачи в очередь
+await broker.publish_analysis_task(
+    ClientAnalysisMessage(
+        client_name="ООО Ромашка",
+        callback_url="https://internal-api/results"
+    )
+)
+# Worker обрабатывает и отправляет результат на callback
+```
+
+---
+
+### 8.7 Рекомендации по улучшению интеграционного слоя
+
+#### 8.7.1 Добавить в Этап 2 (P1)
+
+| # | Задача | Компонент | Ожидаемый результат |
+|---|--------|-----------|---------------------|
+| 2.8 | Централизовать response models | API | Единый `schemas/responses.py` |
+| 2.9 | Реализовать DLQ handlers | Broker | Алерты на failed messages |
+| 2.10 | Персистентный job store | Scheduler | Redis/PostgreSQL store |
+
+#### 8.7.2 Добавить в Этап 3 (P2)
+
+| # | Задача | Компонент | Ожидаемый результат |
+|---|--------|-----------|---------------------|
+| 3.10 | Batch analysis endpoint | API | `POST /agent/analyze-batch` |
+| 3.11 | Scheduler UI | Frontend | Tab в Streamlit |
+| 3.12 | Message tracing | Broker | correlation_id в headers |
+| 3.13 | Recurring jobs | Scheduler | Cron expressions support |
+
+#### 8.7.3 Добавить в Этап 4 (Future)
+
+| # | Задача | Компонент | Ожидаемый результат |
+|---|--------|-----------|---------------------|
+| 4.5 | GraphQL endpoint | API | Гибкие запросы данных |
+| 4.6 | gRPC для internal | Microservices | Эффективная коммуникация |
+| 4.7 | Kafka вместо RabbitMQ | Broker | Event sourcing ready |
+
+---
+
+## 9. Заключение
+
+### 9.1 Итоговая оценка
 
 Проект «Система анализа контрагентов» демонстрирует **высокий уровень зрелости** (88% готовности к production) с продуманной архитектурой и хорошим покрытием документацией.
 
-### 8.2 Ключевые выводы
+**Дополнительно оценён интеграционный слой**: 91% готовности — REST API, Message Broker (RabbitMQ), MCP Server и Scheduler Service реализованы на высоком уровне.
+
+### 9.2 Ключевые выводы
 
 **Сильные стороны**:
 - Надёжная мультиагентная архитектура на LangGraph
 - Comprehensive защита PII с соответствием 152-ФЗ
 - Отказоустойчивость через circuit breakers и fallback chains
 - Качественная документация (ADR, API Reference, User Guide)
+- **Зрелый интеграционный слой** — REST API с OpenAPI, MCP для IDE, RabbitMQ очереди
+- **Гибкий планировщик задач** — APScheduler с поддержкой очередей
 
 **Области для улучшения**:
 - Критическая проблема с обработкой ошибок PII маскирования
 - Неэффективные запросы к Tarantool
 - Неполная русификация кодовой базы
+- In-memory job store в scheduler (не персистентный)
+- DLQ handlers не реализованы в message broker
 
-### 8.3 Итоговые рекомендации
+### 9.3 Итоговые рекомендации
 
 1. **Немедленно** (до production): Исправить P0 проблемы (Этап 1)
 2. **В течение месяца**: Завершить P1 улучшения (Этап 2)
@@ -1238,7 +1777,16 @@ async def get_historical_context(inn: str) -> Optional[str]:
 
 **Документ подготовлен**: Claude (Anthropic Opus 4.5)
 **Дата**: 28 января 2026 г.
-**Версия отчёта**: 1.2
+**Версия отчёта**: 1.3
+
+### Изменения в версии 1.3:
+- Добавлен раздел 8 «Оценка API, шины событий и интеграционных возможностей»
+- Детальный анализ REST API (FastAPI): структура, Pydantic models, rate limiting, SSE
+- Оценка Message Broker (FastStream + RabbitMQ): 3 очереди, DLQ, Pydantic messages
+- Анализ MCP Server: 11 tools, 5 resources, 6 prompts для IDE интеграции
+- Оценка Scheduler Service (APScheduler): архитектура, интеграция с очередями
+- Матрица интеграций: REST, OpenAPI, AsyncAPI, MCP, Webhooks, SSE, RabbitMQ
+- Обновлён план с задачами 2.8-2.10, 3.10-3.13, 4.5-4.7
 
 ### Изменения в версии 1.2:
 - Добавлен раздел 7.5 «Анализ потока данных: External API → LLM»
