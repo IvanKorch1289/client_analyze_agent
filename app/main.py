@@ -174,8 +174,21 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
     logger.info("Scheduler остановлен")
 
-    await TarantoolClient.close_global()
+    # H11: Порядок shutdown — сначала HTTP, потом publisher, потом хранилище.
+    # Это гарантирует, что in-flight запросы завершатся до закрытия хранилища.
     await AsyncHttpClient.close_global()
+
+    # Закрываем RabbitMQ publisher (H7)
+    try:
+        from app.messaging.publisher import get_rabbit_publisher
+
+        publisher = get_rabbit_publisher()
+        await publisher.close()
+        logger.info("RabbitMQ publisher закрыт")
+    except Exception as e:
+        logger.warning(f"Error closing RabbitMQ publisher: {e}")
+
+    await TarantoolClient.close_global()
     logger.info("Все соединения закрыты")
 
 

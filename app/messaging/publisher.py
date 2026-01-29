@@ -44,6 +44,15 @@ class RabbitPublisher:
             await self._broker.connect()
             self._connected = True
 
+    async def close(self) -> None:
+        """Закрывает соединение с RabbitMQ (вызывать при shutdown)."""
+        if self._connected:
+            try:
+                await self._broker.close()
+            except Exception:
+                pass
+            self._connected = False
+
     async def publish_client_analysis(
         self,
         *,

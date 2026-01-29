@@ -16,7 +16,12 @@ from app.utility.logging_client import logger
 
 
 class EmbeddingService:
-    """Singleton сервис для генерации text embeddings."""
+    """Singleton сервис для генерации text embeddings.
+
+    Примечание (H10): модель sentence-transformers выполняет CPU-bound inference,
+    поэтому используется threading.Lock (не asyncio.Lock) — это корректно для
+    синхронных вызовов через run_in_executor или из sync-контекста.
+    """
 
     _instance: Optional["EmbeddingService"] = None
     _lock = threading.Lock()
@@ -83,19 +88,24 @@ class EmbeddingService:
         embedding = self._model.encode(text, normalize_embeddings=True)
         return embedding.tolist()
 
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
+    def embed_texts(self, texts: List[str], batch_size: int = 64) -> List[List[float]]:
         """
         Batch генерация embeddings для нескольких текстов.
 
         Args:
             texts: Список текстов
+            batch_size: Максимальный размер батча (защита от OOM)
 
         Returns:
             Список векторов embedding
         """
         self._ensure_model()
-        embeddings = self._model.encode(texts, normalize_embeddings=True)
-        return [e.tolist() for e in embeddings]
+        all_embeddings: List[List[float]] = []
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            embeddings = self._model.encode(batch, normalize_embeddings=True)
+            all_embeddings.extend(e.tolist() for e in embeddings)
+        return all_embeddings
 
     def embed_report(self, report: Dict[str, Any]) -> List[float]:
         """

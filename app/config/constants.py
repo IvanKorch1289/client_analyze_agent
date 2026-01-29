@@ -236,8 +236,8 @@ INN_LENGTH_INDIVIDUAL: Final[int] = 12
 # Logging
 # =======================
 
-LOG_ROTATION_DAYS: Final[int] = 7
-"""Количество дней хранения логов перед ротацией"""
+LOG_ROTATION_DAYS: Final[int] = 30
+"""Количество дней хранения логов перед ротацией (30 дней для compliance)"""
 
 LOG_MAX_SIZE_MB: Final[int] = 100
 """Максимальный размер файла лога (MB)"""

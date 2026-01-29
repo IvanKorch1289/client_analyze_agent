@@ -9,6 +9,7 @@ Refactored to use modular components:
 
 import asyncio
 import hashlib
+import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -43,13 +44,16 @@ _executor = get_executor()
 MAX_MEMORY_CACHE_SIZE = 1000  # Maximum entries in main cache
 MAX_MEMORY_PERSISTENT_SIZE = 500  # Maximum entries in persistent cache
 
+# Thread-safe lock for in-memory caches (H8)
+_cache_lock = threading.Lock()
+
 # Use OrderedDict for LRU eviction
 _memory_cache: OrderedDict[str, tuple] = OrderedDict()
 _memory_persistent: OrderedDict[str, Any] = OrderedDict()
 
 
 def _evict_oldest_cache_entry() -> None:
-    """Evict oldest entry from memory cache if full."""
+    """Evict oldest entry from memory cache if full. Caller must hold _cache_lock."""
     if len(_memory_cache) >= MAX_MEMORY_CACHE_SIZE:
         oldest_key = next(iter(_memory_cache))
         del _memory_cache[oldest_key]
@@ -60,7 +64,7 @@ def _evict_oldest_cache_entry() -> None:
 
 
 def _evict_oldest_persistent_entry() -> None:
-    """Evict oldest entry from persistent cache if full."""
+    """Evict oldest entry from persistent cache if full. Caller must hold _cache_lock."""
     if len(_memory_persistent) >= MAX_MEMORY_PERSISTENT_SIZE:
         oldest_key = next(iter(_memory_persistent))
         del _memory_persistent[oldest_key]
@@ -139,6 +143,10 @@ class TarantoolClient:
         self._config = CacheConfig()
         self._metrics = CacheMetrics()
         self._search_cache: Dict[str, Tuple[Any, float]] = {}
+        # Reconnect state (H9)
+        self._reconnect_attempts: int = 0
+        self._max_reconnect_attempts: int = int(getattr(settings.tarantool, "reconnect_max_attempts", 5))
+        self._reconnect_delay: float = float(getattr(settings.tarantool, "reconnect_delay", 2.0))
         # Use modular compression handler
         self._compression = CompressionHandler(
             CompressionConfig(
@@ -184,14 +192,50 @@ class TarantoolClient:
             self._fallback_mode = True
             logger.info("Falling back to in-memory storage", component="tarantool")
         else:
+            self._reconnect_attempts = 0
             logger.info("Tarantool connected successfully", component="tarantool")
 
         self._connected = True
+
+    async def _reconnect(self) -> bool:
+        """Попытка переподключения к Tarantool (H9).
+
+        Returns:
+            True если переподключение успешно.
+        """
+        if self._reconnect_attempts >= self._max_reconnect_attempts:
+            return False
+
+        self._reconnect_attempts += 1
+        delay = self._reconnect_delay * self._reconnect_attempts
+        logger.info(
+            f"Tarantool reconnect attempt {self._reconnect_attempts}/{self._max_reconnect_attempts} "
+            f"(delay {delay:.1f}s)",
+            component="tarantool",
+        )
+        await asyncio.sleep(delay)
+
+        self._connection = None
+        self._connected = False
+        self._use_memory = False
+        self._fallback_mode = False
+        await self._connect()
+
+        if self._connection is not None:
+            logger.info("Tarantool reconnected successfully", component="tarantool")
+            return True
+        return False
 
     async def _ensure_connection(self):
         """Проверяет соединение, переподключается при необходимости"""
         if not self._connected:
             await self._connect()
+        # H9: Если в fallback-режиме — пробуем переподключиться
+        if self._use_memory and TARANTOOL_AVAILABLE and self._reconnect_attempts < self._max_reconnect_attempts:
+            reconnected = await self._reconnect()
+            if reconnected:
+                self._use_memory = False
+                self._fallback_mode = False
 
     async def _call(self, func_name: str, *args):
         """

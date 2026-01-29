@@ -22,9 +22,19 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 
+from slowapi.util import get_remote_address
+
+from app.api.rate_limit import create_limiter
+from app.config.constants import (
+    RATE_LIMIT_ADMIN_PER_MINUTE,
+    RATE_LIMIT_SEARCH_PER_MINUTE,
+)
 from app.utility.logging_client import logger
 
 rag_router = APIRouter(prefix="/rag", tags=["RAG"])
+
+# H14: Rate limiter для RAG endpoints
+limiter = create_limiter(get_remote_address)
 
 
 # =============================================================================
@@ -71,6 +81,7 @@ def _check_rag_enabled() -> None:
     response_model=IndexReportResponse,
     summary="Индексировать отчёт в RAG",
 )
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def index_report(request: Request, report_id: str):
     """
     Индексация отчёта в векторную БД (Chroma).
@@ -215,7 +226,8 @@ async def find_similar_reports(report_id: str, k: int = Query(default=5, ge=1, l
 
 
 @rag_router.post("/search", summary="Семантический поиск")
-async def semantic_search(req: SearchRequest):
+@limiter.limit(f"{RATE_LIMIT_SEARCH_PER_MINUTE}/minute")
+async def semantic_search(request: Request, req: SearchRequest):
     _check_rag_enabled()
 
     from app.services.chroma_service import get_chroma_service
@@ -240,7 +252,8 @@ async def semantic_search(req: SearchRequest):
 
 
 @rag_router.post("/documents/upload", summary="Загрузить файл в RAG")
-async def upload_document(file: UploadFile = File(...)):
+@limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
+async def upload_document(request: Request, file: UploadFile = File(...)):
     """
     Загрузка файла (PDF, DOCX, TXT, MD) в RAG.
 

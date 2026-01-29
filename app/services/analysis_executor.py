@@ -4,9 +4,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
 from typing import Any, Dict, Optional
 
 from app.utility.logging_client import logger
+
+# Максимальное время выполнения анализа (секунды). По умолчанию 10 минут.
+ANALYSIS_TIMEOUT_SECONDS = int(os.getenv("ANALYSIS_TIMEOUT_SECONDS", "600"))
 
 
 async def execute_client_analysis(
@@ -57,12 +62,27 @@ async def execute_client_analysis(
         correlation_id=correlation_id,
     )
 
-    result = await run_client_analysis_batch(
-        client_name=client_name,
-        inn=inn,
-        additional_notes=additional_notes,
-        session_id=session_id,
-    )
+    try:
+        result = await asyncio.wait_for(
+            run_client_analysis_batch(
+                client_name=client_name,
+                inn=inn,
+                additional_notes=additional_notes,
+                session_id=session_id,
+            ),
+            timeout=ANALYSIS_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.error(
+            f"Analysis timed out after {ANALYSIS_TIMEOUT_SECONDS}s for {client_name}",
+            component="analysis_executor",
+        )
+        result = {
+            "status": "error",
+            "error": f"Analysis timed out after {ANALYSIS_TIMEOUT_SECONDS}s",
+            "client_name": client_name,
+            "inn": inn,
+        }
 
     # Добавляем correlation_id в результат для отслеживания запрос-ответ
     if correlation_id:

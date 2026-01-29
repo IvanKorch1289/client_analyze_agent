@@ -28,7 +28,9 @@ LOGS_DIR = Path(_LOGS_DIR)
 LOGS_DIR.mkdir(exist_ok=True)
 
 app_logger = logging.getLogger("mcp-server")
-app_logger.setLevel(logging.DEBUG)
+# H13: Log level configurable via LOG_LEVEL env var; defaults to INFO in production
+_log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+app_logger.setLevel(getattr(logging, _log_level, logging.INFO))
 app_logger.handlers.clear()
 
 request_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("request_id", default=None)

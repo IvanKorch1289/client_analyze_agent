@@ -14,8 +14,11 @@ services:
       - TARANTOOL_PORT=3302
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
-      - RABBITMQ_USER=${RABBITMQ_USER:-admin}
-      - RABBITMQ_PASS=${RABBITMQ_PASS:-admin123}
+      - APP_ENV=${APP_ENV:-production}
+      - APP_CONFIG_PATH=${APP_CONFIG_PATH:-config/app.prod.yaml}
+      - WEB_WORKERS=${WEB_WORKERS:-4}
+      - RABBITMQ_USER=${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}
+      - RABBITMQ_PASS=${RABBITMQ_PASS:?RABBITMQ_PASS must be set in .env}
       - CHROMA_ENABLED=${CHROMA_ENABLED:-true}
       - CHROMA_MODE=client
       - CHROMA_HOST=chroma
@@ -66,8 +69,8 @@ services:
       - TARANTOOL_PORT=3302
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
-      - RABBITMQ_USER=${RABBITMQ_USER:-admin}
-      - RABBITMQ_PASS=${RABBITMQ_PASS:-admin123}
+      - RABBITMQ_USER=${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}
+      - RABBITMQ_PASS=${RABBITMQ_PASS:?RABBITMQ_PASS must be set in .env}
       - RABBITMQ_ENABLED=true
     env_file:
       - .env
@@ -95,6 +98,12 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/tmp/worker_heartbeat') else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   mcp:
     build:
@@ -138,6 +147,12 @@ services:
       options:
         max-size: "20m"
         max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   chroma:
     image: chromadb/chroma:0.6.3
@@ -213,8 +228,8 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-admin}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-admin123}
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:?RABBITMQ_PASS must be set in .env}
       - RABBITMQ_DEFAULT_VHOST=/
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
@@ -356,7 +371,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set in .env}
       - GF_SERVER_ROOT_URL=http://localhost:3000
       - GF_INSTALL_PLUGINS=redis-datasource
     volumes:

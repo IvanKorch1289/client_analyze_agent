@@ -7,11 +7,31 @@ FastStream worker (RabbitMQ listener).
 
 from __future__ import annotations
 
+import asyncio
+import pathlib
+
 from faststream import FastStream
 
 from app.messaging.broker import broker
 
 app = FastStream(broker)
+
+_HEARTBEAT_PATH = pathlib.Path("/tmp/worker_heartbeat")
+
+
+async def _heartbeat_loop() -> None:
+    """Периодически обновляет heartbeat-файл для Docker healthcheck."""
+    while True:
+        try:
+            _HEARTBEAT_PATH.touch()
+        except OSError:
+            pass
+        await asyncio.sleep(10)
+
+
+@app.on_startup
+async def _start_heartbeat() -> None:
+    asyncio.create_task(_heartbeat_loop())
 
 
 def main() -> None:
