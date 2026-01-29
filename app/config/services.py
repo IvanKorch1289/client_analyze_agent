@@ -233,6 +233,43 @@ class LogStorageSettings(BaseSettingsWithLoader):
     model_config = ConfigDict(env_prefix="LOG_")
 
 
+class ChromaSettings(BaseSettingsWithLoader):
+    """Настройки ChromaDB (векторная БД для RAG)."""
+
+    yaml_group = "chroma"
+    vault_path = "secret/data/app/chroma"
+
+    # Режим работы: "local" (встроенный) или "client" (удалённый сервер)
+    mode: str = Field(default="local", description="Режим: local или client")
+
+    # Удалённое подключение (mode=client)
+    host: str = Field(default="localhost", description="Хост Chroma сервера")
+    port: int = Field(default=8100, description="Порт Chroma сервера")
+
+    # Локальное хранилище (mode=local)
+    persist_dir: str = Field(default="./data/chroma", description="Директория для данных Chroma")
+
+    # Коллекции
+    reports_collection: str = Field(default="reports", description="Коллекция отчётов")
+    documents_collection: str = Field(default="documents", description="Коллекция загруженных файлов")
+
+    # Embedding модель
+    embedding_model: str = Field(
+        default="intfloat/multilingual-e5-base",
+        description="Модель для embeddings (sentence-transformers)",
+    )
+
+    # Ограничения
+    max_upload_size_mb: int = Field(default=10, description="Максимальный размер файла (MB)")
+    chunk_size: int = Field(default=800, description="Размер чанка текста (символов)")
+    chunk_overlap: int = Field(default=100, description="Перекрытие чанков (символов)")
+
+    # Общий переключатель
+    enabled: bool = Field(default=False, description="Включить RAG подсистему")
+
+    model_config = ConfigDict(env_prefix="CHROMA_")
+
+
 class GRPCSettings(BaseSettingsWithLoader):
     """Настройки gRPC сервера (опционально)."""
 
@@ -265,6 +302,7 @@ tasks_settings = TasksSettings.get_instance()
 fs_settings = FileStorageSettings.get_instance()
 log_settings = LogStorageSettings.get_instance()
 grpc_settings = GRPCSettings.get_instance()
+chroma_settings = ChromaSettings.get_instance()
 
 
 __all__ = [
@@ -276,6 +314,7 @@ __all__ = [
     "FileStorageSettings",
     "LogStorageSettings",
     "GRPCSettings",
+    "ChromaSettings",
     "redis_settings",
     "queue_settings",
     "celery_settings",
@@ -284,4 +323,5 @@ __all__ = [
     "fs_settings",
     "log_settings",
     "grpc_settings",
+    "chroma_settings",
 ]

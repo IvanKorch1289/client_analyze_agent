@@ -29,6 +29,7 @@ TAB_DEFS: List[TabDef] = [
     TabDef(key="data", label="Внешние данные", admin_only=False),
     TabDef(key="llm", label="Доступ к LLM", admin_only=False),
     TabDef(key="monitor", label="Мониторинг", admin_only=True),
+    TabDef(key="rag", label="RAG / База знаний", admin_only=True),
     TabDef(key="utilities", label="Утилиты", admin_only=True),
     TabDef(key="docs", label="Документация", admin_only=True),
 ]
@@ -89,6 +90,9 @@ def normalize_tab(tab: Optional[str]) -> Optional[str]:
         "monitor": "monitor",
         "monitoring": "monitor",
         "metrics": "monitor",
+        "rag": "rag",
+        "knowledge": "rag",
+        "vectors": "rag",
         "utilities": "utilities",
         "utils": "utilities",
         "admin": "utilities",

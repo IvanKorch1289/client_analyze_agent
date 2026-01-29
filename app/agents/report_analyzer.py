@@ -16,10 +16,19 @@ from typing import Any, Dict, List
 
 from app.services.llm_provider import llm_generate_json
 from app.mcp_server.prompts.system_prompts import AnalyzerRole, get_system_prompt
+from app.shared.pii_protection import mask_pii
 from app.shared.utils import safe_dict_get
 from app.shared.utils.formatters import truncate
 from app.schemas.report import ClientAnalysisReport
 from app.utility.logging_client import logger
+
+# RAG integration (optional, graceful degradation)
+try:
+    from app.agents.rag_context import RAGContextBuilder
+
+    _rag_available = True
+except ImportError:
+    _rag_available = False
 
 
 def generate_summary(search_results: List[Dict[str, Any]], client_name: str) -> str:
@@ -137,6 +146,23 @@ async def report_analyzer_agent(
     # Подготовка данных для LLM
     source_summary = _prepare_source_data_for_llm(source_data, search_results)
 
+    # RAG: обогащение контекста историческими данными
+    rag_context = ""
+    if _rag_available:
+        try:
+            rag_builder = RAGContextBuilder()
+            rag_context = await rag_builder.build_context(
+                client_name=client_name,
+                inn=inn,
+            )
+            if rag_context:
+                logger.info(
+                    f"Report Analyzer: RAG context added ({len(rag_context)} chars)",
+                    component="analyzer",
+                )
+        except Exception as e:
+            logger.warning(f"Report Analyzer: RAG context failed: {e}", component="analyzer")
+
     # Генерация отчёта через LLM
     additional_context = ""
     if additional_notes and additional_notes.strip():
@@ -148,6 +174,16 @@ async def report_analyzer_agent(
 ВАЖНО: Внимательно изучи дополнительные инструкции выше и обязательно учти их при анализе!
 """
 
+    rag_section = ""
+    if rag_context:
+        rag_section = f"""
+
+ИСТОРИЧЕСКИЙ КОНТЕКСТ (RAG):
+{rag_context}
+
+Учти исторический контекст при анализе, но приоритет отдавай актуальным данным.
+"""
+
     user_message = f"""Проанализируй данные о компании и создай отчёт.
 
 КОМПАНИЯ: {client_name}
@@ -155,7 +191,7 @@ async def report_analyzer_agent(
 
 ДАННЫЕ ИЗ ИСТОЧНИКОВ:
 {source_summary}
-{additional_context}
+{rag_section}{additional_context}
 Создай JSON отчёт с оценкой рисков по формату из системного промпта."""
 
     # Select prompt based on verbose_reasoning mode
@@ -244,6 +280,7 @@ async def report_analyzer_agent(
                 "llm_generated": True,
                 "verbose_reasoning": verbose_reasoning,
                 "has_reasoning_trace": reasoning_trace is not None,
+                "rag_enhanced": bool(rag_context),
             },
             "risk_assessment": risk_assessment,
             "summary": llm_report.get("summary", ""),
@@ -331,6 +368,25 @@ def generate_recommendations(risk: Dict[str, Any]) -> List[str]:
 # =============================================================================
 
 
+def _sanitize_tavily_content(content: str) -> str:
+    """
+    Маскирует PII в контенте Tavily перед передачей в LLM.
+
+    Tavily full_texts содержат неструктурированный текст веб-страниц,
+    который может включать персональные данные третьих лиц.
+
+    Args:
+        content: Сырой текст страницы
+
+    Returns:
+        Текст с замаскированными персональными данными
+    """
+    if not content:
+        return ""
+    result = mask_pii(content)
+    return result.masked_text
+
+
 def _prepare_source_data_for_llm(source_data: Dict[str, Any], search_results: List[Dict]) -> str:
     """
     P0 ENHANCED: Подготовка данных для LLM анализа с полными текстами страниц.
@@ -389,6 +445,7 @@ def _prepare_source_data_for_llm(source_data: Dict[str, Any], search_results: Li
             parts.append("")
 
     # P0: НОВОЕ - Полные тексты страниц из Tavily (критично для глубокого анализа)
+    # P1: PII маскирование перед передачей в LLM
     tavily_full_texts = source_data.get("tavily_full_texts", [])
     if tavily_full_texts:
         parts.append("=== ПОЛНЫЕ ТЕКСТЫ СТРАНИЦ (TOP-5 Tavily) ===")
@@ -396,15 +453,17 @@ def _prepare_source_data_for_llm(source_data: Dict[str, Any], search_results: Li
         parts.append("")
 
         for idx, page in enumerate(tavily_full_texts, 1):
-            if page.get("full_content"):
+            raw_content = page.get("full_content", "")
+            if raw_content:
+                # Маскируем PII в контенте перед передачей в LLM
+                sanitized_content = _sanitize_tavily_content(raw_content)
                 parts.append(f"--- Страница {idx}: {page.get('title', 'N/A')} ---")
                 parts.append(f"URL: {page.get('url', 'N/A')}")
-                parts.append(f"Текст ({page.get('char_count', 0)} символов):")
-                # Включаем полный текст (до 10k символов на страницу)
-                parts.append(page.get("full_content", ""))
+                parts.append(f"Текст ({len(sanitized_content)} символов):")
+                parts.append(sanitized_content)
                 parts.append("")
 
-        total_chars = sum(len(p.get("full_content", "")) for p in tavily_full_texts)
+        total_chars = sum(len(_sanitize_tavily_content(p.get("full_content", ""))) for p in tavily_full_texts)
         parts.append(f"ИТОГО: {len(tavily_full_texts)} страниц, {total_chars} символов полного текста")
         parts.append("")
 

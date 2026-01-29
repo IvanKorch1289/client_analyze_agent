@@ -4,9 +4,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
 from typing import Any, Dict, Optional
 
 from app.utility.logging_client import logger
+
+# Максимальное время выполнения анализа (секунды). По умолчанию 10 минут.
+ANALYSIS_TIMEOUT_SECONDS = int(os.getenv("ANALYSIS_TIMEOUT_SECONDS", "600"))
 
 
 async def execute_client_analysis(
@@ -16,14 +21,16 @@ async def execute_client_analysis(
     *,
     save_report: bool = True,
     session_id: Optional[str] = None,
+    correlation_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Запустить workflow анализа клиента и (опционально) сохранить отчёт в Tarantool.
 
-    Это “единый источник правды” для:
+    Это "единый источник правды" для:
     - APScheduler задач
     - FastStream worker (RabbitMQ listener)
     - MCP tools
+    - HTTP API routes
 
     Args:
         client_name: Название контрагента
@@ -31,9 +38,11 @@ async def execute_client_analysis(
         additional_notes: Доп. контекст
         save_report: Сохранять ли отчёт в `reports` space (best-effort)
         session_id: Явный session_id (если нужен внешний трекинг)
+        correlation_id: ID корреляции для связи запрос-ответ при async взаимодействии
 
     Returns:
         dict: Результат workflow (как возвращает `run_client_analysis_batch`)
+              Включает correlation_id в ответе, если он был передан
     """
     from app.agents.client_workflow import run_client_analysis_batch
     from app.storage.tarantool import TarantoolClient
@@ -50,14 +59,34 @@ async def execute_client_analysis(
         inn=inn,
         save_report=bool(save_report),
         session_id=session_id,
+        correlation_id=correlation_id,
     )
 
-    result = await run_client_analysis_batch(
-        client_name=client_name,
-        inn=inn,
-        additional_notes=additional_notes,
-        session_id=session_id,
-    )
+    try:
+        result = await asyncio.wait_for(
+            run_client_analysis_batch(
+                client_name=client_name,
+                inn=inn,
+                additional_notes=additional_notes,
+                session_id=session_id,
+            ),
+            timeout=ANALYSIS_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.error(
+            f"Analysis timed out after {ANALYSIS_TIMEOUT_SECONDS}s for {client_name}",
+            component="analysis_executor",
+        )
+        result = {
+            "status": "error",
+            "error": f"Analysis timed out after {ANALYSIS_TIMEOUT_SECONDS}s",
+            "client_name": client_name,
+            "inn": inn,
+        }
+
+    # Добавляем correlation_id в результат для отслеживания запрос-ответ
+    if correlation_id:
+        result["correlation_id"] = correlation_id
 
     if not save_report:
         logger.structured(
@@ -66,6 +95,7 @@ async def execute_client_analysis(
             component="analysis_executor",
             status=result.get("status"),
             session_id=result.get("session_id"),
+            correlation_id=correlation_id,
             saved_report=False,
         )
         return result
@@ -100,6 +130,7 @@ async def execute_client_analysis(
         component="analysis_executor",
         status=result.get("status"),
         session_id=result.get("session_id"),
+        correlation_id=correlation_id,
         saved_report=True,
     )
     return result

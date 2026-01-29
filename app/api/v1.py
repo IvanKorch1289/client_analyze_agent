@@ -11,11 +11,13 @@ from fastapi import FastAPI
 
 from app.api.error_handlers import install_error_handlers
 from app.api.routes.admin import admin_router
+from app.config.constants import APP_VERSION
 from app.api.routes.agent import agent_router
 from app.api.routes.analytics import analytics_router
 from app.api.routes.data import data_router
 from app.api.routes.export import export_router
 from app.api.routes.llm import llm_router
+from app.api.routes.rag import rag_router
 from app.api.routes.reports import reports_router
 from app.api.routes.scheduler import scheduler_router
 from app.api.routes.utility import utility_router
@@ -25,7 +27,7 @@ def create_v1_app() -> FastAPI:
     # NOTE: Business logic lives in routers; this is just composition.
     app = FastAPI(
         title="Multi-Agent Client Analysis System API",
-        version="1.0.0",
+        version=APP_VERSION,
         docs_url="/docs",
         redoc_url=None,
     )
@@ -50,6 +52,9 @@ def create_v1_app() -> FastAPI:
 
     # Admin endpoints (protected by ADMIN_TOKEN)
     app.include_router(admin_router)
+
+    # RAG (Retrieval Augmented Generation)
+    app.include_router(rag_router)
 
     return app
 

@@ -11,6 +11,7 @@ P1-1: Добавлена поддержка Dead Letter Queue (DLQ) для об�
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any, Dict
 
@@ -47,6 +48,8 @@ broker = get_rabbit_broker()
 # P1-1: Настройка очередей с DLQ поддержкой
 _dlx = RabbitExchange("dlx", type=ExchangeType.TOPIC, durable=True)
 
+_MAX_DELIVERY_ATTEMPTS = int(os.environ.get("MAX_DELIVERY_ATTEMPTS", "3"))
+
 _analysis_queue = RabbitQueue(
     settings.queue.analysis_queue,
     durable=True,
@@ -55,6 +58,7 @@ _analysis_queue = RabbitQueue(
         "x-dead-letter-exchange": "dlx",
         "x-dead-letter-routing-key": "dlq.analysis",
         "x-message-ttl": 3600000,  # 1 час TTL для сообщений
+        "x-delivery-limit": _MAX_DELIVERY_ATTEMPTS,
     },
 )
 
@@ -76,6 +80,7 @@ _llm_queue = RabbitQueue(
         "x-dead-letter-exchange": "dlx",
         "x-dead-letter-routing-key": "dlq.llm",
         "x-message-ttl": 300000,  # 5 min TTL
+        "x-delivery-limit": _MAX_DELIVERY_ATTEMPTS,
     },
 )
 
@@ -87,10 +92,14 @@ async def handle_client_analysis(msg: ClientAnalysisRequest) -> ClientAnalysisRe
 
     На вход принимает `ClientAnalysisRequest`, на выход возвращает `ClientAnalysisResult`.
 
+    Поддержка correlation_id:
+    - Входящий запрос может содержать correlation_id для отслеживания
+    - Ответ возвращает тот же correlation_id для связи запрос-ответ
+
     P1-1: При ошибке сообщение автоматически отправляется в DLQ.
     """
     logger.info(
-        f"Получено сообщение анализа: {msg.client_name} (ИНН: {msg.inn})",
+        f"Получено сообщение анализа: {msg.client_name} (ИНН: {msg.inn}), correlation_id={msg.correlation_id}",
         component="faststream",
     )
 
@@ -100,11 +109,13 @@ async def handle_client_analysis(msg: ClientAnalysisRequest) -> ClientAnalysisRe
         additional_notes=msg.additional_notes,
         save_report=msg.save_report,
         session_id=msg.session_id,
+        correlation_id=msg.correlation_id,
     )
 
     return ClientAnalysisResult(
         status=str(result.get("status", "unknown")),
         session_id=result.get("session_id"),
+        correlation_id=result.get("correlation_id"),
         summary=result.get("summary"),
         raw_result=result,
     )
@@ -247,9 +258,11 @@ async def handle_failed_analysis(msg: ClientAnalysisRequest) -> None:
     P1-1: Обработчик failed сообщений из analysis очереди.
 
     Логирует ошибку и сохраняет в persistent storage для анализа.
+    Включает correlation_id для отслеживания failed запросов.
     """
     logger.error(
-        f"Failed message in DLQ: {msg.client_name} (INN: {msg.inn}), session_id={msg.session_id}",
+        f"Failed message in DLQ: {msg.client_name} (INN: {msg.inn}), "
+        f"session_id={msg.session_id}, correlation_id={msg.correlation_id}",
         component="faststream_dlq",
     )
 
@@ -279,3 +292,64 @@ async def handle_failed_cache(msg: CacheInvalidateRequest) -> None:
         f"Failed cache invalidation in DLQ: prefix={msg.prefix}, invalidate_all={msg.invalidate_all}",
         component="faststream_dlq",
     )
+
+
+@broker.subscriber(RabbitQueue("dlq.llm", durable=True, routing_key="dlq.llm"), exchange=_dlx)
+async def handle_failed_llm(msg: AsyncLLMQueueMessage) -> None:
+    """
+    P1-1: Обработчик failed LLM сообщений.
+
+    При неуспешной обработке LLM запроса:
+    1. Логируем ошибку
+    2. Пытаемся отправить callback с информацией об ошибке
+    3. Сохраняем в persistent storage для анализа
+    """
+    import httpx
+
+    logger.error(
+        f"Failed LLM request in DLQ: request_id={msg.request_id}, provider={msg.provider}",
+        component="faststream_dlq",
+    )
+
+    # Пытаемся уведомить callback URL об ошибке
+    try:
+        callback_payload = {
+            "request_id": msg.request_id,
+            "status": "error",
+            "provider_used": msg.provider,
+            "error": "Message processing failed and moved to DLQ",
+            "request_metadata": msg.request_metadata,
+        }
+
+        headers = dict(msg.callback_headers) if msg.callback_headers else {}
+        headers["Content-Type"] = "application/json"
+
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                msg.callback_url,
+                json=callback_payload,
+                headers=headers,
+                timeout=10.0,
+            )
+        logger.info(f"DLQ error callback sent for {msg.request_id}", component="faststream_dlq")
+    except Exception as e:
+        logger.warning(f"Failed to send DLQ callback: {e}", component="faststream_dlq")
+
+    # Сохраняем в persistent storage
+    try:
+        from app.storage.tarantool import TarantoolClient
+
+        client = await TarantoolClient.get_instance()
+
+        await client.set_persistent(
+            key=f"dlq:llm:{msg.request_id}",
+            value={
+                "type": "failed_llm",
+                "request_id": msg.request_id,
+                "provider": msg.provider,
+                "callback_url": msg.callback_url,
+                "timestamp": time.time(),
+            },
+        )
+    except Exception as e:
+        logger.error(f"Failed to save LLM DLQ message: {e}", component="faststream_dlq")

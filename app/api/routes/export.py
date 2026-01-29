@@ -11,13 +11,16 @@ from datetime import datetime
 from io import BytesIO
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.api.rate_limit import limiter_for_client_ip
+from app.config.constants import RATE_LIMIT_EXPORT_PER_MINUTE
 from app.utility.logging_client import logger
 
 export_router = APIRouter(prefix="/export", tags=["export"])
+limiter = limiter_for_client_ip()
 
 
 # ============================================================================
@@ -44,7 +47,8 @@ class AnalysisSnapshot(BaseModel):
 
 
 @export_router.get("/{report_id}/excel")
-async def export_to_excel(report_id: str) -> StreamingResponse:
+@limiter.limit(f"{RATE_LIMIT_EXPORT_PER_MINUTE}/minute")
+async def export_to_excel(request: Request, report_id: str) -> StreamingResponse:
     """
     Export report to Excel format (.xlsx).
 
@@ -130,7 +134,8 @@ async def export_to_excel(report_id: str) -> StreamingResponse:
 
 
 @export_router.get("/{report_id}/word")
-async def export_to_word(report_id: str) -> StreamingResponse:
+@limiter.limit(f"{RATE_LIMIT_EXPORT_PER_MINUTE}/minute")
+async def export_to_word(request: Request, report_id: str) -> StreamingResponse:
     """
     Export report to Word format (.docx).
 
@@ -261,7 +266,9 @@ async def export_to_word(report_id: str) -> StreamingResponse:
 
 
 @export_router.get("/history/{inn}")
+@limiter.limit(f"{RATE_LIMIT_EXPORT_PER_MINUTE}/minute")
 async def get_analysis_timeline(
+    request: Request,
     inn: str,
     limit: int = Query(default=20, le=100, description="Maximum number of records"),
 ) -> List[AnalysisSnapshot]:

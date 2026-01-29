@@ -9,6 +9,7 @@ Refactored to use modular components:
 
 import asyncio
 import hashlib
+import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -43,13 +44,16 @@ _executor = get_executor()
 MAX_MEMORY_CACHE_SIZE = 1000  # Maximum entries in main cache
 MAX_MEMORY_PERSISTENT_SIZE = 500  # Maximum entries in persistent cache
 
+# Thread-safe lock for in-memory caches (H8)
+_cache_lock = threading.Lock()
+
 # Use OrderedDict for LRU eviction
 _memory_cache: OrderedDict[str, tuple] = OrderedDict()
 _memory_persistent: OrderedDict[str, Any] = OrderedDict()
 
 
 def _evict_oldest_cache_entry() -> None:
-    """Evict oldest entry from memory cache if full."""
+    """Evict oldest entry from memory cache if full. Caller must hold _cache_lock."""
     if len(_memory_cache) >= MAX_MEMORY_CACHE_SIZE:
         oldest_key = next(iter(_memory_cache))
         del _memory_cache[oldest_key]
@@ -60,7 +64,7 @@ def _evict_oldest_cache_entry() -> None:
 
 
 def _evict_oldest_persistent_entry() -> None:
-    """Evict oldest entry from persistent cache if full."""
+    """Evict oldest entry from persistent cache if full. Caller must hold _cache_lock."""
     if len(_memory_persistent) >= MAX_MEMORY_PERSISTENT_SIZE:
         oldest_key = next(iter(_memory_persistent))
         del _memory_persistent[oldest_key]
@@ -139,6 +143,10 @@ class TarantoolClient:
         self._config = CacheConfig()
         self._metrics = CacheMetrics()
         self._search_cache: Dict[str, Tuple[Any, float]] = {}
+        # Reconnect state (H9)
+        self._reconnect_attempts: int = 0
+        self._max_reconnect_attempts: int = int(getattr(settings.tarantool, "reconnect_max_attempts", 5))
+        self._reconnect_delay: float = float(getattr(settings.tarantool, "reconnect_delay", 2.0))
         # Use modular compression handler
         self._compression = CompressionHandler(
             CompressionConfig(
@@ -184,14 +192,50 @@ class TarantoolClient:
             self._fallback_mode = True
             logger.info("Falling back to in-memory storage", component="tarantool")
         else:
+            self._reconnect_attempts = 0
             logger.info("Tarantool connected successfully", component="tarantool")
 
         self._connected = True
+
+    async def _reconnect(self) -> bool:
+        """Попытка переподключения к Tarantool (H9).
+
+        Returns:
+            True если переподключение успешно.
+        """
+        if self._reconnect_attempts >= self._max_reconnect_attempts:
+            return False
+
+        self._reconnect_attempts += 1
+        delay = self._reconnect_delay * self._reconnect_attempts
+        logger.info(
+            f"Tarantool reconnect attempt {self._reconnect_attempts}/{self._max_reconnect_attempts} "
+            f"(delay {delay:.1f}s)",
+            component="tarantool",
+        )
+        await asyncio.sleep(delay)
+
+        self._connection = None
+        self._connected = False
+        self._use_memory = False
+        self._fallback_mode = False
+        await self._connect()
+
+        if self._connection is not None:
+            logger.info("Tarantool reconnected successfully", component="tarantool")
+            return True
+        return False
 
     async def _ensure_connection(self):
         """Проверяет соединение, переподключается при необходимости"""
         if not self._connected:
             await self._connect()
+        # H9: Если в fallback-режиме — пробуем переподключиться
+        if self._use_memory and TARANTOOL_AVAILABLE and self._reconnect_attempts < self._max_reconnect_attempts:
+            reconnected = await self._reconnect()
+            if reconnected:
+                self._use_memory = False
+                self._fallback_mode = False
 
     async def _call(self, func_name: str, *args):
         """
@@ -877,6 +921,84 @@ class TarantoolClient:
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(_executor, do_scan)
+
+    async def search_threads_by_field(
+        self,
+        field_name: str,
+        field_value: str,
+        limit: int = 50,
+        partial_match: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Поиск тредов по значению поля с ранней фильтрацией.
+
+        Оптимизация: фильтрация происходит во время итерации,
+        а не после загрузки всех данных в память.
+
+        Args:
+            field_name: Имя поля для поиска (inn, client_name, etc.)
+            field_value: Искомое значение
+            limit: Максимальное количество результатов
+            partial_match: True для частичного совпадения (contains)
+
+        Returns:
+            Список тредов, соответствующих критерию
+        """
+        await self._ensure_connection()
+        threads: List[Dict[str, Any]] = []
+
+        if self._use_memory:
+            for key, packed in _memory_persistent.items():
+                if len(threads) >= limit:
+                    break
+                if isinstance(key, str) and key.startswith("thread:"):
+                    try:
+                        value = msgpack.unpackb(packed, raw=False)
+                        if isinstance(value, dict):
+                            stored_value = value.get(field_name)
+                            if stored_value is not None:
+                                if partial_match:
+                                    if field_value.lower() in str(stored_value).lower():
+                                        threads.append(value)
+                                elif str(stored_value) == str(field_value):
+                                    threads.append(value)
+                    except Exception:
+                        continue
+            threads.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+            return threads
+
+        def do_search():
+            result_threads: List[Dict[str, Any]] = []
+            try:
+                rows = self._connection.select("persistent")
+                for row in rows:
+                    if len(result_threads) >= limit:
+                        break
+                    if len(row) >= 2 and isinstance(row[0], str) and row[0].startswith("thread:"):
+                        packed = row[1]
+                        if isinstance(packed, (bytes, bytearray)):
+                            try:
+                                value = msgpack.unpackb(packed, raw=False)
+                                if isinstance(value, dict):
+                                    stored_value = value.get(field_name)
+                                    if stored_value is not None:
+                                        if partial_match:
+                                            if field_value.lower() in str(stored_value).lower():
+                                                result_threads.append(value)
+                                        elif str(stored_value) == str(field_value):
+                                            result_threads.append(value)
+                            except Exception:
+                                continue
+            except Exception as e:
+                logger.error(
+                    f"Failed to search threads by {field_name}: {e}",
+                    component="tarantool",
+                )
+            result_threads.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+            return result_threads
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, do_search)
 
     async def invalidate_all_keys(self, confirm: bool = False):
         """Полная инвалидация всех ключей."""

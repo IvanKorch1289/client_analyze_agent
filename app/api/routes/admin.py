@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from app.config.constants import APP_VERSION
 from app.utility.auth import require_admin
 from app.utility.logging_client import logger
 
@@ -345,7 +346,7 @@ async def get_detailed_health() -> HealthDetailedResponse:
     return HealthDetailedResponse(
         status=overall_status,
         components=components,
-        version="1.0.0",  # TODO: read from package
+        version=APP_VERSION,
         uptime_seconds=int(time.time() - start_time),
     )
 
@@ -402,7 +403,6 @@ async def get_connection_pool_stats() -> Dict[str, Any]:
         - connections_count: активные соединения
         - max_connections: максимум параллельных
         - pool_utilization_pct: процент использования пула
-        - keepalive_expiry_seconds: время жизни keepalive соединений
         - http2_enabled: поддержка HTTP/2
     """
     try:
@@ -414,12 +414,11 @@ async def get_connection_pool_stats() -> Dict[str, Any]:
         return {
             "status": "success",
             "connection_pool": stats,
-            "optimization": "aggressive_pooling_enabled",
+            "optimization": "pooling_enabled",
             "notes": [
-                "Connection pool optimized for high throughput (Sprint 2)",
-                "max_connections increased from 50 to 100",
-                "max_keepalive increased from 20 to 50",
-                "keepalive_expiry set to 30s for long-running InfoSphere/Casebook requests",
+                "Connection pool optimized for high throughput",
+                "max_connections: 100",
+                "max_keepalive_connections: 50",
             ],
         }
 

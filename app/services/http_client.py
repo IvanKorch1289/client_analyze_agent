@@ -310,18 +310,16 @@ class AsyncHttpClient:
         ОПТИМИЗАЦИЯ ПРОИЗВОДИТЕЛЬНОСТИ (Sprint 2):
         - max_connections: 100 (было 50) - больше параллельных соединений
         - max_keepalive_connections: 50 (было 20) - больше reuse соединений
-        - keepalive_expiry: 30s - долгое переиспользование для InfoSphere/Casebook
 
         РЕЗУЛЬТАТ: 2x ускорение HTTP запросов за счет connection reuse
         """
         if self._client_initialized:
             return
 
-        # Aggressive connection pooling для высокой нагрузки
+        # Connection pooling для высокой нагрузки
+        # Примечание: keepalive_expiry удалён в httpx 0.28+, управляется через Limits
         transport = httpx.AsyncHTTPTransport(
             retries=0,
-            # Sprint 2: Connection pooling optimization
-            keepalive_expiry=30.0,  # Держим соединения 30 секунд для reuse
         )
 
         self._client = httpx.AsyncClient(
@@ -343,8 +341,7 @@ class AsyncHttpClient:
         self._client_initialized = True
 
         logger.info(
-            "HTTP client initialized with aggressive connection pooling "
-            "(max_connections=100, keepalive=50, keepalive_expiry=30s)",
+            "HTTP client initialized with connection pooling (max_connections=100, max_keepalive=50)",
             component="http_client",
         )
 
@@ -678,7 +675,6 @@ class AsyncHttpClient:
                         ((connections_count / max_connections * 100) if max_connections > 0 else 0),
                         1,
                     ),
-                    "keepalive_expiry_seconds": 30.0,  # Из нашей конфигурации
                     "http2_enabled": self._client._http2,
                     "pool_timeout": (
                         self._client._limits.pool_timeout if hasattr(self._client._limits, "pool_timeout") else None

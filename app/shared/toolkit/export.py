@@ -202,11 +202,12 @@ def format_bytes_size(size_bytes: int) -> str:
     Returns:
         Formatted string (e.g., "1.5 MB")
     """
+    size: float = float(size_bytes)
     for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} PB"
+        if size < 1024.0:
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} PB"
 
 
 __all__ = [

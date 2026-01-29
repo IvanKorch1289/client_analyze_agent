@@ -28,6 +28,7 @@ aiofiles = "^24.1.0"
 streamlit = "1.45.0"
 pydantic-settings = "^2.12.0"
 uvicorn = "^0.38.0"
+gunicorn = "^23.0.0"
 fpdf2 = "^2.8.1"
 rich = "^14.0.0"
 apscheduler = "^3.10.4"
@@ -62,6 +63,13 @@ psutil = "^6.1.1"                     # System metrics (CPU, memory)
 
 # Sprint 6: UI/UX Improvements
 plotly = "^6.1.0"                     # Risk score visualization
+
+# RAG (Retrieval Augmented Generation)
+chromadb = "^0.6.3"                   # Vector database
+sentence-transformers = "^3.4.1"      # Embeddings (multilingual-e5-base)
+pypdf2 = "^3.0.1"                    # PDF text extraction
+python-docx = "^1.1.2"               # DOCX text extraction
+python-multipart = "^0.0.20"         # File upload support
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.12.11"

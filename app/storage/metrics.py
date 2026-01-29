@@ -4,6 +4,7 @@ Cache metrics for Tarantool storage.
 Provides tracking for hits, misses, latency, and compression stats.
 """
 
+import threading
 from dataclasses import dataclass
 from typing import Any, Dict
 
@@ -180,15 +181,21 @@ class MetricsRegistry:
     Registry for managing multiple metric instances.
 
     Provides global access to cache and source metrics.
+    Thread-safe singleton via threading.Lock.
     """
 
     _instance: "MetricsRegistry" = None
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._cache_metrics = CacheMetrics()
-            cls._instance._source_metrics: Dict[str, SourceMetrics] = {}
+            with cls._lock:
+                if cls._instance is None:
+                    inst = super().__new__(cls)
+                    inst._cache_metrics = CacheMetrics()
+                    inst._source_metrics: Dict[str, SourceMetrics] = {}
+                    inst._registry_lock = threading.Lock()
+                    cls._instance = inst
         return cls._instance
 
     @property
@@ -198,22 +205,26 @@ class MetricsRegistry:
 
     def get_source(self, name: str) -> SourceMetrics:
         """Get or create metrics for a specific source."""
-        if name not in self._source_metrics:
-            self._source_metrics[name] = SourceMetrics(source_name=name)
-        return self._source_metrics[name]
+        with self._registry_lock:
+            if name not in self._source_metrics:
+                self._source_metrics[name] = SourceMetrics(source_name=name)
+            return self._source_metrics[name]
 
     def all_sources(self) -> Dict[str, SourceMetrics]:
         """Get all source metrics."""
-        return self._source_metrics.copy()
+        with self._registry_lock:
+            return self._source_metrics.copy()
 
     def to_dict(self) -> Dict[str, Any]:
         """Export all metrics as dictionary."""
-        return {
-            "cache": self._cache_metrics.to_dict(),
-            "sources": {name: m.to_dict() for name, m in self._source_metrics.items()},
-        }
+        with self._registry_lock:
+            return {
+                "cache": self._cache_metrics.to_dict(),
+                "sources": {name: m.to_dict() for name, m in self._source_metrics.items()},
+            }
 
     def reset_all(self) -> None:
         """Reset all metrics."""
-        self._cache_metrics.reset()
-        self._source_metrics.clear()
+        with self._registry_lock:
+            self._cache_metrics.reset()
+            self._source_metrics.clear()

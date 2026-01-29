@@ -28,7 +28,7 @@ from slowapi import Limiter
 
 from app.api.compat import fail_code, is_versioned_request
 from app.api.response import ok
-from app.config.constants import RATE_LIMIT_ADMIN_PER_MINUTE
+from app.config.constants import APP_VERSION, RATE_LIMIT_ADMIN_PER_MINUTE
 from app.config.reload import get_reload_state, reload_settings
 from app.config.settings import settings
 from app.schemas import (
@@ -965,7 +965,7 @@ async def get_asyncapi_spec(request: Request) -> Dict[str, Any]:
 
         from app.messaging.broker import broker
 
-        spec = AsyncAPI(broker, title="Client Analysis Messaging", version="1.0.0").to_specification()
+        spec = AsyncAPI(broker, title="Client Analysis Messaging", version=APP_VERSION).to_specification()
         return json.loads(spec.to_json())
     except Exception as e:
         if is_versioned_request(request):
@@ -985,7 +985,7 @@ async def get_asyncapi_html() -> HTMLResponse:
 
     from app.messaging.broker import broker
 
-    spec = AsyncAPI(broker, title="Client Analysis Messaging", version="1.0.0").to_specification()
+    spec = AsyncAPI(broker, title="Client Analysis Messaging", version=APP_VERSION).to_specification()
     html = _get_asyncapi_html(spec)
     return HTMLResponse(content=html)
 

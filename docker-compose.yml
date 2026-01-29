@@ -14,14 +14,23 @@ services:
       - TARANTOOL_PORT=3302
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
-      - RABBITMQ_USER=${RABBITMQ_USER:-admin}
-      - RABBITMQ_PASS=${RABBITMQ_PASS:-admin123}
+      - APP_ENV=${APP_ENV:-production}
+      - APP_CONFIG_PATH=${APP_CONFIG_PATH:-config/app.prod.yaml}
+      - WEB_WORKERS=${WEB_WORKERS:-4}
+      - RABBITMQ_USER=${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}
+      - RABBITMQ_PASS=${RABBITMQ_PASS:?RABBITMQ_PASS must be set in .env}
+      - CHROMA_ENABLED=${CHROMA_ENABLED:-true}
+      - CHROMA_MODE=client
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8100
     env_file:
       - .env
     depends_on:
       tarantool:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      chroma:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -60,8 +69,8 @@ services:
       - TARANTOOL_PORT=3302
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
-      - RABBITMQ_USER=${RABBITMQ_USER:-admin}
-      - RABBITMQ_PASS=${RABBITMQ_PASS:-admin123}
+      - RABBITMQ_USER=${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}
+      - RABBITMQ_PASS=${RABBITMQ_PASS:?RABBITMQ_PASS must be set in .env}
       - RABBITMQ_ENABLED=true
     env_file:
       - .env
@@ -89,6 +98,12 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/tmp/worker_heartbeat') else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   mcp:
     build:
@@ -132,6 +147,45 @@ services:
       options:
         max-size: "20m"
         max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  chroma:
+    image: chromadb/chroma:0.6.3
+    container_name: chroma-vectordb
+    ports:
+      - "8100:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - chroma_data:/chroma/chroma
+    restart: unless-stopped
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   tarantool:
     image: tarantool/tarantool:2.11
@@ -174,8 +228,8 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-admin}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-admin123}
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:?RABBITMQ_PASS must be set in .env}
       - RABBITMQ_DEFAULT_VHOST=/
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
@@ -248,7 +302,7 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=15d'
+      - '--storage.tsdb.retention.time=30d'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--web.enable-lifecycle'
@@ -317,7 +371,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set in .env}
       - GF_SERVER_ROOT_URL=http://localhost:3000
       - GF_INSTALL_PLUGINS=redis-datasource
     volumes:
@@ -350,6 +404,7 @@ services:
       retries: 3
 
 volumes:
+  chroma_data:
   tarantool_data:
   rabbitmq_data:
   prometheus_data:

@@ -44,6 +44,15 @@ class RabbitPublisher:
             await self._broker.connect()
             self._connected = True
 
+    async def close(self) -> None:
+        """Закрывает соединение с RabbitMQ (вызывать при shutdown)."""
+        if self._connected:
+            try:
+                await self._broker.close()
+            except Exception:
+                pass
+            self._connected = False
+
     async def publish_client_analysis(
         self,
         *,
@@ -51,14 +60,27 @@ class RabbitPublisher:
         inn: str = "",
         additional_notes: str = "",
         session_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
         save_report: bool = True,
     ) -> None:
+        """
+        Публикация запроса на анализ клиента в очередь.
+
+        Args:
+            client_name: Название компании
+            inn: ИНН компании
+            additional_notes: Дополнительные заметки
+            session_id: ID сессии для трекинга
+            correlation_id: ID корреляции для связи запрос-ответ при async взаимодействии
+            save_report: Сохранить отчёт в Tarantool
+        """
         await self._ensure_connected()
         msg = ClientAnalysisRequest(
             client_name=client_name,
             inn=inn,
             additional_notes=additional_notes,
             session_id=session_id,
+            correlation_id=correlation_id,
             save_report=save_report,
         )
         await self._broker.publish(msg, queue=settings.queue.analysis_queue)

@@ -53,6 +53,7 @@ from app.config.external_api import (
 from app.config.security import SecureSettings, secure_settings
 from app.config.services import (
     CelerySettings,
+    ChromaSettings,
     FileStorageSettings,
     GRPCSettings,
     LogStorageSettings,
@@ -61,6 +62,7 @@ from app.config.services import (
     RedisSettings,
     TasksSettings,
     celery_settings,
+    chroma_settings,
     fs_settings,
     grpc_settings,
     log_settings,
@@ -176,6 +178,11 @@ class Settings:
     def tasks(self) -> TasksSettings:
         return TasksSettings.get_instance()
 
+    # RAG / Vector DB
+    @property
+    def chroma(self) -> ChromaSettings:
+        return ChromaSettings.get_instance()
+
     # Storage/logging
     @property
     def storage(self) -> FileStorageSettings:
@@ -239,6 +246,7 @@ __all__ = [
     "FileStorageSettings",
     "LogStorageSettings",
     "GRPCSettings",
+    "ChromaSettings",
     "redis_settings",
     "queue_settings",
     "celery_settings",
@@ -247,4 +255,5 @@ __all__ = [
     "fs_settings",
     "log_settings",
     "grpc_settings",
+    "chroma_settings",
 ]

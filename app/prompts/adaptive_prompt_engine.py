@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from app.agents.llm_manager import LLMManager, LLMProvider
 from app.prompts.manager import PromptManager
+from app.shared.pii_protection import mask_pii
 from app.storage.feedback_repository import FeedbackRepository
 from app.utility.logging_client import logger
 
@@ -35,6 +36,24 @@ class AdaptivePromptEngine:
 
         # Кэш адаптированных промптов (session-level)
         self._adaptive_cache: Dict[str, str] = {}
+
+    def _sanitize_comments(self, comments: List[str]) -> List[str]:
+        """
+        Маскирует PII в комментариях пользователей перед передачей в LLM.
+
+        Args:
+            comments: Список комментариев пользователей
+
+        Returns:
+            Список комментариев с замаскированными персональными данными
+        """
+        sanitized = []
+        for comment in comments:
+            if not comment:
+                continue
+            result = mask_pii(comment)
+            sanitized.append(result.masked_text)
+        return sanitized
 
     @classmethod
     def get_instance(cls) -> "AdaptivePromptEngine":
@@ -171,6 +190,10 @@ class AdaptivePromptEngine:
         feedbacks: List[Dict[str, Any]],
     ) -> str:
         """Построить мета-промпт для LLM анализа фидбеков."""
+        # Маскируем PII в комментариях перед передачей в LLM
+        raw_comments = patterns.get("sample_comments", [])[:3]
+        sanitized_comments = self._sanitize_comments(raw_comments)
+
         meta_prompt = f"""Ты - эксперт по улучшению промптов для AI агентов.
 
 КОНТЕКСТ: Агент "{template_name}" получил следующие фидбеки от пользователей:
@@ -181,7 +204,7 @@ class AdaptivePromptEngine:
 - Области, требующие внимания: {patterns.get("focus_areas_frequency", {})}
 
 ПОСЛЕДНИЕ КОММЕНТАРИИ ПОЛЬЗОВАТЕЛЕЙ:
-{chr(10).join(f'- "{comment}"' for comment in patterns.get("sample_comments", [])[:3])}
+{chr(10).join(f'- "{comment}"' for comment in sanitized_comments)}
 
 ЗАДАЧА: Проанализируй эти фидбеки и сгенерируй КОНКРЕТНЫЕ, ДЕЙСТВЕННЫЕ инструкции
 для промпта агента "{template_name}", чтобы предотвратить повторение этих ошибок.
@@ -212,8 +235,10 @@ class AdaptivePromptEngine:
 
         sample_comments = patterns.get("sample_comments", [])
         if sample_comments:
+            # Маскируем PII в комментариях
+            sanitized = self._sanitize_comments(sample_comments[:2])
             instructions.append("УЧИТЫВАЙ ПРЕДЫДУЩИЕ ЗАМЕЧАНИЯ:")
-            for comment in sample_comments[:2]:
+            for comment in sanitized:
                 instructions.append(f'- "{comment[:100]}..."')
             instructions.append("")
 
