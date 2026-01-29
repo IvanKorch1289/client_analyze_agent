@@ -22,6 +22,14 @@ from app.shared.utils.formatters import truncate
 from app.schemas.report import ClientAnalysisReport
 from app.utility.logging_client import logger
 
+# RAG integration (optional, graceful degradation)
+try:
+    from app.agents.rag_context import RAGContextBuilder
+
+    _rag_available = True
+except ImportError:
+    _rag_available = False
+
 
 def generate_summary(search_results: List[Dict[str, Any]], client_name: str) -> str:
     """Генерирует текстовое резюме на основе результатов поиска."""
@@ -138,6 +146,23 @@ async def report_analyzer_agent(
     # Подготовка данных для LLM
     source_summary = _prepare_source_data_for_llm(source_data, search_results)
 
+    # RAG: обогащение контекста историческими данными
+    rag_context = ""
+    if _rag_available:
+        try:
+            rag_builder = RAGContextBuilder()
+            rag_context = await rag_builder.build_context(
+                client_name=client_name,
+                inn=inn,
+            )
+            if rag_context:
+                logger.info(
+                    f"Report Analyzer: RAG context added ({len(rag_context)} chars)",
+                    component="analyzer",
+                )
+        except Exception as e:
+            logger.warning(f"Report Analyzer: RAG context failed: {e}", component="analyzer")
+
     # Генерация отчёта через LLM
     additional_context = ""
     if additional_notes and additional_notes.strip():
@@ -149,6 +174,16 @@ async def report_analyzer_agent(
 ВАЖНО: Внимательно изучи дополнительные инструкции выше и обязательно учти их при анализе!
 """
 
+    rag_section = ""
+    if rag_context:
+        rag_section = f"""
+
+ИСТОРИЧЕСКИЙ КОНТЕКСТ (RAG):
+{rag_context}
+
+Учти исторический контекст при анализе, но приоритет отдавай актуальным данным.
+"""
+
     user_message = f"""Проанализируй данные о компании и создай отчёт.
 
 КОМПАНИЯ: {client_name}
@@ -156,7 +191,7 @@ async def report_analyzer_agent(
 
 ДАННЫЕ ИЗ ИСТОЧНИКОВ:
 {source_summary}
-{additional_context}
+{rag_section}{additional_context}
 Создай JSON отчёт с оценкой рисков по формату из системного промпта."""
 
     # Select prompt based on verbose_reasoning mode
@@ -245,6 +280,7 @@ async def report_analyzer_agent(
                 "llm_generated": True,
                 "verbose_reasoning": verbose_reasoning,
                 "has_reasoning_trace": reasoning_trace is not None,
+                "rag_enhanced": bool(rag_context),
             },
             "risk_assessment": risk_assessment,
             "summary": llm_report.get("summary", ""),

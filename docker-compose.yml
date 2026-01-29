@@ -16,12 +16,18 @@ services:
       - RABBITMQ_PORT=5672
       - RABBITMQ_USER=${RABBITMQ_USER:-admin}
       - RABBITMQ_PASS=${RABBITMQ_PASS:-admin123}
+      - CHROMA_ENABLED=${CHROMA_ENABLED:-true}
+      - CHROMA_MODE=client
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8100
     env_file:
       - .env
     depends_on:
       tarantool:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      chroma:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -132,6 +138,39 @@ services:
       options:
         max-size: "20m"
         max-file: "3"
+
+  chroma:
+    image: chromadb/chroma:0.6.3
+    container_name: chroma-vectordb
+    ports:
+      - "8100:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - chroma_data:/chroma/chroma
+    restart: unless-stopped
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   tarantool:
     image: tarantool/tarantool:2.11
@@ -350,6 +389,7 @@ services:
       retries: 3
 
 volumes:
+  chroma_data:
   tarantool_data:
   rabbitmq_data:
   prometheus_data:

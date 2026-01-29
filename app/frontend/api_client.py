@@ -142,6 +142,43 @@ class ApiClient:
     ) -> Any:
         return self._request("DELETE", path, params=params, admin_token=admin_token)
 
+    def upload_file(
+        self,
+        path: str,
+        files: dict,
+        *,
+        admin_token: Optional[str] = None,
+    ) -> Any:
+        """Upload a file via multipart/form-data."""
+        url = self.url(path)
+        headers = self._headers(admin_token=admin_token)
+        # Remove Accept: application/json for multipart — let requests set Content-Type
+        headers.pop("Accept", None)
+        try:
+            resp = requests.post(
+                url=url,
+                files=files,
+                headers=headers,
+                timeout=self.timeout_seconds,
+            )
+        except requests.exceptions.Timeout:
+            st.error(f"Таймаут загрузки: POST {url}")
+            return None
+        except Exception as e:
+            st.error(f"Ошибка загрузки: {e}")
+            return None
+
+        if 200 <= resp.status_code < 300:
+            try:
+                return resp.json()
+            except Exception:
+                return resp.text
+
+        details = _safe_json(resp)
+        st.error(f"Ошибка загрузки: HTTP {resp.status_code}")
+        st.caption(details)
+        return None
+
 
 def get_api_client() -> ApiClient:
     base_url = _normalize_base_url(os.getenv("API_BASE_URL", ""))

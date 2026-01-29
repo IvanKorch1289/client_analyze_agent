@@ -31,6 +31,7 @@ from app.frontend.tabs import data as tab_data
 from app.frontend.tabs import docs as tab_docs
 from app.frontend.tabs import llm as tab_llm
 from app.frontend.tabs import monitor as tab_monitor
+from app.frontend.tabs import rag as tab_rag
 from app.frontend.tabs import utilities as tab_utilities
 
 
@@ -197,6 +198,8 @@ def main() -> None:
         tab_monitor.render(api, admin_token=st.session_state.get("admin_token", ""))
     elif tab == "utilities":
         tab_utilities.render(api, admin_token=st.session_state.get("admin_token", ""))
+    elif tab == "rag":
+        tab_rag.render(api, admin_token=st.session_state.get("admin_token", ""))
     elif tab == "docs":
         tab_docs.render(api)
     else:

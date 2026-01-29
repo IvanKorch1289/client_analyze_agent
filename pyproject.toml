@@ -63,6 +63,13 @@ psutil = "^6.1.1"                     # System metrics (CPU, memory)
 # Sprint 6: UI/UX Improvements
 plotly = "^6.1.0"                     # Risk score visualization
 
+# RAG (Retrieval Augmented Generation)
+chromadb = "^0.6.3"                   # Vector database
+sentence-transformers = "^3.4.1"      # Embeddings (multilingual-e5-base)
+pypdf2 = "^3.0.1"                    # PDF text extraction
+python-docx = "^1.1.2"               # DOCX text extraction
+python-multipart = "^0.0.20"         # File upload support
+
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.12.11"
 pyright = "^1.1.404"
