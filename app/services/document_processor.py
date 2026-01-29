@@ -153,21 +153,40 @@ def validate_upload(filename: str, file_size: int, max_size_mb: int = 10) -> Non
 # =============================================================================
 
 
+_MAX_PDF_PAGES = 500
+_MAX_PDF_CHARS = 5_000_000  # 5 MB of text
+
+
 def _parse_pdf(content: bytes) -> str:
-    """Извлекает текст из PDF."""
+    """Извлекает текст из PDF с ограничением по страницам и объёму."""
     try:
         from PyPDF2 import PdfReader
 
         reader = PdfReader(io.BytesIO(content))
+
+        if len(reader.pages) > _MAX_PDF_PAGES:
+            logger.warning(
+                f"PDF has {len(reader.pages)} pages, truncating to {_MAX_PDF_PAGES}",
+                component="rag",
+            )
+
         pages = []
-        for page in reader.pages:
+        total_chars = 0
+        for idx, page in enumerate(reader.pages):
+            if idx >= _MAX_PDF_PAGES:
+                break
             text = page.extract_text()
             if text:
+                if total_chars + len(text) > _MAX_PDF_CHARS:
+                    pages.append(text[: _MAX_PDF_CHARS - total_chars])
+                    total_chars = _MAX_PDF_CHARS
+                    break
                 pages.append(text)
+                total_chars += len(text)
 
         result = "\n\n".join(pages)
         logger.debug(
-            f"PDF parsed: {len(reader.pages)} pages, {len(result)} chars",
+            f"PDF parsed: {min(len(reader.pages), _MAX_PDF_PAGES)}/{len(reader.pages)} pages, {len(result)} chars",
             component="rag",
         )
         return result

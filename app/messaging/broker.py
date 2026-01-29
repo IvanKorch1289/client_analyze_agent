@@ -11,6 +11,7 @@ P1-1: Добавлена поддержка Dead Letter Queue (DLQ) для об�
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any, Dict
 
@@ -47,6 +48,8 @@ broker = get_rabbit_broker()
 # P1-1: Настройка очередей с DLQ поддержкой
 _dlx = RabbitExchange("dlx", type=ExchangeType.TOPIC, durable=True)
 
+_MAX_DELIVERY_ATTEMPTS = int(os.environ.get("MAX_DELIVERY_ATTEMPTS", "3"))
+
 _analysis_queue = RabbitQueue(
     settings.queue.analysis_queue,
     durable=True,
@@ -55,6 +58,7 @@ _analysis_queue = RabbitQueue(
         "x-dead-letter-exchange": "dlx",
         "x-dead-letter-routing-key": "dlq.analysis",
         "x-message-ttl": 3600000,  # 1 час TTL для сообщений
+        "x-delivery-limit": _MAX_DELIVERY_ATTEMPTS,
     },
 )
 
@@ -76,6 +80,7 @@ _llm_queue = RabbitQueue(
         "x-dead-letter-exchange": "dlx",
         "x-dead-letter-routing-key": "dlq.llm",
         "x-message-ttl": 300000,  # 5 min TTL
+        "x-delivery-limit": _MAX_DELIVERY_ATTEMPTS,
     },
 )
 

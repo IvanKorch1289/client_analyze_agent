@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import re
 import time
 import uuid
@@ -169,10 +170,14 @@ async def prompt_agent(request: Request, data: PromptRequest) -> Dict[str, Any]:
     }
 
 
+_STREAM_MAX_DURATION_S = int(os.environ.get("STREAM_MAX_DURATION_S", "900"))  # 15 min
+_STREAM_KEEPALIVE_S = 15  # send keepalive comment every 15s
+
+
 async def _stream_client_analysis(client_name: str, inn: str, additional_notes: str) -> AsyncGenerator[str, None]:
-    """Генератор SSE событий для streaming анализа."""
-    # P2: UUID для уникальности session_id (предотвращение коллизий при параллельных запусках)
+    """Генератор SSE событий для streaming анализа с keepalive и таймаутом."""
     session_id = f"analysis_{uuid.uuid4().hex[:12]}_{int(time.time())}"
+    stream_start = time.monotonic()
 
     def format_sse(event: str, data: Dict[str, Any]) -> str:
         return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
@@ -183,14 +188,13 @@ async def _stream_client_analysis(client_name: str, inn: str, additional_notes: 
             "session_id": session_id,
             "client_name": client_name,
             "message": "Начинаем анализ клиента...",
-            "cancellable": True,  # P2: Сообщаем клиенту, что анализ можно отменить
+            "cancellable": True,
         },
     )
 
     generator = None
     current_task = asyncio.current_task()
 
-    # P2: Регистрируем текущую задачу для возможности отмены
     if current_task:
         _register_task(session_id, current_task)
 
@@ -202,10 +206,30 @@ async def _stream_client_analysis(client_name: str, inn: str, additional_notes: 
             session_id=session_id,
             stream=True,
         )
-        async for event in generator:
-            yield format_sse(event["type"], event["data"])
+        aiter = generator.__aiter__()
+        timed_out = False
 
-        yield format_sse("complete", {"session_id": session_id, "status": "completed"})
+        while True:
+            if time.monotonic() - stream_start > _STREAM_MAX_DURATION_S:
+                yield format_sse(
+                    "error",
+                    {
+                        "error": "Stream duration limit exceeded",
+                        "session_id": session_id,
+                    },
+                )
+                timed_out = True
+                break
+            try:
+                event = await asyncio.wait_for(aiter.__anext__(), timeout=_STREAM_KEEPALIVE_S)
+                yield format_sse(event["type"], event["data"])
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+            except StopAsyncIteration:
+                break
+
+        if not timed_out:
+            yield format_sse("complete", {"session_id": session_id, "status": "completed"})
 
     except asyncio.CancelledError:
         logger.info(f"Analysis cancelled via API: {session_id}", component="agent_api")
@@ -216,7 +240,6 @@ async def _stream_client_analysis(client_name: str, inn: str, additional_notes: 
         logger.error(f"Streaming error: {e}", exc_info=True)
         yield format_sse("error", {"error": str(e), "session_id": session_id})
     finally:
-        # P2: Удаляем задачу из реестра при завершении
         _unregister_task(session_id)
         if generator:
             try:

@@ -5,11 +5,13 @@ Goals:
 - consistent error response shape
 - include request_id for correlation
 - avoid leaking internal exception details on 500
+- sanitize validation errors (strip raw input values in production)
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+import os
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -17,6 +19,8 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
 from app.utility.logging_client import get_request_id, logger, set_request_id
+
+_IS_PRODUCTION = os.getenv("APP_ENV", "dev").lower() in ("production", "prod")
 
 
 def _ensure_request_id() -> str:
@@ -83,13 +87,16 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         rid = _ensure_request_id()
+        errors = exc.errors()
+        if _IS_PRODUCTION:
+            errors = _sanitize_validation_errors(errors)
         return JSONResponse(
             status_code=422,
             content=_error_payload(
                 code="validation_error",
                 message="Validation error",
                 request_id=rid,
-                details=exc.errors(),
+                details=errors,
             ),
             headers={"X-Request-ID": rid},
         )
@@ -128,3 +135,16 @@ def install_error_handlers(app: FastAPI) -> None:
             ),
             headers={"X-Request-ID": rid},
         )
+
+
+def _sanitize_validation_errors(errors: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Strip raw input values and internal context from validation errors in production."""
+    sanitized = []
+    for err in errors:
+        clean = {
+            "type": err.get("type", ""),
+            "loc": err.get("loc", []),
+            "msg": err.get("msg", ""),
+        }
+        sanitized.append(clean)
+    return sanitized

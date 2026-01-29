@@ -24,9 +24,12 @@ Scheduler Service - управление отложенными задачами
 """
 
 import asyncio
+import fcntl
+import os
 import time
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -36,6 +39,9 @@ from app.utility.logging_client import logger
 
 # Ключ для хранения задач в Tarantool
 SCHEDULER_JOBS_KEY = "scheduler:pending_jobs"
+
+# Distributed lock: only one gunicorn worker should run the scheduler.
+_SCHEDULER_LOCK_PATH = Path(os.environ.get("SCHEDULER_LOCK_PATH", "/tmp/scheduler.lock"))
 
 
 class SchedulerService:
@@ -200,18 +206,43 @@ class SchedulerService:
             cls._instance = SchedulerService()
         return cls._instance
 
+    def _acquire_leader_lock(self) -> bool:
+        """Try to acquire a file-based leader lock (prevents duplicate schedulers in multi-worker setup)."""
+        try:
+            self._lock_fd = open(_SCHEDULER_LOCK_PATH, "w")
+            fcntl.flock(self._lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self._lock_fd.write(str(os.getpid()))
+            self._lock_fd.flush()
+            return True
+        except (IOError, OSError):
+            logger.info("Scheduler lock held by another worker, skipping", component="scheduler")
+            return False
+
+    def _release_leader_lock(self) -> None:
+        """Release the file-based leader lock."""
+        fd = getattr(self, "_lock_fd", None)
+        if fd:
+            try:
+                fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+                fd.close()
+            except Exception:
+                pass
+
     def start(self):
-        """Запустить scheduler."""
+        """Запустить scheduler (only if this worker acquires the leader lock)."""
         if not self._started:
+            if not self._acquire_leader_lock():
+                return
             self.scheduler.start()
             self._started = True
-            logger.info("Scheduler started", component="scheduler")
+            logger.info("Scheduler started (leader worker)", component="scheduler")
 
     def shutdown(self):
-        """Остановить scheduler."""
+        """Остановить scheduler и освободить leader lock."""
         if self._started:
             self.scheduler.shutdown(wait=True)
             self._started = False
+            self._release_leader_lock()
             logger.info("Scheduler stopped", component="scheduler")
 
     async def schedule_task(
