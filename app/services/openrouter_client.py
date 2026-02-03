@@ -66,8 +66,8 @@ class OpenRouterClient:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://replit.com",
-            "X-Title": "Client Analysis Agent",
+            "HTTP-Referer": settings.openrouter.http_referer,
+            "X-Title": settings.openrouter.http_title,
         }
 
         payload = {

@@ -148,6 +148,8 @@ openrouter:
   max_tokens: 1000
   top_p: 1.0
   timeout: 60.0
+  http_referer: "http://localhost:5000"
+  http_title: "Client Analysis System (Dev)"
 
 huggingface:
   model: "meta-llama/Meta-Llama-3.1-70B-Instruct"

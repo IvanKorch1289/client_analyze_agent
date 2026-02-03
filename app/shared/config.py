@@ -85,7 +85,7 @@ class Settings(BaseSettings):
 
     # Monitoring & Telemetry
     ENABLE_TELEMETRY: bool = True
-    TELEMETRY_ENDPOINT: str = "http://localhost:4318"
+    TELEMETRY_ENDPOINT: str = ""
 
     # Email Notifications (optional)
     SMTP_HOST: Optional[str] = None

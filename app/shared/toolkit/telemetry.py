@@ -22,6 +22,7 @@ from opentelemetry.trace import SpanKind
 
 try:
     from app.config.settings import settings as _cfg
+
     SERVICE_NAME = _cfg.app.otel_service_name
 except Exception:
     SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "counterparty-analysis")
