@@ -17,7 +17,7 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from app.config.reload import reload_settings
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 class _ConfigChangeHandler(FileSystemEventHandler):

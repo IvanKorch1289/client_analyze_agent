@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 # Максимальный размер RAG-контекста в символах (~2000 токенов)
 MAX_RAG_CONTEXT_CHARS = 6000

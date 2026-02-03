@@ -29,7 +29,7 @@ from app.config.constants import (
     RATE_LIMIT_ADMIN_PER_MINUTE,
     RATE_LIMIT_SEARCH_PER_MINUTE,
 )
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 rag_router = APIRouter(prefix="/rag", tags=["RAG"])
 

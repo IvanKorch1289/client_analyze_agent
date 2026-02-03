@@ -127,7 +127,7 @@ class TestCryptographicFailures:
 
     def test_sensitive_data_not_in_logs(self):
         """Sensitive data should not appear in logs."""
-        from app.utility.logging_client import logger
+        from app.shared.toolkit.logging import logger
         import io
         import logging
 
@@ -284,7 +284,7 @@ class TestInjection:
 
     def test_template_injection_prevention(self):
         """Template injection should be prevented in exports."""
-        from app.utility.export_helpers import report_to_json
+        from app.shared.toolkit.export import report_to_json
 
         # SSTI payloads
         report = {
@@ -464,7 +464,7 @@ class TestSecurityLogging:
     async def test_failed_auth_logged(self):
         """Failed authentication attempts should be logged."""
         from app.api.v1 import v1_app as app
-        from app.utility.logging_client import logger
+        from app.shared.toolkit.logging import logger
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Trigger failed auth

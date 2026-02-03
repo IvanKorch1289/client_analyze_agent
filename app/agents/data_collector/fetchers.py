@@ -32,8 +32,8 @@ from app.shared.types import (
     TavilyResult,
     TavilyFullText,
 )
-from app.shared.utils.formatters import truncate
-from app.utility.logging_client import logger
+from app.shared.toolkit.formatters import truncate
+from app.shared.toolkit.logging import logger
 
 
 async def fetch_perplexity(intent_id: str, query: str, client_name: str, inn: str = "") -> PerplexityResult:

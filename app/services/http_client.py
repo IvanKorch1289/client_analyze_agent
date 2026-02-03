@@ -16,7 +16,7 @@ from tenacity import (
 )
 
 from app.config.constants import TimeoutConfig as AppTimeoutConfig
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 

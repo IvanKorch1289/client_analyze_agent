@@ -4,7 +4,7 @@ import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from app.config import settings
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 class PerplexityClient:

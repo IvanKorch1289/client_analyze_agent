@@ -19,7 +19,7 @@ from app.config.constants import (
 )
 from app.schemas import ClientAnalysisRequest, FeedbackRequest, PromptRequest
 from app.services.analysis_executor import execute_client_analysis
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 agent_router = APIRouter(prefix="/agent", tags=["Агент"])
 

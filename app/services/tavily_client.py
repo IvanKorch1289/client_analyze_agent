@@ -8,7 +8,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional
 from langchain_community.tools.tavily_search import TavilySearchResults
 
 from app.config import settings
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 # Constants for content extraction
 MAX_CONTENT_CHARS = 10000

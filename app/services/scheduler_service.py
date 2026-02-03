@@ -35,7 +35,7 @@ from typing import Any, Callable, Dict, List, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 # Ключ для хранения задач в Tarantool
 SCHEDULER_JOBS_KEY = "scheduler:pending_jobs"

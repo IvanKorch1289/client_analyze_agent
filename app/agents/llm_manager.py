@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from app.config import settings
 from app.shared.exceptions import PIIMaskingError
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 # Lazy imports для PII, audit, cache и metrics
 _pii_protection = None

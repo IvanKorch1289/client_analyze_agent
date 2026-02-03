@@ -17,7 +17,7 @@ from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 # Lazy imports
 _audit_storage = None

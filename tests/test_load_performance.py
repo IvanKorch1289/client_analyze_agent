@@ -74,7 +74,7 @@ class TestPerformanceBenchmarks:
 
     def test_json_export_performance(self, benchmark):
         """JSON export should complete in <10ms for typical report."""
-        from app.utility.export_helpers import report_to_json
+        from app.shared.toolkit.export import report_to_json
 
         report = {
             "report_id": "test-123",
@@ -90,7 +90,7 @@ class TestPerformanceBenchmarks:
 
     def test_csv_export_performance(self, benchmark):
         """CSV export should complete in <20ms for typical report."""
-        from app.utility.export_helpers import report_to_csv
+        from app.shared.toolkit.export import report_to_csv
 
         report = {
             "report_id": "test-123",
@@ -144,7 +144,7 @@ class TestConcurrentLoad:
     @pytest.mark.asyncio
     async def test_concurrent_export_helpers(self):
         """Export helpers should handle concurrent calls."""
-        from app.utility.export_helpers import report_to_json, report_to_csv
+        from app.shared.toolkit.export import report_to_json, report_to_csv
 
         reports = [
             {
@@ -290,7 +290,7 @@ class TestResourceUsage:
         """Memory should remain stable during repeated operations."""
         import sys
 
-        from app.utility.export_helpers import report_to_json
+        from app.shared.toolkit.export import report_to_json
 
         # Get baseline
         initial_size = sys.getsizeof([])
@@ -454,7 +454,7 @@ class TestStress:
     @pytest.mark.asyncio
     async def test_large_payload_handling(self):
         """System should handle large payloads efficiently."""
-        from app.utility.export_helpers import report_to_json, reports_summary_to_csv
+        from app.shared.toolkit.export import report_to_json, reports_summary_to_csv
 
         # Large single report
         large_report = {
@@ -585,7 +585,7 @@ class TestPerformanceRegression:
 
     def test_json_export_regression(self):
         """JSON export should not regress beyond baseline."""
-        from app.utility.export_helpers import report_to_json
+        from app.shared.toolkit.export import report_to_json
 
         report = {"report_id": "test", "data": "x" * 1000}
 

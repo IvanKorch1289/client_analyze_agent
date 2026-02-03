@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 # Lazy imports
 _tarantool_client = None

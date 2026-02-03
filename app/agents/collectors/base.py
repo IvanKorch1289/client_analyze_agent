@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 @dataclass

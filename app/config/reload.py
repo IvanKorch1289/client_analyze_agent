@@ -16,7 +16,7 @@ from typing import Iterable, Tuple, Type
 from pydantic_settings import BaseSettings
 
 from app.config.config_loader import ConfigLoader
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 _reload_lock = threading.Lock()
 _state_lock = threading.Lock()

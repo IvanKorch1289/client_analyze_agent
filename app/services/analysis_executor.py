@@ -8,7 +8,7 @@ import asyncio
 from typing import Any, Dict, Optional
 
 from app.config.settings import settings
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 # Максимальное время выполнения анализа (секунды). Конфигурируется через APP_ANALYSIS_TIMEOUT_SECONDS.
 ANALYSIS_TIMEOUT_SECONDS = settings.app.analysis_timeout_seconds

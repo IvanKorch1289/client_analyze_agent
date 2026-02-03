@@ -10,10 +10,11 @@ Provides reusable decorators for:
 
 import asyncio
 import functools
+import hashlib
 import time
 from typing import Any, Callable, Optional, Tuple, Type, TypeVar
 
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 T = TypeVar("T")
 F = TypeVar("F", bound=Callable[..., Any])
@@ -370,5 +371,93 @@ def compose(*decorators: Callable[[F], F]) -> Callable[[F], F]:
         for dec in reversed(decorators):
             func = dec(func)
         return func
+
+    return decorator
+
+
+def cache_with_tarantool(
+    ttl: int = 3600,
+    source: str = "api",
+    key_prefix: Optional[str] = None,
+) -> Callable:
+    """
+    Decorator for caching function results via Tarantool.
+
+    Automatically caches async function results with the given TTL.
+    Supports per-source statistics.
+
+    Args:
+        ttl: Time To Live in seconds (default: 3600 = 1 hour)
+        source: Data source label for stats (default: "api")
+        key_prefix: Cache key prefix (default: module.function_name)
+
+    Returns:
+        Decorated function with caching
+    """
+
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            func_name = func.__name__
+            prefix = key_prefix or f"{source}:{func_name}"
+
+            key_parts = [str(arg) for arg in args]
+            key_parts.extend(f"{k}={v}" for k, v in sorted(kwargs.items()))
+            args_str = ":".join(key_parts) if key_parts else "no_args"
+
+            args_hash = hashlib.md5(args_str.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
+            cache_key = f"{prefix}:{args_hash}"
+
+            from app.storage.tarantool import TarantoolClient
+
+            try:
+                client = await TarantoolClient.get_instance()
+                cache_repo = client.get_cache_repository()
+
+                cached = await cache_repo.get(cache_key)
+                if cached is not None:
+                    logger.debug(
+                        f"Cache HIT: {func_name}({args_str[:50]}...) [key: {cache_key[:30]}]",
+                        component="cache_decorator",
+                    )
+                    return cached
+
+                logger.debug(
+                    f"Cache MISS: {func_name}({args_str[:50]}...) [key: {cache_key[:30]}]",
+                    component="cache_decorator",
+                )
+
+            except Exception as e:
+                logger.warning(f"Cache GET error: {e}", component="cache_decorator")
+
+            try:
+                result = await func(*args, **kwargs)
+            except Exception:
+                logger.warning(
+                    f"Function {func_name} raised exception, not caching",
+                    component="cache_decorator",
+                )
+                raise
+
+            if result is not None:
+                if isinstance(result, dict) and "error" in result:
+                    logger.debug(
+                        f"Skip caching error response from {func_name}",
+                        component="cache_decorator",
+                    )
+                    return result
+
+                try:
+                    await cache_repo.set_with_ttl(cache_key, result, ttl=ttl, source=source)
+                    logger.debug(
+                        f"Cache SET: {func_name}, ttl={ttl}s [key: {cache_key[:30]}]",
+                        component="cache_decorator",
+                    )
+                except Exception as e:
+                    logger.warning(f"Cache SET failed: {e}", component="cache_decorator")
+
+            return result
+
+        return wrapper
 
     return decorator

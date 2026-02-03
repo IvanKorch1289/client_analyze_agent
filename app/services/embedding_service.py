@@ -12,7 +12,7 @@ from __future__ import annotations
 import threading
 from typing import Any, Dict, List, Optional
 
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 class EmbeddingService:

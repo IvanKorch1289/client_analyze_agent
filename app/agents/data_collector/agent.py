@@ -23,7 +23,7 @@ from app.agents.data_collector.fetchers import (
 )
 from app.agents.web_scraper import scrape_top_tavily_links
 from app.config import MAX_CONCURRENT_SEARCHES
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:

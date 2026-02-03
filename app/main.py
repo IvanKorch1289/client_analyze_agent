@@ -24,15 +24,15 @@ from app.config.settings import settings
 from app.config.watchdog import create_config_watchdog
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
-from app.utility.app_circuit_breaker import (
+from app.shared.toolkit.circuit_breaker import (
     AppCircuitBreaker,
     AppCircuitBreakerConfig,
     AppCircuitBreakerMiddleware,
 )
-from app.utility.app_metrics import app_metrics
-from app.utility.helpers import get_client_ip
-from app.utility.logging_client import get_request_id, logger, set_request_id
-from app.utility.telemetry import init_telemetry
+from app.shared.toolkit.metrics import app_metrics
+from app.shared.toolkit.helpers import get_client_ip
+from app.shared.toolkit.logging import get_request_id, logger, set_request_id
+from app.shared.toolkit.telemetry import init_telemetry
 
 # Prometheus metrics
 from prometheus_fastapi_instrumentator import Instrumentator

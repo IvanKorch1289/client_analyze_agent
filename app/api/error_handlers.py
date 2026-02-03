@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
 from app.config.settings import settings
-from app.utility.logging_client import get_request_id, logger, set_request_id
+from app.shared.toolkit.logging import get_request_id, logger, set_request_id
 
 _IS_PRODUCTION = settings.app.is_production
 

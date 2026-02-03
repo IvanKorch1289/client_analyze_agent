@@ -9,7 +9,7 @@ from typing import Any, Dict, Literal
 from httpx import AsyncClient, HTTPStatusError, RequestError
 from pydantic import BaseModel, Field, field_validator
 
-from app.shared.config import settings
+from app.config.settings import settings
 from app.shared.exceptions import APIError
 from app.shared.logger import get_logger
 from app.shared.security import sanitize_for_llm, validate_inn
@@ -123,8 +123,8 @@ async def fetch_dadata_company_tool(request: DaDataRequest) -> Dict[str, Any]:
             response = await client.post(
                 "https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/party",
                 headers={
-                    "Authorization": f"Token {settings.DADATA_API_TOKEN}",
-                    "X-Secret": settings.DADATA_API_SECRET,
+                    "Authorization": f"Token {settings.dadata.api_key}",
+                    "X-Secret": settings.dadata.api_secret or "",
                     "Content-Type": "application/json",
                 },
                 json={
@@ -187,7 +187,7 @@ async def fetch_casebook_data_tool(request: CasebookRequest) -> Dict[str, Any]:
             response = await client.get(
                 "https://api3.casebook.ru/api/search",
                 headers={
-                    "Authorization": f"Bearer {settings.CASEBOOK_API_KEY}",
+                    "Authorization": f"Bearer {settings.casebook.api_key}",
                     "Content-Type": "application/json",
                 },
                 params={
@@ -251,7 +251,7 @@ async def fetch_infosfera_data_tool(request: InfosferaRequest) -> Dict[str, Any]
             response = await client.get(
                 "https://api.infosfera.ru/v1/company",
                 headers={
-                    "Authorization": f"Bearer {settings.INFOSFERA_API_KEY}",
+                    "Authorization": f"Bearer {settings.infosphere.login}",
                     "Content-Type": "application/json",
                 },
                 params={

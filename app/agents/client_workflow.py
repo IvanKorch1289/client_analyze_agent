@@ -44,7 +44,7 @@ from app.agents.data_collector import (
 from app.agents.file_writer import file_writer_agent
 from app.agents.orchestrator import orchestrator_agent
 from app.agents.report_analyzer import report_analyzer_agent
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 class ClientAnalysisState(TypedDict, total=False):

@@ -10,8 +10,8 @@ from app.agents.collectors.base import BaseCollector, CollectorResult
 from app.config import MAX_CONTENT_LENGTH, SEARCH_TIMEOUT_SECONDS
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
-from app.shared.utils.formatters import truncate
-from app.utility.logging_client import logger
+from app.shared.toolkit.formatters import truncate
+from app.shared.toolkit.logging import logger
 
 
 class PerplexityCollector(BaseCollector):

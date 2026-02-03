@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from app.shared.config import settings
+from app.config.settings import settings
 
 
 class JSONFormatter(logging.Formatter):
@@ -48,7 +48,7 @@ class JSONFormatter(logging.Formatter):
             log_data["exception"] = self.formatException(record.exc_info)
 
         # Add location info
-        if settings.DEBUG:
+        if settings.app.debug:
             log_data["location"] = {
                 "file": record.pathname,
                 "line": record.lineno,
@@ -210,7 +210,7 @@ def setup_logging(
     Examples:
         >>> setup_logging(level="INFO", log_file=Path("app.log"))
     """
-    level = level or settings.LOG_LEVEL
+    level = level or settings.app.log_level
     log_level = getattr(logging, level.upper(), logging.INFO)
 
     # Configure root logger

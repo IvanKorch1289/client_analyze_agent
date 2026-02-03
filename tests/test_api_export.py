@@ -116,7 +116,7 @@ class TestReportToJson:
 
     def test_json_export_basic(self, sample_report):
         """JSON export should produce valid JSON."""
-        from app.utility.export_helpers import report_to_json
+        from app.shared.toolkit.export import report_to_json
 
         result = report_to_json(sample_report)
 
@@ -128,7 +128,7 @@ class TestReportToJson:
 
     def test_json_export_pretty(self, sample_report):
         """JSON export with pretty=True should be indented."""
-        from app.utility.export_helpers import report_to_json
+        from app.shared.toolkit.export import report_to_json
 
         result = report_to_json(sample_report, pretty=True)
 
@@ -138,7 +138,7 @@ class TestReportToJson:
 
     def test_json_export_compact(self, sample_report):
         """JSON export with pretty=False should be compact."""
-        from app.utility.export_helpers import report_to_json
+        from app.shared.toolkit.export import report_to_json
 
         result = report_to_json(sample_report, pretty=False)
 
@@ -147,7 +147,7 @@ class TestReportToJson:
 
     def test_json_export_cyrillic(self, sample_report):
         """JSON export should preserve Cyrillic characters."""
-        from app.utility.export_helpers import report_to_json
+        from app.shared.toolkit.export import report_to_json
 
         result = report_to_json(sample_report)
 
@@ -157,7 +157,7 @@ class TestReportToJson:
 
     def test_json_export_with_datetime(self):
         """JSON export should handle datetime objects."""
-        from app.utility.export_helpers import report_to_json
+        from app.shared.toolkit.export import report_to_json
 
         report_with_datetime = {
             "timestamp": datetime(2024, 1, 15, 12, 0, 0),
@@ -170,7 +170,7 @@ class TestReportToJson:
 
     def test_json_export_empty_report(self):
         """JSON export should handle empty reports."""
-        from app.utility.export_helpers import report_to_json
+        from app.shared.toolkit.export import report_to_json
 
         result = report_to_json({})
         assert result == "{}"
@@ -181,7 +181,7 @@ class TestReportToCsv:
 
     def test_csv_export_basic(self, sample_report):
         """CSV export should produce valid CSV."""
-        from app.utility.export_helpers import report_to_csv
+        from app.shared.toolkit.export import report_to_csv
 
         result = report_to_csv(sample_report)
 
@@ -193,7 +193,7 @@ class TestReportToCsv:
 
     def test_csv_export_findings(self, sample_report):
         """CSV export should include findings."""
-        from app.utility.export_helpers import report_to_csv
+        from app.shared.toolkit.export import report_to_csv
 
         result = report_to_csv(sample_report)
 
@@ -204,7 +204,7 @@ class TestReportToCsv:
 
     def test_csv_export_risk_factors(self, sample_report):
         """CSV export should include risk factors."""
-        from app.utility.export_helpers import report_to_csv
+        from app.shared.toolkit.export import report_to_csv
 
         result = report_to_csv(sample_report)
 
@@ -212,7 +212,7 @@ class TestReportToCsv:
 
     def test_csv_export_recommendations(self, sample_report):
         """CSV export should include recommendations."""
-        from app.utility.export_helpers import report_to_csv
+        from app.shared.toolkit.export import report_to_csv
 
         result = report_to_csv(sample_report)
 
@@ -220,7 +220,7 @@ class TestReportToCsv:
 
     def test_csv_export_empty_findings(self):
         """CSV export should handle reports without findings."""
-        from app.utility.export_helpers import report_to_csv
+        from app.shared.toolkit.export import report_to_csv
 
         report = {
             "report_id": "test-123",
@@ -242,7 +242,7 @@ class TestReportsSummaryToCsv:
 
     def test_summary_csv_basic(self, multiple_reports):
         """Summary CSV should contain all reports."""
-        from app.utility.export_helpers import reports_summary_to_csv
+        from app.shared.toolkit.export import reports_summary_to_csv
 
         result = reports_summary_to_csv(multiple_reports)
 
@@ -258,7 +258,7 @@ class TestReportsSummaryToCsv:
 
     def test_summary_csv_columns(self, multiple_reports):
         """Summary CSV should have correct columns."""
-        from app.utility.export_helpers import reports_summary_to_csv
+        from app.shared.toolkit.export import reports_summary_to_csv
 
         result = reports_summary_to_csv(multiple_reports)
         lines = result.strip().split("\n")
@@ -273,7 +273,7 @@ class TestReportsSummaryToCsv:
 
     def test_summary_csv_empty_list(self):
         """Summary CSV should handle empty list."""
-        from app.utility.export_helpers import reports_summary_to_csv
+        from app.shared.toolkit.export import reports_summary_to_csv
 
         result = reports_summary_to_csv([])
 
@@ -286,7 +286,7 @@ class TestNormalizeReportForExport:
 
     def test_normalize_adds_iso_timestamps(self, sample_report):
         """Normalization should add ISO timestamp fields."""
-        from app.utility.export_helpers import normalize_report_for_export
+        from app.shared.toolkit.export import normalize_report_for_export
 
         result = normalize_report_for_export(sample_report)
 
@@ -295,7 +295,7 @@ class TestNormalizeReportForExport:
 
     def test_normalize_preserves_original(self, sample_report):
         """Normalization should preserve original fields."""
-        from app.utility.export_helpers import normalize_report_for_export
+        from app.shared.toolkit.export import normalize_report_for_export
 
         result = normalize_report_for_export(sample_report)
 
@@ -304,7 +304,7 @@ class TestNormalizeReportForExport:
 
     def test_normalize_handles_missing_timestamps(self):
         """Normalization should handle reports without timestamps."""
-        from app.utility.export_helpers import normalize_report_for_export
+        from app.shared.toolkit.export import normalize_report_for_export
 
         report = {"client_name": "Test", "risk_score": 10}
 
@@ -318,27 +318,27 @@ class TestFormatBytesSize:
 
     def test_bytes(self):
         """Should format bytes correctly."""
-        from app.utility.export_helpers import format_bytes_size
+        from app.shared.toolkit.export import format_bytes_size
 
         assert format_bytes_size(500) == "500.0 B"
 
     def test_kilobytes(self):
         """Should format kilobytes correctly."""
-        from app.utility.export_helpers import format_bytes_size
+        from app.shared.toolkit.export import format_bytes_size
 
         assert format_bytes_size(1024) == "1.0 KB"
         assert format_bytes_size(1536) == "1.5 KB"
 
     def test_megabytes(self):
         """Should format megabytes correctly."""
-        from app.utility.export_helpers import format_bytes_size
+        from app.shared.toolkit.export import format_bytes_size
 
         assert format_bytes_size(1024 * 1024) == "1.0 MB"
         assert format_bytes_size(2 * 1024 * 1024) == "2.0 MB"
 
     def test_gigabytes(self):
         """Should format gigabytes correctly."""
-        from app.utility.export_helpers import format_bytes_size
+        from app.shared.toolkit.export import format_bytes_size
 
         assert format_bytes_size(1024 * 1024 * 1024) == "1.0 GB"
 
@@ -708,7 +708,7 @@ class TestExportEdgeCases:
     @pytest.mark.asyncio
     async def test_export_with_special_characters(self):
         """Export should handle special characters in data."""
-        from app.utility.export_helpers import report_to_json, report_to_csv
+        from app.shared.toolkit.export import report_to_json, report_to_csv
 
         report = {
             "report_id": "test-123",
@@ -733,7 +733,7 @@ class TestExportEdgeCases:
     @pytest.mark.asyncio
     async def test_export_with_none_values(self):
         """Export should handle None values gracefully."""
-        from app.utility.export_helpers import report_to_json, normalize_report_for_export
+        from app.shared.toolkit.export import report_to_json, normalize_report_for_export
 
         report = {
             "report_id": "test-123",
@@ -752,7 +752,7 @@ class TestExportEdgeCases:
     @pytest.mark.asyncio
     async def test_export_with_large_data(self):
         """Export should handle large data sets."""
-        from app.utility.export_helpers import report_to_json, reports_summary_to_csv
+        from app.shared.toolkit.export import report_to_json, reports_summary_to_csv
 
         # Create large report
         large_report = {
@@ -795,7 +795,7 @@ class TestExportEdgeCases:
     @pytest.mark.asyncio
     async def test_export_with_unicode_edge_cases(self):
         """Export should handle various Unicode characters."""
-        from app.utility.export_helpers import report_to_json
+        from app.shared.toolkit.export import report_to_json
 
         report = {
             "report_id": "unicode-test",
@@ -811,7 +811,7 @@ class TestExportEdgeCases:
 
     def test_csv_export_with_commas_in_data(self):
         """CSV export should properly escape commas in data."""
-        from app.utility.export_helpers import report_to_csv
+        from app.shared.toolkit.export import report_to_csv
 
         report = {
             "report_id": "comma-test",
@@ -883,7 +883,7 @@ class TestExportIntegration:
     @pytest.mark.asyncio
     async def test_full_export_workflow(self, sample_report):
         """Test complete export workflow: get report -> export to multiple formats."""
-        from app.utility.export_helpers import (
+        from app.shared.toolkit.export import (
             report_to_json,
             report_to_csv,
             normalize_report_for_export,
@@ -905,7 +905,7 @@ class TestExportIntegration:
     @pytest.mark.asyncio
     async def test_export_preserves_data_integrity(self, sample_report):
         """Export should preserve all data without loss."""
-        from app.utility.export_helpers import report_to_json
+        from app.shared.toolkit.export import report_to_json
 
         # Export and reimport
         json_str = report_to_json(sample_report)

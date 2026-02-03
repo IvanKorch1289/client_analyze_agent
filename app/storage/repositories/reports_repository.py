@@ -13,7 +13,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from app.storage.repositories import BaseRepository
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 # TTL для отчетов: 30 дней
 REPORT_TTL_DAYS = 30

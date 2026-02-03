@@ -17,10 +17,10 @@ from typing import Any, Dict, List
 from app.services.llm_provider import llm_generate_json
 from app.mcp_server.prompts.system_prompts import AnalyzerRole, get_system_prompt
 from app.shared.pii_protection import mask_pii
-from app.shared.utils import safe_dict_get
-from app.shared.utils.formatters import truncate
+from app.shared.toolkit.helpers import safe_dict_get
+from app.shared.toolkit.formatters import truncate
 from app.schemas.report import ClientAnalysisReport
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 # RAG integration (optional, graceful degradation)
 try:

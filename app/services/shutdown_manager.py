@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from typing import Callable, List, Optional
 
 from app.services.http_client import AsyncHttpClient
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 class ShutdownManager:

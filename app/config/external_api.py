@@ -52,7 +52,8 @@ class DadataAPISettings(BaseSettingsWithLoader):
     yaml_group = "dadata"
     vault_path = "secret/data/app/dadata"
 
-    api_key: Optional[str] = Field(default=None, description="API ключ DaData")
+    api_key: Optional[str] = Field(default=None, description="API ключ (Token) DaData")
+    api_secret: Optional[str] = Field(default=None, description="API Secret DaData")
     api_url: str = Field(
         default="https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party",
         description="URL DaData API",

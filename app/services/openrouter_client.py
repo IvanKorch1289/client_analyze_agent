@@ -7,7 +7,7 @@ from app.services.service_status import (
     status_not_configured,
     status_ready,
 )
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 class OpenRouterClient:

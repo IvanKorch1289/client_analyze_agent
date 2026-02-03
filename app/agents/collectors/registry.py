@@ -12,7 +12,7 @@ from app.services.fetch_data import (
     fetch_from_dadata,
     fetch_from_infosphere,
 )
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 class DaDataCollector(BaseCollector):

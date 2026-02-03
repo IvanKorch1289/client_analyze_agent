@@ -25,7 +25,7 @@ from app.schemas.llm import (
     MaskTextRequest,
     MaskTextResponse,
 )
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 llm_router = APIRouter(prefix="/llm", tags=["LLM"])
 limiter = limiter_for_client_ip()
