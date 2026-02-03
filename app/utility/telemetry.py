@@ -4,7 +4,6 @@ Provides tracing, logging, and metrics collection.
 """
 
 import logging
-import os
 from collections import deque
 from datetime import datetime
 from threading import Lock
@@ -20,7 +19,9 @@ from opentelemetry.sdk.trace.export import (
 )
 from opentelemetry.trace import SpanKind
 
-SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "counterparty-analysis")
+from app.config.settings import settings
+
+SERVICE_NAME = settings.app.otel_service_name
 
 
 class InMemorySpanExporter(SpanExporter):

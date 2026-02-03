@@ -12,6 +12,11 @@ app:
   log_format: "json"
   workers: 4
   max_requests: 2000
+  analysis_timeout_seconds: 600
+  cb_failure_threshold: 30
+  cb_window_seconds: 60
+  cb_open_seconds: 30
+  otel_service_name: "counterparty-analysis"
 
 security:
   cors_enabled: true
@@ -85,6 +90,18 @@ http_base:
   max_connections: 100
   max_keepalive_connections: 40
   http2_enabled: true
+  trace_max_body_bytes: 4096
+
+mcp:
+  host: "0.0.0.0"
+  port: 8011
+  path: "/mcp"
+  files_root: "/app/reports"
+  max_file_bytes: 1048576
+
+frontend:
+  base_url: "http://app:8000/api/v1"
+  timeout_seconds: 120
 
 logging:
   level: "INFO"

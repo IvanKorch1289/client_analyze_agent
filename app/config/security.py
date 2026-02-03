@@ -10,7 +10,7 @@
 
 from typing import List, Optional
 
-from pydantic import ConfigDict, Field
+from pydantic import AliasChoices, ConfigDict, Field
 
 from app.config.config_loader import BaseSettingsWithLoader
 
@@ -22,7 +22,11 @@ class SecureSettings(BaseSettingsWithLoader):
     vault_path = "secret/data/app/security"
 
     # Токены и ключи
-    admin_token: Optional[str] = Field(default=None, description="Токен администратора")
+    admin_token: Optional[str] = Field(
+        default=None,
+        description="Токен администратора",
+        validation_alias=AliasChoices("ADMIN_TOKEN", "SECURITY_ADMIN_TOKEN"),
+    )
     secret_key: Optional[str] = Field(default=None, description="Секретный ключ приложения")
     jwt_secret: Optional[str] = Field(default=None, description="Секрет для JWT токенов")
 

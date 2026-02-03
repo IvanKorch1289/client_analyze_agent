@@ -40,6 +40,9 @@ class HttpBaseSettings(BaseSettingsWithLoader):
     # HTTP/2
     http2_enabled: bool = Field(default=True, description="Включить HTTP/2")
 
+    # Debug / Tracing
+    trace_max_body_bytes: int = Field(default=4096, description="Макс. размер тела запроса для трейсинга")
+
     model_config = ConfigDict(env_prefix="HTTP_")
 
 

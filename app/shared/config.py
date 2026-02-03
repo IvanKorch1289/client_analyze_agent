@@ -58,11 +58,11 @@ class Settings(BaseSettings):
     TARANTOOL_PASSWORD: Optional[str] = Field(default=None)
 
     # RabbitMQ
-    RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
+    RABBITMQ_URL: str = ""
 
-    # Security (use secure random defaults for development)
-    SECRET_KEY: str = Field(default="dev-secret-key-change-in-production-32chars")
-    API_KEY_SALT: str = Field(default="dev-salt-16chars")
+    # Security — MUST be set via environment variables
+    SECRET_KEY: str = Field(default="")
+    API_KEY_SALT: str = Field(default="")
 
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = Field(default=60, gt=0)

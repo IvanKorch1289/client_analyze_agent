@@ -22,8 +22,8 @@ class TarantoolConnectionSettings(BaseSettingsWithLoader):
     # Подключение
     host: str = Field(default="localhost", description="Хост Tarantool")
     port: int = Field(default=3302, description="Порт Tarantool")
-    user: str = Field(default="admin", description="Пользователь")
-    password: str = Field(default="password", description="Пароль")
+    user: str = Field(default="", description="Пользователь (обязательно из ENV/Vault)")
+    password: str = Field(default="", description="Пароль (обязательно из ENV/Vault)")
 
     # Настройки соединения
     connect_timeout: float = Field(default=5.0, description="Таймаут подключения (сек)")

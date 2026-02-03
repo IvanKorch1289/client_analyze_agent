@@ -4,21 +4,21 @@ File operation tools (read-only, safe).
 All file operations are restricted to MCP_FILES_ROOT for security.
 """
 
-import os
 from pathlib import Path
 from typing import Any, Dict
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.shared.config import settings
+from app.config.settings import settings
 from app.shared.exceptions import ValidationError
 from app.shared.logger import get_logger
 
 logger = get_logger(__name__)
 
-# File operation limits (security)
-MCP_FILES_ROOT = Path(os.getenv("MCP_FILES_ROOT", settings.REPORTS_DIR)).resolve()
-MCP_MAX_FILE_BYTES = int(os.getenv("MCP_MAX_FILE_BYTES", "1048576"))  # 1MB
+# File operation limits (security) — из конфигурации (Vault → ENV → YAML)
+_mcp_cfg = settings.mcp
+MCP_FILES_ROOT = Path(_mcp_cfg.files_root or ".").resolve()
+MCP_MAX_FILE_BYTES = _mcp_cfg.max_file_bytes
 
 
 def _resolve_under_root(relative_path: str) -> Path:

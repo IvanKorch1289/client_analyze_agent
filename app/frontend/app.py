@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -93,7 +92,9 @@ def _init_state() -> None:
 
 
 def _apply_admin_token(token: str) -> None:
-    expected = (os.getenv("ADMIN_TOKEN", "") or "").strip()
+    from app.config.settings import settings as _cfg
+
+    expected = (_cfg.secure.admin_token or "").strip()
     token = (token or "").strip()
 
     st.session_state["admin_token"] = token
@@ -101,7 +102,7 @@ def _apply_admin_token(token: str) -> None:
     if expected:
         st.session_state["is_admin"] = token == expected
     else:
-        is_dev = os.getenv("APP_ENV", "development").lower() in ("dev", "development")
+        is_dev = not _cfg.app.is_production
         st.session_state["is_admin"] = bool(is_dev and token)
 
 

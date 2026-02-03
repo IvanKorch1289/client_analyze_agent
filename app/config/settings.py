@@ -55,18 +55,22 @@ from app.config.services import (
     CelerySettings,
     ChromaSettings,
     FileStorageSettings,
+    FrontendSettings,
     GRPCSettings,
     LogStorageSettings,
+    MCPSettings,
     MailSettings,
     QueueSettings,
     RedisSettings,
     TasksSettings,
     celery_settings,
     chroma_settings,
+    frontend_settings,
     fs_settings,
     grpc_settings,
     log_settings,
     mail_settings,
+    mcp_settings,
     queue_settings,
     redis_settings,
     tasks_settings,
@@ -183,6 +187,16 @@ class Settings:
     def chroma(self) -> ChromaSettings:
         return ChromaSettings.get_instance()
 
+    # MCP server
+    @property
+    def mcp(self) -> MCPSettings:
+        return MCPSettings.get_instance()
+
+    # Frontend
+    @property
+    def frontend(self) -> FrontendSettings:
+        return FrontendSettings.get_instance()
+
     # Storage/logging
     @property
     def storage(self) -> FileStorageSettings:
@@ -247,6 +261,8 @@ __all__ = [
     "LogStorageSettings",
     "GRPCSettings",
     "ChromaSettings",
+    "MCPSettings",
+    "FrontendSettings",
     "redis_settings",
     "queue_settings",
     "celery_settings",
@@ -256,4 +272,6 @@ __all__ = [
     "log_settings",
     "grpc_settings",
     "chroma_settings",
+    "mcp_settings",
+    "frontend_settings",
 ]

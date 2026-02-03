@@ -10,7 +10,6 @@ Goals:
 
 from __future__ import annotations
 
-import os
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
@@ -18,9 +17,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
+from app.config.settings import settings
 from app.utility.logging_client import get_request_id, logger, set_request_id
 
-_IS_PRODUCTION = os.getenv("APP_ENV", "dev").lower() in ("production", "prod")
+_IS_PRODUCTION = settings.app.is_production
 
 
 def _ensure_request_id() -> str:

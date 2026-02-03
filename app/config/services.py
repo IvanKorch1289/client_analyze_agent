@@ -59,8 +59,8 @@ class QueueSettings(BaseSettingsWithLoader):
     # Подключение
     host: str = Field(default="localhost", description="Хост RabbitMQ")
     port: int = Field(default=5672, description="Порт AMQP")
-    username: str = Field(default="admin", description="Пользователь")
-    password: str = Field(default="admin123", description="Пароль")
+    username: str = Field(default="", description="Пользователь (обязательно из ENV/Vault)")
+    password: str = Field(default="", description="Пароль (обязательно из ENV/Vault)")
     vhost: str = Field(default="/", description="Virtual host")
 
     # Management UI
@@ -293,6 +293,38 @@ class GRPCSettings(BaseSettingsWithLoader):
     model_config = ConfigDict(env_prefix="GRPC_")
 
 
+class MCPSettings(BaseSettingsWithLoader):
+    """Настройки MCP сервера."""
+
+    yaml_group = "mcp"
+    vault_path = "secret/data/app/mcp"
+
+    host: str = Field(default="0.0.0.0", description="Хост MCP сервера")
+    port: int = Field(default=8011, description="Порт MCP сервера")
+    path: str = Field(default="/mcp", description="SSE path MCP сервера")
+
+    # Ограничения файловых операций
+    files_root: str = Field(default=".", description="Корневая директория для файловых операций")
+    max_file_bytes: int = Field(default=1_048_576, description="Максимальный размер файла (байт, 1MB)")
+
+    model_config = ConfigDict(env_prefix="MCP_")
+
+
+class FrontendSettings(BaseSettingsWithLoader):
+    """Настройки Streamlit frontend."""
+
+    yaml_group = "frontend"
+    vault_path = "secret/data/app/frontend"
+
+    base_url: str = Field(
+        default="http://localhost:8000/api/v1",
+        description="Базовый URL API backend",
+    )
+    timeout_seconds: int = Field(default=120, description="Таймаут API запросов (секунды)")
+
+    model_config = ConfigDict(env_prefix="API_")
+
+
 # Singleton экземпляры
 redis_settings = RedisSettings.get_instance()
 queue_settings = QueueSettings.get_instance()
@@ -303,6 +335,8 @@ fs_settings = FileStorageSettings.get_instance()
 log_settings = LogStorageSettings.get_instance()
 grpc_settings = GRPCSettings.get_instance()
 chroma_settings = ChromaSettings.get_instance()
+mcp_settings = MCPSettings.get_instance()
+frontend_settings = FrontendSettings.get_instance()
 
 
 __all__ = [
@@ -315,6 +349,8 @@ __all__ = [
     "LogStorageSettings",
     "GRPCSettings",
     "ChromaSettings",
+    "MCPSettings",
+    "FrontendSettings",
     "redis_settings",
     "queue_settings",
     "celery_settings",
@@ -324,4 +360,6 @@ __all__ = [
     "log_settings",
     "grpc_settings",
     "chroma_settings",
+    "mcp_settings",
+    "frontend_settings",
 ]

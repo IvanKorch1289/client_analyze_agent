@@ -28,8 +28,13 @@ LOGS_DIR = Path(_LOGS_DIR)
 LOGS_DIR.mkdir(exist_ok=True)
 
 app_logger = logging.getLogger("mcp-server")
-# H13: Log level configurable via LOG_LEVEL env var; defaults to INFO in production
-_log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+# H13: Log level configurable via settings (Vault → ENV → YAML)
+try:
+    from app.config.settings import settings as _cfg
+
+    _log_level = _cfg.logging.level.upper()
+except Exception:
+    _log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 app_logger.setLevel(getattr(logging, _log_level, logging.INFO))
 app_logger.handlers.clear()
 
@@ -101,7 +106,10 @@ class AppLogger:
         file_path = LOGS_DIR / f"{today}.log"
         # Лимит размера + ротация по количеству бэкапов (чтобы не разрастаться).
         max_bytes = int(LOG_MAX_SIZE_MB) * 1024 * 1024
-        backup_count = int(os.getenv("LOG_BACKUP_COUNT", "5"))
+        try:
+            backup_count = _cfg.logging.file_backup_count
+        except Exception:
+            backup_count = int(os.getenv("LOG_BACKUP_COUNT", "5"))
         file_handler = logging.handlers.RotatingFileHandler(
             file_path,
             encoding="utf-8",

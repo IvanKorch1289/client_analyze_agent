@@ -786,7 +786,7 @@ async def get_queue_stats() -> Dict[str, Any]:
         import httpx
 
         mgmt_url = settings.queue.amqp_url.replace("amqp://", "http://").replace(":5672", ":15672")
-        auth = ("admin", "admin123")
+        auth = (settings.queue.username, settings.queue.password)
 
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(f"{mgmt_url}/api/queues/%2f", auth=auth)
