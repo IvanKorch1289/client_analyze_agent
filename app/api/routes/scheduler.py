@@ -16,7 +16,7 @@ from app.schemas import (
     TaskInfoResponse,
 )
 from app.services.scheduler_service import get_scheduler_service
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 scheduler_router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 limiter = limiter_for_client_ip()

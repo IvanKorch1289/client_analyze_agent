@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from app.api.rate_limit import limiter_for_client_ip
 from app.config.constants import RATE_LIMIT_SEARCH_PER_MINUTE
 from app.storage.tarantool import TarantoolClient
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 favorites_router = APIRouter(
     prefix="/favorites",

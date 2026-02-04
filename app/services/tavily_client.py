@@ -8,7 +8,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional
 from langchain_community.tools.tavily_search import TavilySearchResults
 
 from app.config import settings
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 # Constants for content extraction
 MAX_CONTENT_CHARS = 10000
@@ -20,7 +20,7 @@ class TavilyClient:
     _instance: Optional["TavilyClient"] = None
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or settings.tavily.api_key or os.getenv("TAVILY_API_KEY") or os.getenv("TAVILY_TOKEN")
+        self.api_key = api_key or settings.tavily.api_key
         if self.api_key:
             os.environ["TAVILY_API_KEY"] = self.api_key
         # L1 кэш в памяти процесса (быстрый, но не разделяется между воркерами)

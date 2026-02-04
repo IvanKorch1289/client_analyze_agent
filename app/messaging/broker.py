@@ -26,7 +26,7 @@ from app.messaging.models import (
 )
 from app.services.analysis_executor import execute_client_analysis
 from app.services.app_actions import dispatch_cache_invalidate
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 def get_rabbit_broker() -> RabbitBroker:

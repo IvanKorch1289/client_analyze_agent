@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from app.config import settings
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 try:
     import tarantool

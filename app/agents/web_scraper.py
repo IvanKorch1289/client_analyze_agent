@@ -11,8 +11,8 @@ from typing import Any, Dict, List
 
 import httpx
 
-from app.shared.utils.formatters import truncate
-from app.utility.logging_client import logger
+from app.shared.toolkit.formatters import truncate
+from app.shared.toolkit.logging import logger
 
 # Попытка импорта BeautifulSoup (опционально)
 try:

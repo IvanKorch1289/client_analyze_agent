@@ -14,7 +14,7 @@ import aiohttp
 
 from app.agents.collectors.base import BaseCollector, CollectorResult
 from app.config import settings
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 class FNSCollector(BaseCollector):

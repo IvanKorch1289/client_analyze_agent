@@ -24,21 +24,21 @@ from app.config.settings import settings
 from app.config.watchdog import create_config_watchdog
 from app.services.http_client import AsyncHttpClient
 from app.storage.tarantool import TarantoolClient
-from app.utility.app_circuit_breaker import (
+from app.shared.toolkit.circuit_breaker import (
     AppCircuitBreaker,
     AppCircuitBreakerConfig,
     AppCircuitBreakerMiddleware,
 )
-from app.utility.app_metrics import app_metrics
-from app.utility.helpers import get_client_ip
-from app.utility.logging_client import get_request_id, logger, set_request_id
-from app.utility.telemetry import init_telemetry
+from app.shared.toolkit.metrics import app_metrics
+from app.shared.toolkit.helpers import get_client_ip
+from app.shared.toolkit.logging import get_request_id, logger, set_request_id
+from app.shared.toolkit.telemetry import init_telemetry
 
 # Prometheus metrics
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# Get backend port from environment or use default
-BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
+# Get backend port from config
+BACKEND_PORT = settings.app.backend_port
 
 # =======================
 # Rate Limiting Configuration
@@ -263,7 +263,7 @@ class RequestTraceMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: FastAPI):
         super().__init__(app)
         # Don't cache config here; it can change at runtime via watchdog.
-        self._max_body = int(os.getenv("HTTP_TRACE_MAX_BODY_BYTES", "4096"))
+        self._max_body = settings.http_base.trace_max_body_bytes
 
     async def dispatch(self, request: Request, call_next):
         enabled = bool(getattr(settings.app, "debug", False)) or _bool_env("HTTP_TRACE_ENABLED", False)
@@ -686,9 +686,9 @@ app.add_middleware(DynamicTrustedHostMiddleware)
 # Circuit breaker на уровне приложения (fail-fast при всплеске 5xx).
 app_circuit_breaker = AppCircuitBreaker(
     AppCircuitBreakerConfig(
-        failure_threshold=int(os.getenv("APP_CB_FAILURE_THRESHOLD", "30")),
-        window_seconds=int(os.getenv("APP_CB_WINDOW_SECONDS", "60")),
-        open_seconds=int(os.getenv("APP_CB_OPEN_SECONDS", "30")),
+        failure_threshold=settings.app.cb_failure_threshold,
+        window_seconds=settings.app.cb_window_seconds,
+        open_seconds=settings.app.cb_open_seconds,
     )
 )
 app.state.app_circuit_breaker = app_circuit_breaker

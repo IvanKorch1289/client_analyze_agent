@@ -20,15 +20,17 @@ from fastmcp import FastMCP
 from fastmcp.prompts.prompt import Message
 
 from app.config.constants import APP_VERSION
+from app.config.settings import settings
 from app.services.app_actions import dispatch_cache_invalidate, dispatch_client_analysis
 
-MCP_HOST = os.getenv("MCP_HOST", "0.0.0.0")
-MCP_PORT = int(os.getenv("MCP_PORT", "8011"))
-MCP_PATH = os.getenv("MCP_PATH", "/mcp")
+_mcp_cfg = settings.mcp
+MCP_HOST = _mcp_cfg.host
+MCP_PORT = _mcp_cfg.port
+MCP_PATH = _mcp_cfg.path
 
 # Ограничения файловых операций (безопасность MCP tools).
-MCP_FILES_ROOT = Path(os.getenv("MCP_FILES_ROOT", os.getcwd())).resolve()
-MCP_MAX_FILE_BYTES = int(os.getenv("MCP_MAX_FILE_BYTES", "1048576"))  # 1MB
+MCP_FILES_ROOT = Path(_mcp_cfg.files_root or os.getcwd()).resolve()
+MCP_MAX_FILE_BYTES = _mcp_cfg.max_file_bytes
 
 mcp = FastMCP(
     name="client-analysis-mcp",

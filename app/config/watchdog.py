@@ -17,7 +17,7 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from app.config.reload import reload_settings
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 class _ConfigChangeHandler(FileSystemEventHandler):
@@ -96,10 +96,14 @@ class ConfigWatchdog:
 
 
 def create_config_watchdog() -> ConfigWatchdog:
-    enabled = (os.getenv("CONFIG_WATCHDOG_ENABLED") or "").strip().lower()
-    if enabled == "":
-        # Default: enabled when reload is enabled in dev workflows.
-        enabled_bool = True
-    else:
-        enabled_bool = enabled in ("1", "true", "yes", "y", "on")
+    try:
+        from app.config.settings import settings as _cfg
+
+        enabled_bool = _cfg.app.reload
+    except Exception:
+        enabled = (os.getenv("CONFIG_WATCHDOG_ENABLED") or "").strip().lower()
+        if enabled == "":
+            enabled_bool = True
+        else:
+            enabled_bool = enabled in ("1", "true", "yes", "y", "on")
     return ConfigWatchdog(Path("config"), enabled=enabled_bool)

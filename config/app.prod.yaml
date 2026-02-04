@@ -12,6 +12,11 @@ app:
   log_format: "json"
   workers: 4
   max_requests: 2000
+  analysis_timeout_seconds: 600
+  cb_failure_threshold: 30
+  cb_window_seconds: 60
+  cb_open_seconds: 30
+  otel_service_name: "counterparty-analysis"
 
 security:
   cors_enabled: true
@@ -85,6 +90,132 @@ http_base:
   max_connections: 100
   max_keepalive_connections: 40
   http2_enabled: true
+  trace_max_body_bytes: 4096
+
+mcp:
+  host: "0.0.0.0"
+  port: 8011
+  path: "/mcp"
+  files_root: "/app/reports"
+  max_file_bytes: 1048576
+
+frontend:
+  base_url: "http://app:8000/api/v1"
+  timeout_seconds: 120
+
+redis:
+  host: "redis"
+  port: 6379
+  db: 0
+  max_connections: 50
+  socket_timeout: 5.0
+  default_ttl: 3600
+  encoding: "utf-8"
+  decode_responses: true
+
+dadata:
+  api_url: "https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party"
+  timeout: 30.0
+  cache_ttl: 7200
+  rate_limit_per_second: 10
+
+casebook:
+  arbitr_url: "https://api3.casebook.ru/arbitrage/cases"
+  timeout: 30.0
+  cache_ttl: 9600
+  page_size: 100
+
+infosphere:
+  api_url: "https://i-sphere.ru/2.00/"
+  timeout: 45.0
+  cache_ttl: 3600
+  sources: "fssp,bankrot,cbr,egrul,fns,fsin,fmsdb,fms,gosuslugi,mvd,pfr,terrorist"
+
+perplexity:
+  api_url: "https://api.perplexity.ai"
+  model: "sonar-pro"
+  temperature: 0.2
+  search_recency_filter: "month"
+  timeout: 60.0
+  cache_ttl: 300
+  cache_enabled: true
+
+tavily:
+  search_depth: "advanced"
+  max_results: 10
+  include_answer: true
+  include_raw_content: false
+  timeout: 60.0
+  cache_ttl: 300
+  cache_enabled: true
+
+openrouter:
+  api_url: "https://openrouter.ai/api/v1"
+  model: "anthropic/claude-3.5-sonnet"
+  temperature: 0.1
+  max_tokens: 1000
+  top_p: 1.0
+  timeout: 60.0
+  http_referer: "https://your-domain.example.com"
+  http_title: "Client Analysis System"
+
+huggingface:
+  model: "meta-llama/Meta-Llama-3.1-70B-Instruct"
+  temperature: 0.2
+  max_tokens: 4096
+  top_p: 0.95
+  timeout: 120.0
+
+gigachat:
+  model: "GigaChat-Pro"
+  temperature: 0.2
+  max_tokens: 4096
+  top_p: 0.95
+  timeout: 120.0
+  verify_ssl_certs: true
+
+yandexgpt:
+  model_uri: "gpt://folder_id/yandexgpt-lite"
+  temperature: 0.3
+  max_tokens: 2000
+  timeout: 60
+
+jayguard:
+  enabled: false
+  timeout: 120.0
+
+mail:
+  smtp_port: 587
+  smtp_use_tls: true
+  smtp_use_ssl: false
+  smtp_timeout: 10
+  templates_dir: "templates/email"
+  enable_notifications: false
+
+tasks:
+  enabled: true
+  enable_cleanup: true
+  enable_healthchecks: true
+  enable_reports_generation: true
+  cleanup_interval: 3600
+  healthcheck_interval: 300
+
+storage:
+  local_storage_path: "/app/storage"
+  reports_path: "/app/reports"
+  logs_path: "/app/logs"
+  temp_path: "/app/temp"
+  s3_enabled: false
+  max_file_size_mb: 10
+  max_upload_size_mb: 100
+
+grpc:
+  enabled: false
+  host: "0.0.0.0"
+  port: 50051
+  max_workers: 10
+  max_message_length: 4194304
+  tls_enabled: false
 
 logging:
   level: "INFO"

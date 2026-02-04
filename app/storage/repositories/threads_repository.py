@@ -12,7 +12,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from app.storage.repositories import BaseRepository
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 class ThreadsRepository(BaseRepository[Dict[str, Any]]):

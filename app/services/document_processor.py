@@ -17,7 +17,7 @@ from __future__ import annotations
 import io
 from typing import List, Tuple
 
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 # Допустимые MIME типы
 ALLOWED_CONTENT_TYPES = {

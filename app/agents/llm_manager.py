@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from app.config import settings
 from app.shared.exceptions import PIIMaskingError
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 # Lazy imports для PII, audit, cache и metrics
 _pii_protection = None
@@ -206,8 +206,8 @@ class LLMManager:
                     max_tokens=settings.openrouter.max_tokens,
                     timeout=settings.jayguard.timeout,
                     default_headers={
-                        "HTTP-Referer": "https://client-analysis-system.com",
-                        "X-Title": "Client Analysis System",
+                        "HTTP-Referer": settings.openrouter.http_referer,
+                        "X-Title": settings.openrouter.http_title,
                     },
                 )
 
@@ -227,8 +227,8 @@ class LLMManager:
                     max_tokens=settings.openrouter.max_tokens,
                     timeout=settings.openrouter.timeout,
                     default_headers={
-                        "HTTP-Referer": "https://client-analysis-system.com",
-                        "X-Title": "Client Analysis System",
+                        "HTTP-Referer": settings.openrouter.http_referer,
+                        "X-Title": settings.openrouter.http_title,
                     },
                 )
 

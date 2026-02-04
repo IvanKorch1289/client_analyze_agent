@@ -4,7 +4,7 @@
 Содержит общие настройки, которые не относятся к конкретным сервисам.
 """
 
-from pydantic import ConfigDict, Field
+from pydantic import AliasChoices, ConfigDict, Field
 
 from app.config.config_loader import BaseSettingsWithLoader
 
@@ -18,7 +18,11 @@ class AppBaseSettings(BaseSettingsWithLoader):
     # Идентификация приложения
     app_name: str = Field(default="counterparty-analyzer", description="Название приложения")
     app_version: str = Field(default="0.1.0", description="Версия приложения")
-    environment: str = Field(default="dev", description="Окружение (dev/staging/prod)")
+    environment: str = Field(
+        default="dev",
+        description="Окружение (dev/staging/prod)",
+        validation_alias=AliasChoices("APP_ENV", "APP_ENVIRONMENT"),
+    )
 
     # Порты
     backend_port: int = Field(default=8000, description="Порт FastAPI backend")
@@ -42,6 +46,28 @@ class AppBaseSettings(BaseSettingsWithLoader):
     # Производительность
     workers: int = Field(default=1, description="Количество worker процессов")
     max_requests: int = Field(default=1000, description="Максимум запросов до перезапуска worker")
+
+    # Таймауты
+    analysis_timeout_seconds: int = Field(
+        default=600,
+        description="Таймаут анализа клиента (секунды)",
+    )
+
+    # Circuit Breaker (application-level)
+    cb_failure_threshold: int = Field(default=30, description="Порог ошибок для открытия circuit breaker")
+    cb_window_seconds: int = Field(default=60, description="Окно подсчёта ошибок CB (секунды)")
+    cb_open_seconds: int = Field(default=30, description="Время в открытом состоянии CB (секунды)")
+
+    # OpenTelemetry
+    otel_service_name: str = Field(
+        default="counterparty-analysis",
+        description="Имя сервиса для OpenTelemetry",
+    )
+
+    @property
+    def is_production(self) -> bool:
+        """Определяет production-окружение."""
+        return self.environment.lower() in ("production", "prod")
 
     model_config = ConfigDict(env_prefix="APP_")
 

@@ -46,12 +46,12 @@ from app.services.openrouter_client import get_openrouter_client
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
 from app.storage.tarantool import TarantoolClient
-from app.utility.app_metrics import app_metrics
-from app.utility.auth import Role, get_current_role, require_admin
-from app.utility.helpers import get_client_ip
-from app.utility.logging_client import logger
-from app.utility.pdf_generator import save_pdf_report
-from app.utility.telemetry import get_log_store, get_span_exporter
+from app.shared.toolkit.metrics import app_metrics
+from app.shared.toolkit.auth import Role, get_current_role, require_admin
+from app.shared.toolkit.helpers import get_client_ip
+from app.shared.toolkit.logging import logger
+from app.shared.toolkit.pdf import save_pdf_report
+from app.shared.toolkit.telemetry import get_log_store, get_span_exporter
 
 utility_router = APIRouter(
     prefix="/utility",
@@ -786,7 +786,7 @@ async def get_queue_stats() -> Dict[str, Any]:
         import httpx
 
         mgmt_url = settings.queue.amqp_url.replace("amqp://", "http://").replace(":5672", ":15672")
-        auth = ("admin", "admin123")
+        auth = (settings.queue.username, settings.queue.password)
 
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(f"{mgmt_url}/api/queues/%2f", auth=auth)

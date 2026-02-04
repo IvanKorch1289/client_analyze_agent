@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 class RiskCategory(str, Enum):

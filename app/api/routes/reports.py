@@ -27,14 +27,14 @@ from app.schemas import (
     ReportStatsResponse,
 )
 from app.storage.tarantool import TarantoolClient
-from app.utility.auth import require_admin
-from app.utility.export_helpers import (
+from app.shared.toolkit.auth import require_admin
+from app.shared.toolkit.export import (
     normalize_report_for_export,
     report_to_csv,
     report_to_json,
     reports_summary_to_csv,
 )
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 reports_router = APIRouter(
     prefix="/reports",

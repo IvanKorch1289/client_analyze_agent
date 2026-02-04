@@ -19,7 +19,7 @@ from app.services.openrouter_client import get_openrouter_client
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
 from app.storage.tarantool import TarantoolClient
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 analytics_router = APIRouter(
     prefix="/analytics",

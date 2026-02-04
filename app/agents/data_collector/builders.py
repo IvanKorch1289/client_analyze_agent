@@ -8,7 +8,7 @@ from various data sources into a unified format.
 from typing import Any, Dict, List
 
 from app.config import MAX_CONTENT_LENGTH
-from app.shared.utils.formatters import truncate
+from app.shared.toolkit.formatters import truncate
 
 
 def build_search_results(source_data: Dict[str, Any], intents: List[Dict[str, str]]) -> List[Dict[str, Any]]:

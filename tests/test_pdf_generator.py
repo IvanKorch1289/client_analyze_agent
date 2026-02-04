@@ -1,4 +1,4 @@
-from app.utility.pdf_generator import normalize_report_for_pdf
+from app.shared.toolkit.pdf import normalize_report_for_pdf
 
 
 def test_normalize_report_for_pdf_supports_current_report_shape():

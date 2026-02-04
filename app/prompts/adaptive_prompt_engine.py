@@ -11,7 +11,7 @@ from app.agents.llm_manager import LLMManager, LLMProvider
 from app.prompts.manager import PromptManager
 from app.shared.pii_protection import mask_pii
 from app.storage.feedback_repository import FeedbackRepository
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 class AdaptivePromptEngine:

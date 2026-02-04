@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
@@ -181,7 +180,8 @@ class ApiClient:
 
 
 def get_api_client() -> ApiClient:
-    base_url = _normalize_base_url(os.getenv("API_BASE_URL", ""))
-    # Увеличенный таймаут для долгих операций (анализ клиента может занять 60+ секунд)
-    timeout_seconds = int(os.getenv("API_TIMEOUT_SECONDS", "120"))
-    return ApiClient(base_url=base_url, timeout_seconds=timeout_seconds)
+    from app.config.settings import settings as _cfg
+
+    fe = _cfg.frontend
+    base_url = _normalize_base_url(fe.base_url)
+    return ApiClient(base_url=base_url, timeout_seconds=fe.timeout_seconds)

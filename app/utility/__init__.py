@@ -1,36 +1,14 @@
 """
-app.utility package exports.
+DEPRECATED: app.utility package has been consolidated into app.shared.toolkit.
 
-DEPRECATED: This module re-exports from app.shared.toolkit for backward compatibility.
-Please use app.shared.toolkit directly for new code.
-
-Важно: избегаем импортов, которые тянут Tarantool при инициализации пакета,
-чтобы не создавать циклические импорты (app.storage.tarantool <-> app.utility.cache).
+All modules have been migrated. Use the canonical imports:
+- app.shared.toolkit.logging  (logger, get_request_id, set_request_id)
+- app.shared.toolkit.auth     (require_admin, get_current_role, Role)
+- app.shared.toolkit.helpers   (get_client_ip, clean_xml_dict, safe_dict_get)
+- app.shared.toolkit.circuit_breaker (AppCircuitBreaker, ...)
+- app.shared.toolkit.export    (report_to_json, report_to_csv, ...)
+- app.shared.toolkit.pdf       (save_pdf_report, generate_analysis_pdf, ...)
+- app.shared.toolkit.telemetry (init_telemetry, get_span_exporter, ...)
+- app.shared.toolkit.metrics   (app_metrics)
+- app.shared.decorators        (retry, cache_with_tarantool, ...)
 """
-
-from app.shared.toolkit.logging import (
-    AppLogger,
-    generate_request_id,
-    get_request_id,
-    logger,
-    set_request_id,
-)
-
-
-def __getattr__(name: str):
-    # Lazy exports to prevent circular imports at package import time.
-    if name == "clean_xml_dict":
-        from app.shared.toolkit.helpers import clean_xml_dict as _clean_xml_dict
-
-        return _clean_xml_dict
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-__all__ = [
-    "AppLogger",
-    "logger",
-    "get_request_id",
-    "set_request_id",
-    "generate_request_id",
-    "clean_xml_dict",
-]

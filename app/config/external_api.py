@@ -40,6 +40,9 @@ class HttpBaseSettings(BaseSettingsWithLoader):
     # HTTP/2
     http2_enabled: bool = Field(default=True, description="Включить HTTP/2")
 
+    # Debug / Tracing
+    trace_max_body_bytes: int = Field(default=4096, description="Макс. размер тела запроса для трейсинга")
+
     model_config = ConfigDict(env_prefix="HTTP_")
 
 
@@ -49,7 +52,8 @@ class DadataAPISettings(BaseSettingsWithLoader):
     yaml_group = "dadata"
     vault_path = "secret/data/app/dadata"
 
-    api_key: Optional[str] = Field(default=None, description="API ключ DaData")
+    api_key: Optional[str] = Field(default=None, description="API ключ (Token) DaData")
+    api_secret: Optional[str] = Field(default=None, description="API Secret DaData")
     api_url: str = Field(
         default="https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party",
         description="URL DaData API",
@@ -200,6 +204,10 @@ class OpenRouterAPISettings(BaseSettingsWithLoader):
     check_availability: bool = Field(default=True, description="Проверять доступность модели перед использованием")
     availability_cache_ttl: int = Field(default=300, description="TTL кеша доступности моделей (сек)")
 
+    # HTTP заголовки для OpenRouter (Referer и Title)
+    http_referer: str = Field(default="https://your-domain.example.com", description="HTTP-Referer заголовок")
+    http_title: str = Field(default="Client Analysis System", description="X-Title заголовок")
+
     model_config = ConfigDict(env_prefix="OPENROUTER_")
 
 
@@ -248,8 +256,8 @@ class GigaChatAPISettings(BaseSettingsWithLoader):
 
     # SSL
     verify_ssl_certs: bool = Field(
-        default=False,
-        description="Проверять SSL сертификаты (для GigaChat часто нужно отключать)",
+        default=True,
+        description="Проверять SSL сертификаты (отключать только при необходимости через GIGACHAT_VERIFY_SSL_CERTS=false)",
     )
 
     model_config = ConfigDict(env_prefix="GIGACHAT_")

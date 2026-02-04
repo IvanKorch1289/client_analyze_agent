@@ -14,8 +14,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.config.constants import APP_VERSION
-from app.utility.auth import require_admin
-from app.utility.logging_client import logger
+from app.shared.toolkit.auth import require_admin
+from app.shared.toolkit.logging import logger
 
 # Lazy imports для админских операций
 _tarantool_client = None

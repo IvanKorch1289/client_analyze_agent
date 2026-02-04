@@ -203,9 +203,30 @@ class BaseSettingsWithLoader(BaseSettings):
             if yaml_result:
                 yaml_data = yaml_result
 
-        # 3. Environment variables загружаются автоматически через Pydantic
-        # 4. Merge: Vault > Env > YAML > kwargs > defaults
-        merged_data = {**yaml_data, **vault_data, **kwargs}
+        # 3. Environment variables загружаются автоматически через Pydantic BaseSettings.
+        #    Приоритет: init-kwargs > env > dotenv > defaults.
+        #    YAML-данные подставляем только для полей, где нет env-переменной,
+        #    чтобы ENV мог переопределить YAML.
+        env_prefix = (self.model_config.get("env_prefix") or "").upper()
+        yaml_defaults: Dict[str, Any] = {}
+        for key, val in yaml_data.items():
+            # Стандартное имя env-переменной: {prefix}{field_name}
+            std_env = f"{env_prefix}{key}".upper()
+            if std_env in os.environ:
+                continue
+            # Проверяем validation_alias (AliasChoices / str)
+            field_info = self.model_fields.get(key)
+            if field_info and field_info.validation_alias:
+                alias = field_info.validation_alias
+                if isinstance(alias, str) and alias in os.environ:
+                    continue
+                if hasattr(alias, "choices"):
+                    if any(isinstance(c, str) and c in os.environ for c in alias.choices):
+                        continue
+            yaml_defaults[key] = val
+
+        # Merge: Vault (highest) > explicit kwargs > YAML defaults
+        merged_data = {**yaml_defaults, **vault_data, **kwargs}
 
         super().__init__(**merged_data)
 

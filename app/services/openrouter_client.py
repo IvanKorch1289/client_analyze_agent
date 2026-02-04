@@ -7,7 +7,7 @@ from app.services.service_status import (
     status_not_configured,
     status_ready,
 )
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 
 class OpenRouterClient:
@@ -66,8 +66,8 @@ class OpenRouterClient:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://replit.com",
-            "X-Title": "Client Analysis Agent",
+            "HTTP-Referer": settings.openrouter.http_referer,
+            "X-Title": settings.openrouter.http_title,
         }
 
         payload = {

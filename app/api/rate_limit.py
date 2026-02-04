@@ -12,7 +12,7 @@ from collections.abc import Callable
 
 from slowapi import Limiter
 
-from app.utility.helpers import get_client_ip
+from app.shared.toolkit.helpers import get_client_ip
 
 
 def create_limiter(key_func: Callable) -> Limiter:

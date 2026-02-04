@@ -30,8 +30,13 @@ _security_warning_shown = False
 
 
 def get_admin_token() -> str:
-    """Get admin token from environment (reads at request time)."""
-    return os.getenv("ADMIN_TOKEN", "")
+    """Get admin token from config (Vault → ENV → YAML)."""
+    try:
+        from app.config.settings import settings
+
+        return settings.secure.admin_token or ""
+    except Exception:
+        return os.getenv("ADMIN_TOKEN", "")
 
 
 def validate_admin_token_security() -> Tuple[bool, str]:

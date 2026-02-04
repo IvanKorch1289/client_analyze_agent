@@ -7,9 +7,9 @@ import xmltodict
 from app.config import settings
 from app.services.http_client import AsyncHttpClient
 from app.shared.exceptions import APIError
-from app.utility.decorators import cache_with_tarantool
-from app.utility.helpers import clean_xml_dict
-from app.utility.logging_client import logger
+from app.shared.decorators import cache_with_tarantool
+from app.shared.toolkit.helpers import clean_xml_dict
+from app.shared.toolkit.logging import logger
 
 
 @cache_with_tarantool(ttl=86400, source="dadata", key_prefix="dadata:inn")

@@ -28,7 +28,7 @@ from app.storage.connection import (
     get_tarantool_module,
     TARANTOOL_AVAILABLE,
 )
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 # Get tarantool module from connection (handles import gracefully)
 tarantool = get_tarantool_module()

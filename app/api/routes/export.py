@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from app.api.rate_limit import limiter_for_client_ip
 from app.config.constants import RATE_LIMIT_EXPORT_PER_MINUTE
-from app.utility.logging_client import logger
+from app.shared.toolkit.logging import logger
 
 export_router = APIRouter(prefix="/export", tags=["export"])
 limiter = limiter_for_client_ip()
