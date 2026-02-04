@@ -156,6 +156,22 @@ def run_client_analysis_streaming(
 
     logger.info(f"Starting client analysis workflow: {session_id}", component="workflow")
 
+    try:
+        from app.shared.toolkit.telemetry import create_span
+
+        _span_ctx = create_span(
+            "workflow.client_analysis",
+            attributes={
+                "workflow.session_id": session_id,
+                "workflow.client_name": client_name,
+                "workflow.inn": inn or "",
+                "workflow.stream": stream,
+            },
+        )
+        _span_ctx.__enter__()
+    except Exception:
+        _span_ctx = None
+
     if stream:
         return _run_streaming_analysis(initial_state, session_id, client_name, inn)
 

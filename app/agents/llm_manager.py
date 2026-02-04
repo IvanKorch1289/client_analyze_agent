@@ -632,6 +632,9 @@ class LLMManager:
                 exc_info=True,
             )
             # НЕ делаем исключений для DEBUG режима - PII утечки критичны везде
+            m = _get_metrics()
+            if m:
+                m.record_pii_error("masking_failure")
             raise PIIMaskingError(
                 message="Невозможно замаскировать персональные данные - вызов LLM заблокирован",
                 original_error=e,
@@ -879,6 +882,13 @@ class LLMManager:
         Raises:
             Exception: Если все провайдеры недоступны
         """
+        from app.shared.toolkit.telemetry import create_span
+
+        with create_span("llm.ainvoke", attributes={"llm.cache_enabled": cache_enabled}):
+            return await self._ainvoke_inner(prompt, cache_enabled, **kwargs)
+
+    async def _ainvoke_inner(self, prompt: str, cache_enabled: bool = True, **kwargs) -> str:
+        """Internal ainvoke logic wrapped by tracing span."""
         start_time = time.perf_counter()
 
         # Step 1: Check cache

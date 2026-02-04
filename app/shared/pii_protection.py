@@ -7,6 +7,7 @@
 """
 
 import hashlib
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -14,6 +15,20 @@ from typing import Any, Dict, List, Optional
 _analyzer = None
 _anonymizer = None
 _recognizers_registered = False
+_metrics = None
+
+
+def _get_metrics():
+    """Lazy-load metrics to avoid circular imports."""
+    global _metrics
+    if _metrics is None:
+        try:
+            from app.shared.prometheus_metrics import metrics
+
+            _metrics = metrics
+        except Exception:
+            _metrics = False  # Sentinel: don't retry
+    return _metrics if _metrics is not False else None
 
 
 @dataclass
@@ -386,6 +401,8 @@ def mask_pii(
         "ИНН [INN_1], директор [CLIENT_NAME_1], тел [PHONE_1]"
         >>> print(result.replacements)  # Содержит маппинг для размаскирования
     """
+    _mask_start = time.monotonic()
+
     if not text or not text.strip():
         return PIIMaskingResult(
             masked_text=text,
@@ -445,6 +462,9 @@ def mask_pii(
     results = validated_results
 
     if not results:
+        m = _get_metrics()
+        if m:
+            m.record_pii_masking(pii_detected=False, latency=time.monotonic() - _mask_start)
         return PIIMaskingResult(
             masked_text=text,
             original_text=text,
@@ -518,11 +538,20 @@ def mask_pii(
     # Переворачиваем replacements обратно (для логичного порядка)
     replacements = list(reversed(replacements))
 
+    sorted_types = sorted(detected_types)
+    m = _get_metrics()
+    if m:
+        m.record_pii_masking(
+            pii_detected=True,
+            entity_types=sorted_types,
+            latency=time.monotonic() - _mask_start,
+        )
+
     return PIIMaskingResult(
         masked_text=masked_text,
         original_text=text,
         replacements=replacements,
-        detected_pii_types=sorted(detected_types),
+        detected_pii_types=sorted_types,
         pii_count=len(replacements),
         pii_detected=len(replacements) > 0,
     )

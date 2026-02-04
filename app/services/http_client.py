@@ -412,6 +412,23 @@ class AsyncHttpClient:
         last_exception: Optional[Exception] = None
 
         try:
+            from app.shared.toolkit.telemetry import create_span
+        except Exception:
+            create_span = None  # type: ignore[assignment]
+
+        span_ctx = None
+        if create_span is not None:
+            span_ctx = create_span(
+                "http.request",
+                attributes={
+                    "http.method": method.upper(),
+                    "http.url": url.split("?")[0],
+                    "http.service": detected_service,
+                },
+            )
+            span_ctx.__enter__()
+
+        try:
             async for attempt in AsyncRetrying(
                 stop=stop_after_attempt(retry.max_attempts),
                 wait=wait_exponential(
@@ -464,6 +481,8 @@ class AsyncHttpClient:
                     if circuit_breaker:
                         await circuit_breaker.record_success()
 
+                    if span_ctx is not None:
+                        span_ctx.__exit__(None, None, None)
                     return response
 
         except RetryError as e:
@@ -476,6 +495,8 @@ class AsyncHttpClient:
                 f"Request to {detected_service} failed after {retry.max_attempts} attempts: {last_exception}",
                 component="http_client",
             )
+            if span_ctx is not None:
+                span_ctx.__exit__(type(e), e, e.__traceback__)
             if last_exception:
                 raise last_exception from e
             else:
@@ -485,6 +506,8 @@ class AsyncHttpClient:
             metrics.failed_requests += 1
             if circuit_breaker:
                 await circuit_breaker.record_failure(e)
+            if span_ctx is not None:
+                span_ctx.__exit__(type(e), e, e.__traceback__)
             raise
 
         raise RuntimeError("Unreachable: request failed without exception")

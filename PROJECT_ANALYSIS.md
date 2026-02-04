@@ -141,14 +141,14 @@
 
 | Риск | Вероятность | Влияние | Модуль | Описание |
 |------|-------------|---------|--------|----------|
-| Утечка PII через прямой вызов LLM | Низкая | Критическое | LLM API | Если разработчик вызовет LLM-провайдер напрямую, минуя `LLMManager.ainvoke()` |
+| ~~Утечка PII через прямой вызов LLM~~ | ~~Низкая~~ | ~~Критическое~~ | ~~LLM API~~ | ✅ Митигировано: ruff TID251 banned-api запрещает прямой импорт LLM-провайдеров |
 | False negative PII маскирования | Средняя | Критическое | PII | ФИО без контекста (score 0.35) или в нестандартном падеже может не распознаться |
 | Потеря данных при рестарте | Высокая | Критическое | Storage | In-memory fallback теряет данные |
 | Deadlock в sync-async bridge | Средняя | Высокое | LLM API | `_run_coroutine_sync()` создаёт потоки внутри async context |
-| LLM rate limiting каскад | Средняя | Высокое | LLM API | При массовых запросах все 4 провайдера возвращают 429, нет backoff |
+| ~~LLM rate limiting каскад~~ | ~~Средняя~~ | ~~Высокое~~ | ~~LLM API~~ | ✅ Митигировано (Этап 2.1): retry с exponential backoff (2s, 4s, 8s) при 429 перед fallback |
 | Tarantool schema drift | Средняя | Высокое | Storage | Нет миграций — ручное обновление |
-| RabbitMQ callback failure | Средняя | Среднее | RabbitMQ | Callback URL вызывается 1 раз без retry |
-| RAG stale data | Средняя | Среднее | RAG | Старые чанки не удаляются при обновлении документа |
+| ~~RabbitMQ callback failure~~ | ~~Средняя~~ | ~~Среднее~~ | ~~RabbitMQ~~ | ✅ Митигировано (Этап 2.2): 3 retry с exponential backoff для callback URL |
+| ~~RAG stale data~~ | ~~Средняя~~ | ~~Среднее~~ | ~~RAG~~ | ✅ Митигировано (Этап 2.5): chunk versioning — старые чанки удаляются при upsert |
 
 ### Организационные риски
 
@@ -170,8 +170,8 @@
 |---|--------|--------|-------------|
 | 1.1 | Edge-case тесты PII: буква Ё, отчества, псевдонимы | ✅ | 27 новых тестов (TestValidateINNChecksum, TestINNChecksumIntegration, TestPIIEdgeCases) |
 | 1.2 | INN checksum validation (ФНС алгоритм) | ✅ | `_validate_inn_checksum()` + post-filtering в `mask_pii()`, невалидные ИНН не маскируются |
-| 1.3 | Linter-правило запрета прямого импорта LLM | ⏳ | Требует настройки ruff custom rules |
-| 1.4 | Мониторинг PII в Prometheus | ⏳ | Требует Prometheus metrics code |
+| 1.3 | Linter-правило запрета прямого импорта LLM | ✅ | Ruff TID251 banned-api: `langchain_openai`, `gigachat`, `langchain_community.llms` запрещены с PII-предупреждением. Per-file-ignores для легитимных файлов |
+| 1.4 | Мониторинг PII в Prometheus | ✅ | 4 новых метрики: `pii_masking_calls_total`, `pii_entities_detected_total`, `pii_masking_latency_seconds`, `pii_masking_errors_total`. Инструментирован `mask_pii()` и `llm_manager.py` |
 | 1.5 | Fix `_run_coroutine_sync()` deadlock | ✅ | Добавлен timeout=300s + RuntimeWarning при вызове из async |
 | 1.6 | PostgreSQL для хранения отчётов | ⏳ | Крупная инфраструктурная задача |
 | 1.7 | `asyncio.get_event_loop()` → `get_running_loop()` | ✅ | 32 замены в 6 файлах |
@@ -193,7 +193,7 @@
 | 2.4 | PII маскирование в `handle_async_llm_request` | ✅ | Выполнено в Этапе 1 (задача 1.8*) |
 | 2.5 | Chunk versioning в RAG | ✅ | `add_document_chunks()` удаляет старые чанки перед upsert + `doc_version` в metadata |
 | 2.6 | Integration tests с testcontainers | ⏳ | Требует testcontainers-python + Docker-in-Docker |
-| 2.7 | Smoke tests в CI/CD | ⏳ | Требует настройки CI/CD pipeline |
+| 2.7 | Smoke tests в CI/CD | ✅ | 5 smoke tests в GitHub Actions: health endpoint, OpenAPI schema, PII masking, metrics, legacy deprecation headers. App starts с отключёнными внешними сервисами |
 
 **Рекомендации:** tenacity для retry, testcontainers-python для интеграционных тестов.
 
@@ -217,18 +217,18 @@
 
 ---
 
-### Этап 4: Observability и Production Readiness (Приоритет: СРЕДНИЙ)
+### Этап 4: Observability и Production Readiness (Приоритет: СРЕДНИЙ) — В ПРОЦЕССЕ
 
 **Цель:** Подготовка к production-эксплуатации.
 
-| # | Задача | Модуль | Ожидаемый результат | Метрика |
-|---|--------|--------|---------------------|---------|
-| 4.1 | Настроить OpenTelemetry tracing end-to-end (API → Agent → LLM → Storage) | Все | Полная трассировка запроса | 100% запросов с trace_id |
-| 4.2 | Добавить Jaeger/Tempo для визуализации traces | Мониторинг | Визуальная карта зависимостей | MTTR < 15 мин |
-| 4.3 | Настроить CD pipeline (GitHub Actions → staging → prod) | CI/CD | Автодеплой при merge в main | Деплой < 10 мин |
-| 4.4 | Добавить backup/restore для Tarantool | Storage | Регулярные бэкапы | RPO < 1 час, RTO < 30 мин |
-| 4.5 | Написать runbook для инцидентов (PII leak, LLM outage, Tarantool crash) | Документация | Стандартные процедуры | Top-10 инцидентов |
-| 4.6 | Внедрить Alembic для миграций PostgreSQL | Storage | Версионированная схема | 100% миграций автоматизированы |
+| # | Задача | Модуль | Статус | Что сделано |
+|---|--------|--------|--------|-------------|
+| 4.1 | OpenTelemetry tracing end-to-end (API → Agent → LLM → Storage) | Все | ✅ | 4 span'а: `api.analyze_client` (agent.py), `workflow.client_analysis` (client_workflow.py), `llm.ainvoke` (llm_manager.py), `http.request` (http_client.py). Lazy import с graceful degradation |
+| 4.2 | Добавить Jaeger/Tempo для визуализации traces | Мониторинг | ⏳ | Визуальная карта зависимостей, MTTR < 15 мин |
+| 4.3 | Настроить CD pipeline (GitHub Actions → staging → prod) | CI/CD | ⏳ | Автодеплой при merge в main |
+| 4.4 | Добавить backup/restore для Tarantool | Storage | ⏳ | Регулярные бэкапы, RPO < 1 час |
+| 4.5 | Написать runbook для инцидентов (PII leak, LLM outage, Tarantool crash) | Документация | ⏳ | Стандартные процедуры для Top-10 инцидентов |
+| 4.6 | Внедрить Alembic для миграций PostgreSQL | Storage | ⏳ | Версионированная схема |
 
 **Рекомендации:** OpenTelemetry SDK, Jaeger, ArgoCD.
 
