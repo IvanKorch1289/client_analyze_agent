@@ -146,10 +146,14 @@ async def handle_async_llm_request(msg: AsyncLLMQueueMessage) -> Dict[str, Any]:
     Обработчик асинхронных LLM запросов.
 
     Выполняет LLM вызов и отправляет результат на callback URL.
+
+    ВАЖНО: Применяет PII маскирование ПЕРЕД отправкой в LLM и
+    размаскирование ПОСЛЕ получения ответа (152-ФЗ compliance).
     """
     import httpx
 
     from app.agents.llm_manager import LLMProvider, get_llm_manager
+    from app.shared import pii_protection
 
     start_time = time.perf_counter()
     callback_payload: Dict[str, Any]
@@ -178,13 +182,32 @@ async def handle_async_llm_request(msg: AsyncLLMQueueMessage) -> Dict[str, Any]:
         if msg.system_prompt:
             full_prompt = f"{msg.system_prompt}\n\n{msg.prompt}"
 
-        # Call LLM
+        # PII masking BEFORE sending to LLM (152-ФЗ compliance)
+        pii_result = pii_protection.mask_pii(text=full_prompt, language="ru", mask_level="high")
+
+        if pii_result.pii_detected:
+            logger.warning(
+                f"Request {msg.request_id}: PII detected and masked ({pii_result.pii_count} items)",
+                component="faststream",
+            )
+
+        # Call LLM with masked prompt
         response = await manager.ainvoke_with_provider(
-            prompt=full_prompt,
+            prompt=pii_result.masked_text,
             provider=llm_provider,
             temperature=msg.temperature,
             max_tokens=msg.max_tokens,
         )
+
+        # PII unmasking AFTER receiving LLM response
+        if pii_result.pii_detected and pii_result.replacements:
+            response = pii_protection.unmask_pii(
+                masked_text=response, replacements=pii_result.replacements
+            )
+            logger.info(
+                f"Request {msg.request_id}: PII unmasked in response",
+                component="faststream",
+            )
 
         processing_time = (time.perf_counter() - start_time) * 1000
 

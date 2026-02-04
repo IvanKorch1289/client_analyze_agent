@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone
 
 from app.messaging.models import (
+    AsyncLLMQueueMessage,
     ClientAnalysisRequest,
     ClientAnalysisResult,
     CacheInvalidateRequest,
@@ -243,6 +244,190 @@ class TestBrokerHandlers:
                 invalidate_all=True,
                 prefer_queue=False,
             )
+
+
+class TestHandleAsyncLLMRequest:
+    """Тесты PII маскирования в обработчике LLM очереди."""
+
+    def _make_llm_msg(self, prompt: str, system_prompt: str | None = None) -> AsyncLLMQueueMessage:
+        """Создание тестового LLM сообщения."""
+        return AsyncLLMQueueMessage(
+            request_id="test-req-001",
+            prompt=prompt,
+            system_prompt=system_prompt,
+            provider="openrouter",
+            callback_url="http://localhost:8000/callback",
+            temperature=0.7,
+            max_tokens=1024,
+            created_at=1700000000.0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_pii_is_masked_before_llm_call(self):
+        """PII данные маскируются ПЕРЕД отправкой в LLM."""
+        from app.messaging.broker import handle_async_llm_request
+
+        msg = self._make_llm_msg(
+            prompt="Проанализируй директора Иванова Ивана Ивановича, ИНН 7707083893"
+        )
+
+        mock_manager = MagicMock()
+        mock_manager.ainvoke_with_provider = AsyncMock(return_value="Анализ завершён")
+
+        # Настройка mock PII
+        mock_pii_result = MagicMock()
+        mock_pii_result.masked_text = "Проанализируй директора [CLIENT_NAME_1], ИНН [INN_1]"
+        mock_pii_result.pii_detected = True
+        mock_pii_result.pii_count = 2
+        mock_pii_result.replacements = {
+            "[CLIENT_NAME_1]": "Иванова Ивана Ивановича",
+            "[INN_1]": "7707083893",
+        }
+
+        mock_pii_module = MagicMock()
+        mock_pii_module.mask_pii.return_value = mock_pii_result
+        mock_pii_module.unmask_pii.return_value = "Анализ завершён"
+
+        with (
+            patch("app.agents.llm_manager.get_llm_manager", return_value=mock_manager),
+            patch.dict("sys.modules", {"app.shared.pii_protection": mock_pii_module}),
+            patch("httpx.AsyncClient") as mock_http,
+        ):
+            # Настройка mock HTTP callback
+            mock_client_instance = AsyncMock()
+            mock_client_instance.post = AsyncMock(return_value=MagicMock(status_code=200))
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await handle_async_llm_request(msg)
+
+            # Проверяем что mask_pii вызван
+            mock_pii_module.mask_pii.assert_called_once_with(
+                text=msg.prompt,
+                language="ru",
+                mask_level="high",
+            )
+
+            # Проверяем что в LLM ушёл ЗАМАСКИРОВАННЫЙ текст
+            call_kwargs = mock_manager.ainvoke_with_provider.call_args
+            assert call_kwargs.kwargs["prompt"] == mock_pii_result.masked_text
+
+            # Проверяем что unmask_pii вызван
+            mock_pii_module.unmask_pii.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_pii_no_unmask(self):
+        """Если PII не обнаружены, unmask не вызывается."""
+        from app.messaging.broker import handle_async_llm_request
+
+        msg = self._make_llm_msg(prompt="Привет, как дела?")
+
+        mock_manager = MagicMock()
+        mock_manager.ainvoke_with_provider = AsyncMock(return_value="Всё хорошо")
+
+        mock_pii_result = MagicMock()
+        mock_pii_result.masked_text = "Привет, как дела?"
+        mock_pii_result.pii_detected = False
+        mock_pii_result.pii_count = 0
+        mock_pii_result.replacements = {}
+
+        mock_pii_module = MagicMock()
+        mock_pii_module.mask_pii.return_value = mock_pii_result
+
+        with (
+            patch("app.agents.llm_manager.get_llm_manager", return_value=mock_manager),
+            patch.dict("sys.modules", {"app.shared.pii_protection": mock_pii_module}),
+            patch("httpx.AsyncClient") as mock_http,
+        ):
+            mock_client_instance = AsyncMock()
+            mock_client_instance.post = AsyncMock(return_value=MagicMock(status_code=200))
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await handle_async_llm_request(msg)
+
+            # mask_pii вызван всегда
+            mock_pii_module.mask_pii.assert_called_once()
+
+            # unmask_pii НЕ вызван — PII не обнаружены
+            mock_pii_module.unmask_pii.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_included_in_masking(self):
+        """System prompt объединяется с user prompt перед маскированием."""
+        from app.messaging.broker import handle_async_llm_request
+
+        msg = self._make_llm_msg(
+            prompt="ИНН 7707083893",
+            system_prompt="Ты аналитик",
+        )
+
+        mock_manager = MagicMock()
+        mock_manager.ainvoke_with_provider = AsyncMock(return_value="OK")
+
+        mock_pii_result = MagicMock()
+        mock_pii_result.masked_text = "Ты аналитик\n\nИНН [INN_1]"
+        mock_pii_result.pii_detected = True
+        mock_pii_result.pii_count = 1
+        mock_pii_result.replacements = {"[INN_1]": "7707083893"}
+
+        mock_pii_module = MagicMock()
+        mock_pii_module.mask_pii.return_value = mock_pii_result
+        mock_pii_module.unmask_pii.return_value = "OK"
+
+        with (
+            patch("app.agents.llm_manager.get_llm_manager", return_value=mock_manager),
+            patch.dict("sys.modules", {"app.shared.pii_protection": mock_pii_module}),
+            patch("httpx.AsyncClient") as mock_http,
+        ):
+            mock_client_instance = AsyncMock()
+            mock_client_instance.post = AsyncMock(return_value=MagicMock(status_code=200))
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await handle_async_llm_request(msg)
+
+            # Проверяем что полный промпт (system + user) передан в mask_pii
+            mask_call_args = mock_pii_module.mask_pii.call_args
+            assert mask_call_args.kwargs["text"] == "Ты аналитик\n\nИНН 7707083893"
+
+    @pytest.mark.asyncio
+    async def test_callback_receives_unmasked_response(self):
+        """Callback получает размаскированный ответ с реальными данными."""
+        from app.messaging.broker import handle_async_llm_request
+
+        msg = self._make_llm_msg(prompt="Проверь ИНН 7707083893")
+
+        mock_manager = MagicMock()
+        mock_manager.ainvoke_with_provider = AsyncMock(
+            return_value="[INN_1] принадлежит крупной компании"
+        )
+
+        mock_pii_result = MagicMock()
+        mock_pii_result.masked_text = "Проверь ИНН [INN_1]"
+        mock_pii_result.pii_detected = True
+        mock_pii_result.pii_count = 1
+        mock_pii_result.replacements = {"[INN_1]": "7707083893"}
+
+        mock_pii_module = MagicMock()
+        mock_pii_module.mask_pii.return_value = mock_pii_result
+        mock_pii_module.unmask_pii.return_value = "7707083893 принадлежит крупной компании"
+
+        with (
+            patch("app.agents.llm_manager.get_llm_manager", return_value=mock_manager),
+            patch.dict("sys.modules", {"app.shared.pii_protection": mock_pii_module}),
+            patch("httpx.AsyncClient") as mock_http,
+        ):
+            mock_client_instance = AsyncMock()
+            mock_client_instance.post = AsyncMock(return_value=MagicMock(status_code=200))
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await handle_async_llm_request(msg)
+
+            # Ответ в callback содержит размаскированные данные
+            assert result["response"] == "7707083893 принадлежит крупной компании"
+            assert result["status"] == "success"
 
 
 class TestDLQConfiguration:
