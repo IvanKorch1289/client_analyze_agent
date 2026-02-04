@@ -142,7 +142,8 @@ class TarantoolClient:
         self._fallback_mode = self._use_memory
         self._config = CacheConfig()
         self._metrics = CacheMetrics()
-        self._search_cache: Dict[str, Tuple[Any, float]] = {}
+        self._search_cache: OrderedDict[str, Tuple[Any, float]] = OrderedDict()
+        self._search_cache_maxlen: int = 10000
         # Reconnect state (H9)
         self._reconnect_attempts: int = 0
         self._max_reconnect_attempts: int = int(getattr(settings.tarantool, "reconnect_max_attempts", 5))
@@ -564,6 +565,9 @@ class TarantoolClient:
             source=f"search:{service}",
         )
         self._search_cache[key] = (result, time.time() + self._config.search_cache_ttl)
+        # LRU eviction: remove oldest entries when exceeding maxlen
+        while len(self._search_cache) > self._search_cache_maxlen:
+            self._search_cache.popitem(last=False)
 
     async def get_cached_search(self, query: str, service: str = "default") -> Optional[Any]:
         key = self._generate_search_key(query, service)
@@ -571,6 +575,7 @@ class TarantoolClient:
             result, expires_at = self._search_cache[key]
             if time.time() <= expires_at:
                 self._metrics.hits += 1
+                self._search_cache.move_to_end(key)  # LRU: mark as recently used
                 return result
             del self._search_cache[key]
         return await self.get(key)

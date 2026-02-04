@@ -199,19 +199,19 @@
 
 ---
 
-### Этап 3: Архитектурная чистота (Приоритет: СРЕДНИЙ)
+### Этап 3: Архитектурная чистота (Приоритет: СРЕДНИЙ) — В ПРОЦЕССЕ
 
 **Цель:** Устранить дублирование, убрать мёртвый код, подготовить к масштабированию.
 
-| # | Задача | Модуль | Ожидаемый результат | Метрика |
-|---|--------|--------|---------------------|---------|
-| 3.1 | Унифицировать расчёт рисков — единый `RiskCalculator` вместо дублирования | Агент | Один источник правды для risk score | 0 дублирования |
-| 3.2 | Удалить мёртвый код: gRPC config, Redis config (или реализовать) | Код | Чистый конфиг без phantom-настроек | 0 мёртвого кода |
-| 3.3 | Вынести промпты в файлы с версионированием (yaml/json) | Агент | A/B тестирование промптов | 100% промптов версионированы |
-| 3.4 | Устранить circular imports через Dependency Injection | Код | Нет lazy imports ради circular deps | 0 _get_*() lazy import wrappers |
-| 3.5 | Ограничить `_search_cache` dict в TarantoolClient (maxlen) | Storage | Нет unbounded memory growth | Кэш < 10000 entries |
-| 3.6 | Удалить legacy endpoints или добавить deprecation warnings с redirect | API | Чистый API surface | 0 undocumented legacy endpoints |
-| 3.7 | Обновить README — привести в соответствие с фактической структурой | Документация | Документация = код | 100% путей валидны |
+| # | Задача | Статус | Что сделано |
+|---|--------|--------|-------------|
+| 3.1 | Унифицировать расчёт рисков — единый RiskCalculator | ✅ | Удалена `_calculate_risk_fallback()` из report_analyzer.py, fallback использует `calculate_normalized_risk()` из risk_calculator.py |
+| 3.2 | Удалить мёртвый код: gRPC config, Redis config | ✅ | Добавлены «НЕ ИСПОЛЬЗУЕТСЯ» маркеры в docstrings, убраны из config dump endpoint |
+| 3.3 | Вынести промпты в файлы с версионированием | ⏳ | Требует рефакторинга adaptive_prompt_engine.py |
+| 3.4 | Устранить circular imports через DI | ⏳ | Крупный рефакторинг |
+| 3.5 | Ограничить `_search_cache` dict (maxlen) | ✅ | OrderedDict с LRU eviction, maxlen=10000, move_to_end на cache hit |
+| 3.6 | Deprecation warnings для legacy endpoints | ✅ | Уже реализовано: `LegacyApiDeprecationMiddleware` с HTTP headers (Deprecation, Sunset, Link) |
+| 3.7 | Обновить README | ⏳ | Требует сверки фактической структуры |
 
 **Рекомендации:** dependency-injector, ruff для dead code detection.
 

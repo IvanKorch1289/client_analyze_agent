@@ -21,6 +21,7 @@ from app.shared.toolkit.helpers import safe_dict_get
 from app.shared.toolkit.formatters import truncate
 from app.schemas.report import ClientAnalysisReport
 from app.shared.toolkit.logging import logger
+from app.agents.risk_calculator import calculate_normalized_risk
 
 # RAG integration (optional, graceful degradation)
 try:
@@ -502,8 +503,8 @@ async def _generate_report_fallback(
     """
     source_analysis = analyze_source_data(source_data) if source_data else {}
 
-    # Используем старый ручной расчёт (временно, пока не перешли на LLM)
-    risk_assessment = _calculate_risk_fallback(search_results, source_analysis)
+    # Используем единый RiskScoreCalculator (вместо дублированной fallback-логики)
+    risk_assessment = calculate_normalized_risk(source_data or {}, search_results)
 
     summary = generate_summary(search_results, client_name)
 
@@ -587,58 +588,3 @@ async def _generate_report_fallback(
         "citations": _extract_citations(search_results),
         "recommendations": generate_recommendations(risk_assessment),
     }
-
-
-def _calculate_risk_fallback(search_results: List[Dict], source_analysis: Dict) -> Dict[str, Any]:
-    """Fallback: ручной расчёт риска (старая логика)."""
-    if not search_results:
-        return {"score": 50, "level": "medium", "factors": ["Нет данных для анализа"]}
-
-    factors = []
-    risk_points = 50
-
-    successful_results = [r for r in search_results if r.get("success")]
-
-    if not successful_results:
-        return {
-            "score": 50,
-            "level": "medium",
-            "factors": ["Не удалось получить данные из источников"],
-        }
-
-    # Анализ sentiment
-    for result in successful_results:
-        sentiment = result.get("sentiment", {})
-        label = sentiment.get("label", "neutral")
-        intent_id = result.get("intent_id", "")
-
-        if intent_id == "lawsuits" and label == "negative":
-            risk_points += 15
-            factors.append("Обнаружены судебные разбирательства")
-        elif intent_id == "financial" and label == "negative":
-            risk_points += 25
-            factors.append("Проблемы с финансовым состоянием")
-        elif intent_id == "reputation" and label == "negative":
-            risk_points += 10
-            factors.append("Негативные отзывы")
-
-    # Добавляем сигналы из source_analysis
-    for signal in source_analysis.get("risk_signals", []):
-        factors.append(signal)
-        risk_points = min(100, risk_points + 10)
-
-    risk_points = max(0, min(100, risk_points))
-
-    if risk_points < 25:
-        level = "low"
-    elif risk_points < 50:
-        level = "medium"
-    elif risk_points < 75:
-        level = "high"
-    else:
-        level = "critical"
-
-    if not factors:
-        factors.append("Стандартный уровень риска")
-
-    return {"score": risk_points, "level": level, "factors": factors[:10]}

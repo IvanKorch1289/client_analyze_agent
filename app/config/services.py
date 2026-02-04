@@ -17,7 +17,7 @@ from app.config.config_loader import BaseSettingsWithLoader
 
 
 class RedisSettings(BaseSettingsWithLoader):
-    """Настройки Redis."""
+    """Настройки Redis. НЕ ИСПОЛЬЗУЕТСЯ — подключение не реализовано, настройки-заглушка."""
 
     yaml_group = "redis"
     vault_path = "secret/data/app/redis"
@@ -271,7 +271,7 @@ class ChromaSettings(BaseSettingsWithLoader):
 
 
 class GRPCSettings(BaseSettingsWithLoader):
-    """Настройки gRPC сервера (опционально)."""
+    """Настройки gRPC сервера. НЕ ИСПОЛЬЗУЕТСЯ — сервер не реализован, настройки-заглушка."""
 
     yaml_group = "grpc"
     vault_path = "secret/data/app/grpc"
