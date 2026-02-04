@@ -346,13 +346,13 @@ class AsyncHttpClient:
         )
 
     async def _on_request(self, request: httpx.Request):
-        request.extensions["start_time"] = asyncio.get_event_loop().time()
+        request.extensions["start_time"] = asyncio.get_running_loop().time()
         if self._http_trace_enabled:
             logger.log_request(request)
 
     async def _on_response(self, response: httpx.Response):
         start_time = response.request.extensions.get("start_time", None)
-        duration = asyncio.get_event_loop().time() - start_time if start_time else 0.0
+        duration = asyncio.get_running_loop().time() - start_time if start_time else 0.0
         if self._http_trace_enabled:
             logger.log_response(response, duration=duration)
 

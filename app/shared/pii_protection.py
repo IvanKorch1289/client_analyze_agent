@@ -28,12 +28,38 @@ class PIIMaskingResult:
     pii_detected: bool  # Флаг обнаружения PII
 
 
+def _validate_inn_checksum(inn_str: str) -> bool:
+    """
+    Проверка контрольной суммы ИНН по алгоритму ФНС.
+
+    10-значный ИНН (юрлица): 1 контрольная цифра (последняя).
+    12-значный ИНН (физлица/ИП): 2 контрольные цифры (11-я и 12-я).
+
+    Args:
+        inn_str: Строка из 10 или 12 цифр
+
+    Returns:
+        True если контрольная сумма корректна
+    """
+    if len(inn_str) == 10:
+        weights = [2, 4, 10, 3, 5, 9, 4, 6, 8]
+        control = sum(int(inn_str[i]) * weights[i] for i in range(9)) % 11 % 10
+        return control == int(inn_str[9])
+    elif len(inn_str) == 12:
+        weights_11 = [7, 2, 4, 10, 3, 5, 9, 4, 6, 8]
+        weights_12 = [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8]
+        control_11 = sum(int(inn_str[i]) * weights_11[i] for i in range(10)) % 11 % 10
+        control_12 = sum(int(inn_str[i]) * weights_12[i] for i in range(11)) % 11 % 10
+        return control_11 == int(inn_str[10]) and control_12 == int(inn_str[11])
+    return False
+
+
 def _create_russian_recognizers():
     """
     Создание кастомных распознавателей PII для русского языка.
 
     Создаёт 7 распознавателей:
-    - RU_INN (ИНН) - 10/12 цифр
+    - RU_INN (ИНН) - 10/12 цифр с проверкой контрольной суммы
     - RU_OGRN (ОГРН/ОГРНИП) - 13/15 цифр
     - RU_SNILS - XXX-XXX-XXX XX
     - RU_PERSON (ФИО кириллицей)
@@ -48,7 +74,9 @@ def _create_russian_recognizers():
 
     recognizers = []
 
-    # 1. RU_INN (ИНН) - 10 или 12 цифр
+    # 1. RU_INN (ИНН) - 10 или 12 цифр с проверкой контрольной суммы ФНС
+    # Используем regex для первичного обнаружения + валидацию checksum
+    # чтобы снизить false positives (любые 10-значные числа)
     recognizers.append(
         PatternRecognizer(
             supported_entity="RU_INN",
@@ -56,10 +84,15 @@ def _create_russian_recognizers():
             supported_language="ru",
             patterns=[
                 Pattern(
-                    name="inn_pattern",
-                    regex=r"\b\d{10}\b|\b\d{12}\b",  # 10 или 12 цифр
-                    score=0.85,
-                )
+                    name="inn_10_pattern",
+                    regex=r"\b\d{10}\b",  # 10 цифр (юрлица)
+                    score=0.5,  # Пониженный score — требуется валидация или контекст
+                ),
+                Pattern(
+                    name="inn_12_pattern",
+                    regex=r"\b\d{12}\b",  # 12 цифр (физлица/ИП)
+                    score=0.5,  # Пониженный score — требуется валидация или контекст
+                ),
             ],
             context=["ИНН", "INN", "налоговый номер", "идентификационный номер"],
         )
@@ -396,6 +429,21 @@ def mask_pii(
     # score_threshold=0.5 filters out low-confidence matches
     results = analyzer.analyze(text=text, language=language, entities=entities_to_detect, score_threshold=0.5)
 
+    # Post-filtering: validate INN checksums to reduce false positives
+    # Any 10/12-digit number matches RU_INN regex, but only valid INNs have correct checksums
+    validated_results = []
+    for r in results:
+        if r.entity_type == "RU_INN":
+            inn_candidate = text[r.start : r.end]
+            if _validate_inn_checksum(inn_candidate):
+                # Valid INN checksum — boost score to high confidence
+                r.score = max(r.score, 0.85)
+                validated_results.append(r)
+            # else: invalid checksum — drop this match (likely a random number)
+        else:
+            validated_results.append(r)
+    results = validated_results
+
     if not results:
         return PIIMaskingResult(
             masked_text=text,
@@ -542,4 +590,5 @@ __all__ = [
     "unmask_pii",
     "compute_text_hash",
     "PII_ENTITIES_RU",
+    "_validate_inn_checksum",
 ]

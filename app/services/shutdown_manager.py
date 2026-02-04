@@ -164,7 +164,7 @@ async def lifespan_manager(app):
     shutdown_manager.register_cleanup(cleanup_tarantool)
 
     # Setup signal handlers
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def signal_handler(sig):
         logger.info(f"Received signal {sig.name}", component="signal")

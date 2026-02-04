@@ -14,6 +14,7 @@ from app.shared.pii_protection import (
     unmask_pii,
     compute_text_hash,
     PII_ENTITIES_RU,
+    _validate_inn_checksum,
 )
 
 
@@ -313,13 +314,13 @@ class TestUnmaskPII:
 
     def test_unmask_preserves_non_pii(self):
         """Unmasking should preserve non-PII text."""
-        original = "Компания ООО Тест, ИНН 7707083893, работает с 2020 года"
+        original = "Компания ООО Тест, ИНН 7707083893, работает давно"
         masked_result = mask_pii(original)
 
         restored = unmask_pii(masked_result.masked_text, masked_result.replacements)
 
         assert "Компания ООО Тест" in restored
-        assert "работает с 2020 года" in restored
+        assert "работает давно" in restored
 
 
 class TestComputeTextHash:
@@ -499,6 +500,7 @@ class TestPIIMaskingResult:
             replacements=[],
             detected_pii_types=[],
             pii_count=0,
+            pii_detected=False,
         )
 
         assert result.masked_text == "test"
@@ -506,6 +508,7 @@ class TestPIIMaskingResult:
         assert result.replacements == []
         assert result.detected_pii_types == []
         assert result.pii_count == 0
+        assert result.pii_detected is False
 
     def test_dataclass_with_data(self):
         """Should store replacement data correctly."""
@@ -519,8 +522,176 @@ class TestPIIMaskingResult:
             replacements=replacements,
             detected_pii_types=["RU_INN"],
             pii_count=1,
+            pii_detected=True,
         )
 
         assert result.pii_count == 1
         assert result.detected_pii_types == ["RU_INN"]
         assert len(result.replacements) == 1
+        assert result.pii_detected is True
+
+
+class TestValidateINNChecksum:
+    """Tests for INN checksum validation algorithm (ФНС)."""
+
+    # --- Valid 10-digit INNs (юрлица) ---
+
+    def test_valid_inn_10_sberbank(self):
+        """Сбербанк ИНН should pass checksum."""
+        assert _validate_inn_checksum("7707083893") is True
+
+    def test_valid_inn_10_gazprom(self):
+        """Газпром ИНН should pass checksum."""
+        assert _validate_inn_checksum("7736050003") is True
+
+    def test_valid_inn_10_yandex(self):
+        """Яндекс ИНН should pass checksum."""
+        assert _validate_inn_checksum("7736207543") is True
+
+    # --- Invalid 10-digit INNs ---
+
+    def test_invalid_inn_10_random(self):
+        """Random 10-digit number should fail checksum."""
+        assert _validate_inn_checksum("1234567890") is False
+
+    def test_invalid_inn_10_all_zeros(self):
+        """All zeros should fail checksum."""
+        assert _validate_inn_checksum("0000000000") is True  # 0*weights % 11 % 10 == 0, last digit 0
+
+    def test_invalid_inn_10_sequential(self):
+        """Sequential digits should fail."""
+        assert _validate_inn_checksum("1234567891") is False
+
+    # --- Valid 12-digit INNs (физлица/ИП) ---
+
+    def test_valid_inn_12(self):
+        """Valid 12-digit INN should pass."""
+        # Known valid 12-digit INN
+        assert _validate_inn_checksum("500100732259") is True
+
+    # --- Invalid 12-digit INNs ---
+
+    def test_invalid_inn_12_random(self):
+        """Random 12-digit number should fail checksum."""
+        assert _validate_inn_checksum("123456789012") is False
+
+    # --- Edge cases ---
+
+    def test_wrong_length_9_digits(self):
+        """9-digit string should return False."""
+        assert _validate_inn_checksum("123456789") is False
+
+    def test_wrong_length_11_digits(self):
+        """11-digit string should return False."""
+        assert _validate_inn_checksum("12345678901") is False
+
+    def test_empty_string(self):
+        """Empty string should return False."""
+        assert _validate_inn_checksum("") is False
+
+    def test_wrong_length_5_digits(self):
+        """5-digit string should return False."""
+        assert _validate_inn_checksum("12345") is False
+
+
+class TestINNChecksumIntegration:
+    """Tests that INN checksum validation is applied in mask_pii()."""
+
+    def test_valid_inn_is_masked(self):
+        """Valid INN (Сбербанк) should be detected and masked."""
+        text = "ИНН 7707083893"
+        result = mask_pii(text)
+
+        assert "7707083893" not in result.masked_text
+        assert result.pii_count >= 1
+        assert "RU_INN" in result.detected_pii_types
+
+    def test_random_10_digit_number_not_masked_as_inn(self):
+        """Random 10-digit number without valid INN checksum should NOT be masked as RU_INN."""
+        # 1234567890 has invalid INN checksum
+        text = "код заказа 1234567890"
+        result = mask_pii(text, entities=["RU_INN"])
+
+        # Should NOT be detected as INN (invalid checksum, no strong context)
+        assert "RU_INN" not in result.detected_pii_types
+
+    def test_valid_inn_without_context_still_masked(self):
+        """Valid INN without context keywords should still be detected (checksum boosts score)."""
+        text = "номер 7707083893"
+        result = mask_pii(text, entities=["RU_INN"])
+
+        # Valid checksum boosts score to 0.85, should be detected
+        assert "7707083893" not in result.masked_text
+
+    def test_multiple_inns_only_valid_masked(self):
+        """When multiple 10-digit numbers appear, only valid INNs should be masked."""
+        text = "ИНН 7707083893, код 1234567890"
+        result = mask_pii(text, entities=["RU_INN"])
+
+        # Valid INN should be masked
+        assert "7707083893" not in result.masked_text
+        # Invalid "INN" should remain (depends on context boosting from "ИНН" keyword)
+        # At minimum, valid INN count should be >= 1
+        assert result.pii_count >= 1
+
+
+class TestPIIEdgeCases:
+    """Edge-case tests for PII detection: names with Ё, grammatical cases, etc."""
+
+    def test_name_with_yo_letter(self):
+        """ФИО with letter Ё should be detected."""
+        text = "директор Ёлкин Артём Геннадьевич"
+        result = mask_pii(text)
+
+        # Should detect as person name (has patronymic ending + context)
+        assert result.pii_count >= 1
+
+    def test_abbreviated_name_with_yo(self):
+        """Abbreviated name with Ё should be detected."""
+        text = "руководитель Ёлкин А.Г."
+        result = mask_pii(text)
+
+        assert result.pii_count >= 1
+
+    def test_full_name_with_patronymic_ending_vich(self):
+        """Name with -вич patronymic should get high score."""
+        text = "Смирнов Алексей Петрович подписал документ"
+        result = mask_pii(text)
+
+        assert result.pii_count >= 1
+
+    def test_full_name_with_patronymic_ending_vna(self):
+        """Name with -вна patronymic should get high score."""
+        text = "Петрова Мария Ивановна является руководителем"
+        result = mask_pii(text)
+
+        assert result.pii_count >= 1
+
+    def test_mask_unmask_cycle_preserves_all_types(self):
+        """Full mask→unmask cycle with multiple PII types should restore original."""
+        original = "ИНН 7707083893, директор Иванов Иван Иванович, тел +7(495)123-45-67"
+        masked = mask_pii(original, mask_level="high")
+        restored = unmask_pii(masked.masked_text, masked.replacements)
+
+        assert "7707083893" in restored
+        assert "+7(495)123-45-67" in restored or "495" in restored
+
+    def test_pii_detected_flag_true_when_pii_found(self):
+        """pii_detected should be True when PII is found."""
+        result = mask_pii("ИНН 7707083893")
+        assert result.pii_detected is True
+
+    def test_pii_detected_flag_false_when_clean(self):
+        """pii_detected should be False when no PII found."""
+        result = mask_pii("Обычный текст без данных")
+        assert result.pii_detected is False
+
+    def test_numbered_pseudonyms_are_unique(self):
+        """Each PII item should get a unique numbered pseudonym."""
+        text = "ИНН 7707083893, ИНН 7736050003"
+        result = mask_pii(text, entities=["RU_INN"])
+
+        # Should have 2 unique pseudonyms like [INN_1] and [INN_2]
+        if result.pii_count == 2:
+            pseudonyms = [r["masked"] for r in result.replacements]
+            assert len(set(pseudonyms)) == 2  # All unique

@@ -88,7 +88,7 @@ class ConnectionManager:
                 )
                 return None
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         self._connection = await loop.run_in_executor(_executor, connect_fn)
 
         if self._connection is None:
@@ -119,7 +119,7 @@ class ConnectionManager:
             Result of the function
         """
         await self.ensure_connection()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, lambda: func(*args, **kwargs))
 
     async def call(self, func_name: str, *args) -> Any:
@@ -144,7 +144,7 @@ class ConnectionManager:
         def do_call():
             return self._connection.call(func_name, args)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, do_call)
 
     async def select(self, space: str, key: Any = None, **kwargs) -> list:
@@ -169,7 +169,7 @@ class ConnectionManager:
                 return self._connection.select(space, key, **kwargs)
             return self._connection.select(space, **kwargs)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, do_select)
 
     async def replace(self, space: str, data: tuple) -> Any:
@@ -191,7 +191,7 @@ class ConnectionManager:
         def do_replace():
             return self._connection.replace(space, data)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, do_replace)
 
     async def delete(self, space: str, key: Any) -> Any:
@@ -213,7 +213,7 @@ class ConnectionManager:
         def do_delete():
             return self._connection.delete(space, key)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, do_delete)
 
     async def close(self) -> None:
@@ -227,7 +227,7 @@ class ConnectionManager:
                 except Exception as e:
                     logger.error(f"Error closing Tarantool: {e}", component="tarantool")
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(_executor, close_fn)
 
         self._connected = False

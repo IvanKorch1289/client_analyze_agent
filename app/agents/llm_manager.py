@@ -74,7 +74,7 @@ def _get_metrics():
     return _prometheus_metrics
 
 
-def _run_coroutine_sync(coro):
+def _run_coroutine_sync(coro, timeout: float = 300.0):
     """
     Безопасно выполнить coroutine из sync-кода.
 
@@ -82,11 +82,28 @@ def _run_coroutine_sync(coro):
       в отдельном потоке с отдельным loop. Это блокирует текущий поток (как и любой
       sync I/O), но не приводит к ошибке "asyncio.run() cannot be called...".
     - Если loop не запущен — используем asyncio.run().
+
+    ВНИМАНИЕ: Вызов из async-контекста блокирует текущий поток.
+    Предпочтительно использовать ainvoke() вместо invoke().
+
+    Args:
+        coro: Coroutine для выполнения
+        timeout: Максимальное время ожидания в секундах (по умолчанию 300).
+                 Предотвращает бесконечную блокировку при deadlock.
     """
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
+
+    import warnings
+
+    warnings.warn(
+        "invoke() вызван из async-контекста. "
+        "Используйте ainvoke() для избежания блокировки event loop.",
+        RuntimeWarning,
+        stacklevel=3,
+    )
 
     result_box: Dict[str, Any] = {}
 
@@ -98,7 +115,12 @@ def _run_coroutine_sync(coro):
 
     t = threading.Thread(target=_runner, daemon=True)
     t.start()
-    t.join()
+    t.join(timeout=timeout)
+    if t.is_alive():
+        raise TimeoutError(
+            f"_run_coroutine_sync: coroutine не завершился за {timeout}s. "
+            "Возможен deadlock. Используйте ainvoke() из async-контекста."
+        )
     if "error" in result_box:
         raise result_box["error"]
     return result_box.get("value")

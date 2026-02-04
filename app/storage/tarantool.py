@@ -184,7 +184,7 @@ class TarantoolClient:
                 )
                 return None
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         self._connection = await loop.run_in_executor(_executor, connect_fn)
 
         if self._connection is None:
@@ -252,7 +252,7 @@ class TarantoolClient:
         def do_call():
             return self._connection.call(func_name, args)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, do_call)
 
     async def call(self, func_name: str, args: tuple = ()):
@@ -363,7 +363,7 @@ class TarantoolClient:
                 logger.error(f"Error on GET {key}: {e}", component="tarantool")
                 return None
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(_executor, do_get)
         elapsed = (time.time() - start_time) * 1000
         self._metrics.total_get_time_ms += elapsed
@@ -407,7 +407,7 @@ class TarantoolClient:
             except Exception as e:
                 logger.error(f"Error on SET {key}: {e}", component="tarantool")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(_executor, do_set)
         self._metrics.sets += 1
         self._metrics.total_set_time_ms += (time.time() - start_time) * 1000
@@ -426,7 +426,7 @@ class TarantoolClient:
             except Exception as e:
                 logger.error(f"Error deleting key {key}: {e}", component="tarantool")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(_executor, do_delete)
         self._metrics.deletes += 1
 
@@ -474,7 +474,7 @@ class TarantoolClient:
                     logger.warning(f"Error in batch get for {key}: {e}", component="tarantool")
             return batch_results
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         results = await loop.run_in_executor(_executor, do_batch_get)
         elapsed = (time.time() - start_time) * 1000
         self._metrics.total_get_time_ms += elapsed
@@ -528,7 +528,7 @@ class TarantoolClient:
                 except Exception as e:
                     logger.warning(f"Error in batch set for {key}: {e}", component="tarantool")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(_executor, do_batch_set)
         elapsed = (time.time() - start_time) * 1000
         self._metrics.total_set_time_ms += elapsed
@@ -551,7 +551,7 @@ class TarantoolClient:
                 except Exception as e:
                     logger.warning(f"Error in batch delete for {key}: {e}", component="tarantool")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(_executor, do_batch_delete)
         self._metrics.deletes += len(keys)
 
@@ -617,7 +617,7 @@ class TarantoolClient:
                 logger.error(f"Error deleting by prefix {prefix}: {e}", component="tarantool")
                 return 0
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         deleted = await loop.run_in_executor(_executor, do_prefix_delete_scan)
         self._metrics.deletes += deleted
 
@@ -711,7 +711,7 @@ class TarantoolClient:
                 logger.error(f"Error getting entries: {e}", component="tarantool")
             return result_entries
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, do_get_entries)
 
     def get_config(self) -> Dict[str, Any]:
@@ -747,7 +747,7 @@ class TarantoolClient:
             except Exception as e:
                 logger.error(f"Failed to save persistent {key}: {e}", component="tarantool")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(_executor, do_set)
 
     async def get_persistent(self, key: str) -> Optional[Dict[Any, Any]]:
@@ -773,7 +773,7 @@ class TarantoolClient:
                 logger.error(f"Failed to get persistent {key}: {e}")
                 return None
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, do_get)
 
     async def delete_persistent(self, key: str) -> bool:
@@ -793,7 +793,7 @@ class TarantoolClient:
                 logger.error(f"Failed to delete persistent {key}: {e}", component="tarantool")
                 return False
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, do_delete)
 
     async def get_all_persistent_keys(self, prefix: Optional[str] = None) -> List[str]:
@@ -825,7 +825,7 @@ class TarantoolClient:
                 logger.error(f"Failed to list persistent keys: {e}", component="tarantool")
                 return []
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, do_list_keys)
 
     async def list_threads(self, limit: int = 50) -> List[Dict[str, Any]]:
@@ -868,7 +868,7 @@ class TarantoolClient:
             result_threads.sort(key=lambda x: x.get("created_at", 0), reverse=True)
             return result_threads[:limit]
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, do_list)
 
     async def scan_threads(self) -> List[Dict[str, Any]]:
@@ -919,7 +919,7 @@ class TarantoolClient:
                 logger.error(f"Error scanning threads: {e}")
                 return []
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, do_scan)
 
     async def search_threads_by_field(
@@ -997,7 +997,7 @@ class TarantoolClient:
             result_threads.sort(key=lambda x: x.get("created_at", 0), reverse=True)
             return result_threads
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, do_search)
 
     async def invalidate_all_keys(self, confirm: bool = False):
@@ -1047,7 +1047,7 @@ class TarantoolClient:
             except Exception as e:
                 logger.error(f"Failed to clear cache: {e}", component="tarantool")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(_executor, do_clear)
 
     async def get_cache_stats(self) -> Dict[str, Any]:
@@ -1065,7 +1065,7 @@ class TarantoolClient:
                 except Exception as e:
                     logger.error(f"Error closing Tarantool: {e}", component="tarantool")
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(_executor, close_fn)
         self._connected = False
         self._connection = None
