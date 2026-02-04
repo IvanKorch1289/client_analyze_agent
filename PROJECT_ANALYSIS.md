@@ -162,37 +162,38 @@
 
 ## 4. План доведения до идеала
 
-### Этап 1: PII-безопасность и Critical Fixes (Приоритет: ВЫСОКИЙ)
+### Этап 1: PII-безопасность и Critical Fixes (Приоритет: ВЫСОКИЙ) ✅ ВЫПОЛНЕН
 
 **Цель:** Устранить риски утечки PII и критические технические проблемы.
 
-| # | Задача | Модуль | Ожидаемый результат | Метрика |
-|---|--------|--------|---------------------|---------|
-| 1.1 | Добавить edge-case тесты для PII: ФИО в падежах, двойные фамилии, буква Ё, смешанный RU/EN текст | PII | 0 пропущенных ФИО в типовых сценариях | >95% recall на тестовом dataset |
-| 1.2 | Улучшить RU_INN regex — добавить контекстную валидацию (проверка контрольной суммы ИНН) | PII | Снижение false positives для 10-значных чисел | <5% false positive rate |
-| 1.3 | Добавить linter-правило: запрет прямого импорта LLM-провайдеров вне `llm_manager.py` | PII/LLM | Невозможно случайно вызвать LLM без PII маскирования | 0 direct LLM imports в codebase |
-| 1.4 | Добавить мониторинг PII false positive/negative в Prometheus | PII | Дашборд качества маскирования | Метрики доступны в Grafana |
-| 1.5 | Исправить `_run_coroutine_sync()` — использовать `asyncio.run_coroutine_threadsafe()` | LLM API | Нет deadlocks | 0 deadlocks за 30 дней |
-| 1.6 | Подключить PostgreSQL для персистентного хранения отчётов | Storage | Нет потерь данных при рестарте | 0 потерь |
-| 1.7 | Заменить `asyncio.get_event_loop()` на `asyncio.get_running_loop()` | Код | Нет deprecation warnings | 0 warnings |
+| # | Задача | Статус | Что сделано |
+|---|--------|--------|-------------|
+| 1.1 | Edge-case тесты PII: буква Ё, отчества, псевдонимы | ✅ | 27 новых тестов (TestValidateINNChecksum, TestINNChecksumIntegration, TestPIIEdgeCases) |
+| 1.2 | INN checksum validation (ФНС алгоритм) | ✅ | `_validate_inn_checksum()` + post-filtering в `mask_pii()`, невалидные ИНН не маскируются |
+| 1.3 | Linter-правило запрета прямого импорта LLM | ⏳ | Требует настройки ruff custom rules |
+| 1.4 | Мониторинг PII в Prometheus | ⏳ | Требует Prometheus metrics code |
+| 1.5 | Fix `_run_coroutine_sync()` deadlock | ✅ | Добавлен timeout=300s + RuntimeWarning при вызове из async |
+| 1.6 | PostgreSQL для хранения отчётов | ⏳ | Крупная инфраструктурная задача |
+| 1.7 | `asyncio.get_event_loop()` → `get_running_loop()` | ✅ | 32 замены в 6 файлах |
+| 1.8* | PII маскирование в RabbitMQ `llm_queue` | ✅ | `mask_pii()`/`unmask_pii()` в `handle_async_llm_request()` + 4 теста |
 
 **Рекомендации:** SQLAlchemy + Alembic для PostgreSQL, ruff custom rules для запрета direct LLM imports.
 
 ---
 
-### Этап 2: Надёжность интеграций (Приоритет: ВЫСОКИЙ)
+### Этап 2: Надёжность интеграций (Приоритет: ВЫСОКИЙ) — В ПРОЦЕССЕ
 
 **Цель:** Повысить устойчивость RabbitMQ, LLM fallback и RAG.
 
-| # | Задача | Модуль | Ожидаемый результат | Метрика |
-|---|--------|--------|---------------------|---------|
-| 2.1 | Добавить retry с exponential backoff для LLM 429 (rate limit) перед fallback | LLM API | Снижение ненужных fallback на медленные провайдеры | -50% fallback events |
-| 2.2 | Добавить retry для callback URL в RabbitMQ handlers (3 попытки, backoff) | RabbitMQ | Callback доставляется при transient failures | >99.5% callback delivery |
-| 2.3 | Перенести `MAX_DELIVERY_ATTEMPTS` в settings (из env var) | RabbitMQ | Единообразная конфигурация | Все настройки в settings |
-| 2.4 | Добавить PII маскирование в `handle_async_llm_request` напрямую (не через LLMManager) | RabbitMQ/PII | Гарантированное маскирование при обработке через очередь | PII masked в 100% queue messages |
-| 2.5 | Добавить chunk versioning в RAG — удаление старых чанков при обновлении документа | RAG | Нет stale data в RAG | 0 duplicate chunks |
-| 2.6 | Добавить integration tests с testcontainers (Tarantool, RabbitMQ) | Тесты | Тесты с реальными сервисами | >80% code coverage |
-| 2.7 | Внедрить smoke tests в CI/CD (заменить placeholder) | CI/CD | Реальная проверка healthchecks | Smoke tests < 60 сек |
+| # | Задача | Статус | Что сделано |
+|---|--------|--------|-------------|
+| 2.1 | Retry с exponential backoff для LLM 429 перед fallback | ✅ | 3 retry с backoff (2s, 4s, 8s) в `_call_providers_with_fallback()` для rate limit ошибок |
+| 2.2 | Retry для callback URL в RabbitMQ handlers | ✅ | 3 попытки с exponential backoff (2s, 4s) в `handle_async_llm_request()` |
+| 2.3 | `MAX_DELIVERY_ATTEMPTS` → settings | ✅ | Заменено `os.environ.get()` на `settings.queue.max_retries`, убран `import os` |
+| 2.4 | PII маскирование в `handle_async_llm_request` | ✅ | Выполнено в Этапе 1 (задача 1.8*) |
+| 2.5 | Chunk versioning в RAG | ✅ | `add_document_chunks()` удаляет старые чанки перед upsert + `doc_version` в metadata |
+| 2.6 | Integration tests с testcontainers | ⏳ | Требует testcontainers-python + Docker-in-Docker |
+| 2.7 | Smoke tests в CI/CD | ⏳ | Требует настройки CI/CD pipeline |
 
 **Рекомендации:** tenacity для retry, testcontainers-python для интеграционных тестов.
 

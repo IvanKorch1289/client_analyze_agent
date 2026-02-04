@@ -643,6 +643,10 @@ class LLMManager:
         """
         Try calling LLM providers in fallback order.
 
+        For 429 (rate limit) errors, retries the same provider with exponential
+        backoff before falling back to the next provider. This avoids unnecessary
+        fallback to slower providers on transient rate limits.
+
         Returns:
             Tuple of (success, response_text, used_provider, attempts, last_error)
         """
@@ -650,6 +654,8 @@ class LLMManager:
         attempts = 0
         response_text = ""
         used_provider = None
+        rate_limit_retries = 3
+        rate_limit_base_delay = 2.0  # seconds
 
         for provider in self._fallback_order:
             attempts += 1
@@ -658,32 +664,60 @@ class LLMManager:
                 logger.warning(f"Skipping {provider} (unavailable)", component="llm_manager")
                 continue
 
-            try:
-                logger.info(f"Attempting LLM call with {provider}", component="llm_manager")
-                provider_start = time.perf_counter()
+            # Retry loop for 429 rate limits on the same provider
+            for retry in range(rate_limit_retries + 1):
+                try:
+                    if retry > 0:
+                        logger.info(
+                            f"Rate limit retry {retry}/{rate_limit_retries} for {provider}",
+                            component="llm_manager",
+                        )
+                    else:
+                        logger.info(f"Attempting LLM call with {provider}", component="llm_manager")
 
-                response_text = await self.ainvoke_with_provider(prompt=masked_prompt, provider=provider, **kwargs)
+                    provider_start = time.perf_counter()
 
-                provider_duration = time.perf_counter() - provider_start
-                self._log_provider_success(
-                    provider,
-                    masked_prompt,
-                    response_text,
-                    provider_duration,
-                    start_time,
-                    attempts,
-                    pii_result,
-                )
+                    response_text = await self.ainvoke_with_provider(
+                        prompt=masked_prompt, provider=provider, **kwargs
+                    )
 
-                self._provider_status[provider] = True
-                used_provider = provider
-                return True, response_text, used_provider, attempts, None
+                    provider_duration = time.perf_counter() - provider_start
+                    self._log_provider_success(
+                        provider,
+                        masked_prompt,
+                        response_text,
+                        provider_duration,
+                        start_time,
+                        attempts,
+                        pii_result,
+                    )
 
-            except Exception as e:
-                last_error = e
-                logger.error(f"LLM call failed with {provider}: {e}", component="llm_manager")
-                self._provider_status[provider] = False
-                self._record_provider_failure(provider, provider_start, attempts)
+                    self._provider_status[provider] = True
+                    used_provider = provider
+                    return True, response_text, used_provider, attempts, None
+
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e).lower()
+
+                    # Check for 429 rate limit — retry same provider with backoff
+                    is_rate_limit = "429" in error_str or "rate limit" in error_str or "too many requests" in error_str
+                    if is_rate_limit and retry < rate_limit_retries:
+                        delay = rate_limit_base_delay * (2 ** retry)
+                        logger.warning(
+                            f"Rate limit (429) from {provider}, retrying in {delay}s "
+                            f"(attempt {retry + 1}/{rate_limit_retries})",
+                            component="llm_manager",
+                        )
+                        await asyncio.sleep(delay)
+                        attempts += 1
+                        continue
+
+                    # Not a rate limit or retries exhausted — mark provider failed and try next
+                    logger.error(f"LLM call failed with {provider}: {e}", component="llm_manager")
+                    self._provider_status[provider] = False
+                    self._record_provider_failure(provider, provider_start, attempts)
+                    break  # Exit retry loop, move to next provider
 
         return False, response_text, used_provider, attempts, last_error
 

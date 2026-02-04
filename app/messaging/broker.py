@@ -11,7 +11,7 @@ P1-1: Добавлена поддержка Dead Letter Queue (DLQ) для об�
 
 from __future__ import annotations
 
-import os
+import asyncio
 import time
 from typing import Any, Dict
 
@@ -48,7 +48,7 @@ broker = get_rabbit_broker()
 # P1-1: Настройка очередей с DLQ поддержкой
 _dlx = RabbitExchange("dlx", type=ExchangeType.TOPIC, durable=True)
 
-_MAX_DELIVERY_ATTEMPTS = int(os.environ.get("MAX_DELIVERY_ATTEMPTS", "3"))
+_MAX_DELIVERY_ATTEMPTS = settings.queue.max_retries
 
 _analysis_queue = RabbitQueue(
     settings.queue.analysis_queue,
@@ -245,27 +245,41 @@ async def handle_async_llm_request(msg: AsyncLLMQueueMessage) -> Dict[str, Any]:
             component="faststream",
         )
 
-    # Send callback
-    try:
-        headers = dict(msg.callback_headers) if msg.callback_headers else {}
-        headers["Content-Type"] = "application/json"
+    # Send callback with retry (3 attempts, exponential backoff)
+    callback_max_retries = 3
+    callback_base_delay = 2.0
+    headers = dict(msg.callback_headers) if msg.callback_headers else {}
+    headers["Content-Type"] = "application/json"
 
-        async with httpx.AsyncClient() as client:
-            callback_response = await client.post(
-                msg.callback_url,
-                json=callback_payload,
-                headers=headers,
-                timeout=30.0,
-            )
-            logger.info(
-                f"Callback sent for {msg.request_id}: status {callback_response.status_code}",
-                component="faststream",
-            )
-    except Exception as e:
-        logger.error(
-            f"Callback failed for {msg.request_id}: {e}",
-            component="faststream",
-        )
+    for attempt in range(callback_max_retries):
+        try:
+            async with httpx.AsyncClient() as client:
+                callback_response = await client.post(
+                    msg.callback_url,
+                    json=callback_payload,
+                    headers=headers,
+                    timeout=30.0,
+                )
+                logger.info(
+                    f"Callback sent for {msg.request_id}: status {callback_response.status_code}",
+                    component="faststream",
+                )
+                break  # Success — exit retry loop
+        except Exception as e:
+            if attempt < callback_max_retries - 1:
+                delay = callback_base_delay * (2 ** attempt)
+                logger.warning(
+                    f"Callback attempt {attempt + 1}/{callback_max_retries} failed for "
+                    f"{msg.request_id}: {e}. Retrying in {delay}s",
+                    component="faststream",
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.error(
+                    f"Callback failed for {msg.request_id} after {callback_max_retries} "
+                    f"attempts: {e}",
+                    component="faststream",
+                )
 
     return callback_payload
 

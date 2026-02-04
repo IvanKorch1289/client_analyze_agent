@@ -218,6 +218,10 @@ class ChromaService:
         """
         Добавляет чанки документа в коллекцию documents.
 
+        При повторной индексации того же документа старые чанки удаляются
+        перед добавлением новых, чтобы избежать stale data (например, если
+        обновлённый документ содержит меньше чанков, чем предыдущая версия).
+
         Args:
             doc_id: ID документа
             chunks: Список текстовых чанков
@@ -229,6 +233,20 @@ class ChromaService:
         """
         self._ensure_initialized()
 
+        # Delete old chunks for this document to prevent stale data
+        # This handles the case when a re-indexed document has fewer chunks
+        try:
+            self._documents_collection.delete(
+                where={"parent_doc_id": doc_id},
+            )
+            logger.debug(
+                f"Old chunks deleted for document: {doc_id}",
+                component="rag",
+            )
+        except Exception:
+            # No existing chunks — first indexing, safe to continue
+            pass
+
         ids = []
         docs = []
         metas = []
@@ -238,6 +256,7 @@ class ChromaService:
         base_meta["doc_type"] = "document"
         base_meta["indexed_at"] = time.time()
         base_meta["parent_doc_id"] = doc_id
+        base_meta["doc_version"] = int(time.time())
 
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
             chunk_id = f"doc:{doc_id}:chunk:{i}"
@@ -256,7 +275,7 @@ class ChromaService:
         )
 
         logger.info(
-            f"Document indexed: {doc_id} ({len(chunks)} chunks)",
+            f"Document indexed: {doc_id} ({len(chunks)} chunks, version={base_meta['doc_version']})",
             component="rag",
         )
         return len(chunks)
