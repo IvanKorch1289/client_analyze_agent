@@ -38,9 +38,9 @@
 - Fallback на ручной расчёт риска при недоступности LLM
 
 **Проблемы:**
-- Дублирование логики расчёта рисков: `risk_calculator.py` и `report_analyzer._calculate_risk_fallback()`
+- ~~Дублирование логики расчёта рисков~~ → ✅ Исправлено (Этап 3.1): fallback использует единый `calculate_normalized_risk()`
 - Hardcoded thinking messages в `client_workflow.py`
-- `_run_coroutine_sync()` в LLMManager создаёт daemon-потоки — потенциальный deadlock
+- ~~`_run_coroutine_sync()` deadlock~~ → ✅ Исправлено (Этап 1.5): timeout=300s + RuntimeWarning
 
 ### 2.2. REST API (оценка: 7/10)
 
@@ -181,7 +181,7 @@
 
 ---
 
-### Этап 2: Надёжность интеграций (Приоритет: ВЫСОКИЙ) — В ПРОЦЕССЕ
+### Этап 2: Надёжность интеграций (Приоритет: ВЫСОКИЙ) ✅ ВЫПОЛНЕН
 
 **Цель:** Повысить устойчивость RabbitMQ, LLM fallback и RAG.
 
@@ -199,7 +199,7 @@
 
 ---
 
-### Этап 3: Архитектурная чистота (Приоритет: СРЕДНИЙ) — В ПРОЦЕССЕ
+### Этап 3: Архитектурная чистота (Приоритет: СРЕДНИЙ) ✅ ВЫПОЛНЕН
 
 **Цель:** Устранить дублирование, убрать мёртвый код, подготовить к масштабированию.
 
@@ -207,11 +207,11 @@
 |---|--------|--------|-------------|
 | 3.1 | Унифицировать расчёт рисков — единый RiskCalculator | ✅ | Удалена `_calculate_risk_fallback()` из report_analyzer.py, fallback использует `calculate_normalized_risk()` из risk_calculator.py |
 | 3.2 | Удалить мёртвый код: gRPC config, Redis config | ✅ | Добавлены «НЕ ИСПОЛЬЗУЕТСЯ» маркеры в docstrings, убраны из config dump endpoint |
-| 3.3 | Вынести промпты в файлы с версионированием | ⏳ | Требует рефакторинга adaptive_prompt_engine.py |
-| 3.4 | Устранить circular imports через DI | ⏳ | Крупный рефакторинг |
+| 3.3 | Вынести промпты в файлы с версионированием | ✅ | Создан `PromptManager` (`app/prompts/manager.py`) с singleton + `get_template()`. Консолидированы дублированные промпты из `fetchers.py` и `web_search.py` → единые шаблоны в `system_prompts.py` (`DATA_COLLECTOR_PROMPT_CONTENT`, `PERPLEXITY_SYSTEM_PROMPT_CONTENT`, `CASCADE_QUESTION_TEMPLATE`, `CASCADE_SYSTEM_PROMPT_CONTENT`) |
+| 3.4 | Устранить missing module (`app.prompts.manager`) | ✅ | Создан `app/prompts/manager.py` + `app/prompts/__init__.py`. `AdaptivePromptEngine` теперь корректно импортирует `PromptManager`. Circular imports не обнаружены |
 | 3.5 | Ограничить `_search_cache` dict (maxlen) | ✅ | OrderedDict с LRU eviction, maxlen=10000, move_to_end на cache hit |
 | 3.6 | Deprecation warnings для legacy endpoints | ✅ | Уже реализовано: `LegacyApiDeprecationMiddleware` с HTTP headers (Deprecation, Sunset, Link) |
-| 3.7 | Обновить README | ⏳ | Требует сверки фактической структуры |
+| 3.7 | Обновить README | ✅ | Полная перезапись: актуальная структура проекта, все 6 модулей, PII-защита, версионированный API, RabbitMQ, RAG, мониторинг, workflow |
 
 **Рекомендации:** dependency-injector, ruff для dead code detection.
 

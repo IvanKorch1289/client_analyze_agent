@@ -204,6 +204,26 @@ DATA_COLLECTOR_PROMPT_CONTENT = """Найди проверяемые факты 
 Период поиска: ПОСЛЕДНИЙ ГОД (актуальная информация).
 """
 
+PERPLEXITY_SYSTEM_PROMPT_CONTENT = (
+    "Глубокий анализ за последний год. Ищи 20+ источников. "
+    "Только проверяемые факты. Пиши по-русски."
+)
+
+CASCADE_SYSTEM_PROMPT_CONTENT = (
+    "Финансовый аналитик. Глубокий due diligence. "
+    "Ищи риски и противоречия."
+)
+
+CASCADE_QUESTION_TEMPLATE = """Углублённый анализ компании {client_name} (ИНН: {inn}).
+
+ПЕРВИЧНЫЕ НАХОДКИ Perplexity:
+{initial_facts}
+
+ДОПОЛНИТЕЛЬНЫЕ ИСТОЧНИКИ (Tavily):
+{tavily_urls}
+
+Проанализируй источники, сопоставь с первичными находками, выяви риски."""
+
 # ============================================================================
 # REGISTRY ANALYZER PROMPTS (NEW)
 # ============================================================================
@@ -719,4 +739,8 @@ __all__ = [
     "get_system_prompt",
     "get_prompt_metadata",
     "format_dadata_for_prompt",
+    "DATA_COLLECTOR_PROMPT_CONTENT",
+    "PERPLEXITY_SYSTEM_PROMPT_CONTENT",
+    "CASCADE_SYSTEM_PROMPT_CONTENT",
+    "CASCADE_QUESTION_TEMPLATE",
 ]
