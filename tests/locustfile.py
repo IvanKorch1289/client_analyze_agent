@@ -12,10 +12,7 @@ For headless mode:
 """
 
 import random
-import string
 from locust import HttpUser, task, between, events
-from locust.runners import MasterRunner
-
 
 # Sample test data
 SAMPLE_COMPANIES = [
@@ -57,11 +54,7 @@ class HealthCheckUser(HttpUser):
     @task(10)
     def health_check(self):
         """Check basic health endpoint."""
-        with self.client.get(
-            "/api/v1/utility/health",
-            catch_response=True,
-            name="/api/v1/utility/health"
-        ) as response:
+        with self.client.get("/api/v1/utility/health", catch_response=True, name="/api/v1/utility/health") as response:
             if response.status_code == 200:
                 response.success()
             else:
@@ -95,18 +88,12 @@ class APIUser(HttpUser):
     @task(5)
     def get_recent_reports(self):
         """Fetch list of recent reports."""
-        self.client.get(
-            "/api/v1/reports/recent?limit=10",
-            name="/api/v1/reports/recent"
-        )
+        self.client.get("/api/v1/reports/recent?limit=10", name="/api/v1/reports/recent")
 
     @task(3)
     def get_analytics(self):
         """Fetch analytics data."""
-        self.client.get(
-            "/api/v1/analytics/summary",
-            name="/api/v1/analytics/summary"
-        )
+        self.client.get("/api/v1/analytics/summary", name="/api/v1/analytics/summary")
 
     @task(2)
     def search_reports(self):
@@ -114,17 +101,14 @@ class APIUser(HttpUser):
         company, _ = random_company()
         self.client.get(
             f"/api/v1/reports/search?query={company[:10]}",
-            name="/api/v1/reports/search"
+            name="/api/v1/reports/search",
         )
 
     @task(1)
     def export_json(self):
         """Test JSON export if we have a report ID."""
         if self.report_id:
-            self.client.get(
-                f"/api/v1/export/json/{self.report_id}",
-                name="/api/v1/export/json/[id]"
-            )
+            self.client.get(f"/api/v1/export/json/{self.report_id}", name="/api/v1/export/json/[id]")
 
 
 class AnalysisUser(HttpUser):
@@ -149,11 +133,11 @@ class AnalysisUser(HttpUser):
             json={
                 "client_name": company,
                 "inn": inn,
-                "additional_notes": "Load test analysis"
+                "additional_notes": "Load test analysis",
             },
             catch_response=True,
             name="/api/v1/agent/analyze-client",
-            timeout=120  # Analysis can take up to 2 minutes
+            timeout=120,  # Analysis can take up to 2 minutes
         ) as response:
             if response.status_code in [200, 202]:
                 response.success()
@@ -180,10 +164,8 @@ class AdminUser(HttpUser):
     def on_start(self):
         """Setup admin token."""
         import os
-        self.admin_token = os.environ.get(
-            "ADMIN_TOKEN",
-            "test_admin_token_with_minimum_32_characters_for_security"
-        )
+
+        self.admin_token = os.environ.get("ADMIN_TOKEN", "test_admin_token_with_minimum_32_characters_for_security")
 
     @task(3)
     def cache_stats(self):
@@ -191,7 +173,7 @@ class AdminUser(HttpUser):
         self.client.get(
             "/api/v1/admin/cache/stats",
             headers={"X-Auth-Token": self.admin_token},
-            name="/api/v1/admin/cache/stats"
+            name="/api/v1/admin/cache/stats",
         )
 
     @task(2)
@@ -200,7 +182,7 @@ class AdminUser(HttpUser):
         self.client.get(
             "/api/v1/admin/llm/stats",
             headers={"X-Auth-Token": self.admin_token},
-            name="/api/v1/admin/llm/stats"
+            name="/api/v1/admin/llm/stats",
         )
 
     @task(1)
@@ -209,7 +191,7 @@ class AdminUser(HttpUser):
         self.client.get(
             "/api/v1/admin/metrics/system",
             headers={"X-Auth-Token": self.admin_token},
-            name="/api/v1/admin/metrics/system"
+            name="/api/v1/admin/metrics/system",
         )
 
 

@@ -4,7 +4,6 @@ Tests for validation utilities.
 Tests both shared security validators and frontend validators.
 """
 
-import pytest
 
 from app.frontend.lib.validators import (
     ValidationResult,
@@ -240,9 +239,7 @@ class TestValidatorIntegration:
             shared_valid, shared_error = validate_inn_shared(inn, required=False)
             frontend_valid, frontend_error = validate_inn(inn, required=False)
 
-            assert (
-                shared_valid == frontend_valid
-            ), f"Inconsistent validation for INN: {inn}"
+            assert shared_valid == frontend_valid, f"Inconsistent validation for INN: {inn}"
 
     def test_extended_validation_includes_suggestions(self):
         """Test that extended validators provide helpful suggestions."""

@@ -22,7 +22,14 @@ def test_data_collector_runs_inn_sources_in_parallel_and_then_web_search(monkeyp
 
     async def fake_fetch_from_dadata(_inn: str):
         await _inn_source("dadata")
-        return {"status": "success", "data": {"name": {"full_with_opf": "ООО Ромашка"}, "state": {"status": "ACTIVE"}, "address": {"value": "Москва"}}}
+        return {
+            "status": "success",
+            "data": {
+                "name": {"full_with_opf": "ООО Ромашка"},
+                "state": {"status": "ACTIVE"},
+                "address": {"value": "Москва"},
+            },
+        }
 
     async def fake_fetch_from_infosphere(_inn: str):
         await _inn_source("infosphere")
@@ -47,7 +54,12 @@ def test_data_collector_runs_inn_sources_in_parallel_and_then_web_search(monkeyp
         async def ask(self, **kwargs):
             assert inn_all_done.is_set(), "Perplexity вызван до завершения INN-фазы"
             perpl_calls.append(kwargs.get("question", ""))
-            return {"success": True, "content": "OK", "citations": ["c1"], "integration": "langchain-openai"}
+            return {
+                "success": True,
+                "content": "OK",
+                "citations": ["c1"],
+                "integration": "langchain-openai",
+            }
 
     class FakeTavily:
         def is_configured(self):
@@ -56,7 +68,11 @@ def test_data_collector_runs_inn_sources_in_parallel_and_then_web_search(monkeyp
         async def search(self, **kwargs):
             assert inn_all_done.is_set(), "Tavily вызван до завершения INN-фазы"
             tav_calls.append(kwargs.get("query", ""))
-            return {"success": True, "answer": "OK", "results": [{"url": "u1", "content": "c"}]}
+            return {
+                "success": True,
+                "answer": "OK",
+                "results": [{"url": "u1", "content": "c"}],
+            }
 
     monkeypatch.setattr(dc.PerplexityClient, "get_instance", classmethod(lambda cls: FakePerplexity()))
     monkeypatch.setattr(dc.TavilyClient, "get_instance", classmethod(lambda cls: FakeTavily()))
@@ -65,8 +81,16 @@ def test_data_collector_runs_inn_sources_in_parallel_and_then_web_search(monkeyp
         "client_name": "Тестовая компания",
         "inn": "7707083893",
         "search_intents": [
-            {"id": "reputation", "query": "репутация компании Тестовая компания отзывы", "description": "Репутация"},
-            {"id": "news", "query": "Тестовая компания новости", "description": "Новости"},
+            {
+                "id": "reputation",
+                "query": "репутация компании Тестовая компания отзывы",
+                "description": "Репутация",
+            },
+            {
+                "id": "news",
+                "query": "Тестовая компания новости",
+                "description": "Новости",
+            },
         ],
     }
 
@@ -114,4 +138,3 @@ def test_data_collector_falls_back_when_no_intents(monkeypatch):
 
     intent_ids = {r.get("intent_id") for r in result.get("search_results", [])}
     assert "reputation" in intent_ids
-

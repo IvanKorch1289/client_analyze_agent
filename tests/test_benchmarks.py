@@ -7,9 +7,7 @@ Run with:
 """
 
 import pytest
-import time
 import json
-from unittest.mock import MagicMock, patch
 
 
 class TestRiskCalculatorBenchmark:
@@ -29,10 +27,7 @@ class TestRiskCalculatorBenchmark:
             },
             "casebook": {
                 "success": True,
-                "data": [
-                    {"caseNumber": f"A40-{i}", "category": "bankruptcy"}
-                    for i in range(5)
-                ],
+                "data": [{"caseNumber": f"A40-{i}", "category": "bankruptcy"} for i in range(5)],
             },
             "infosphere": {
                 "success": True,
@@ -68,10 +63,7 @@ class TestRiskCalculatorBenchmark:
             "dadata": {"success": True, "data": {"state": {"status": "ACTIVE"}}},
             "casebook": {
                 "success": True,
-                "data": [
-                    {"caseNumber": f"A40-{i}", "category": "civil"}
-                    for i in range(100)
-                ],
+                "data": [{"caseNumber": f"A40-{i}", "category": "civil"} for i in range(100)],
             },
             "infosphere": {"success": True, "data": {}},
         }
@@ -110,10 +102,13 @@ class TestPIIMaskingBenchmark:
             from app.shared.pii_protection import mask_pii
 
             # Generate long text with repeated PII patterns
-            long_text = """
+            long_text = (
+                """
             Компания ООО "Тест" (ИНН 7707083893) работает с клиентами.
             Директор: Петров Пётр Петрович, тел: +7 (999) 111-22-33.
-            """ * 50  # ~5000 characters
+            """
+                * 50
+            )  # ~5000 characters
 
             result = benchmark(lambda: mask_pii(long_text))
             assert result is not None
@@ -225,6 +220,4 @@ class TestSentimentAnalysis:
 # Pytest configuration for benchmarks
 def pytest_configure(config):
     """Add benchmark markers."""
-    config.addinivalue_line(
-        "markers", "benchmark: mark test as a benchmark test"
-    )
+    config.addinivalue_line("markers", "benchmark: mark test as a benchmark test")

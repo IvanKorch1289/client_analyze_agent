@@ -146,6 +146,43 @@ class ClientAnalysisRequest(BaseModel):
         return ""
 
 
+class BatchAnalysisRequest(BaseModel):
+    """Request for batch client analysis (multiple INNs)."""
+
+    clients: List[Dict[str, Any]] = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="List of clients to analyze. Each must have 'client_name' and optionally 'inn', 'additional_notes'.",
+    )
+    save_reports: bool = Field(default=True, description="Save reports to database")
+    webhook_url: Optional[str] = Field(None, description="URL to notify when batch completes")
+
+    @field_validator("clients")
+    @classmethod
+    def validate_clients(cls, v: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Validate each client entry has required fields."""
+        for i, client in enumerate(v):
+            if "client_name" not in client:
+                raise ValueError(f"Client at index {i} missing 'client_name'")
+            if len(client["client_name"]) > 200:
+                raise ValueError(f"Client at index {i}: client_name exceeds 200 chars")
+        return v
+
+
+class WebhookRegisterRequest(BaseModel):
+    """Request to register a webhook endpoint."""
+
+    url: str = Field(..., description="URL to receive POST notifications")
+    events: List[str] = Field(
+        ...,
+        min_length=1,
+        description="Event types to subscribe to (e.g., 'analysis.completed', 'batch.completed')",
+    )
+    secret: Optional[str] = Field(None, description="HMAC secret for signature verification")
+    description: str = Field(default="", description="Human-readable description")
+
+
 class PromptRequest(BaseModel):
     """Back-compat endpoint payload for Streamlit UI."""
 

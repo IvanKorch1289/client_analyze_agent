@@ -5,8 +5,6 @@ Sprint 12: P0 Critical Security Tests
 Coverage: All 7 Russian recognizers, mask/unmask operations, hash functions
 """
 
-import pytest
-from typing import List
 
 from app.shared.pii_protection import (
     PIIMaskingResult,
@@ -513,7 +511,13 @@ class TestPIIMaskingResult:
     def test_dataclass_with_data(self):
         """Should store replacement data correctly."""
         replacements = [
-            {"start": 0, "end": 10, "entity_type": "RU_INN", "original": "7707083893", "masked": "<RU_INN>"}
+            {
+                "start": 0,
+                "end": 10,
+                "entity_type": "RU_INN",
+                "original": "7707083893",
+                "masked": "<RU_INN>",
+            }
         ]
 
         result = PIIMaskingResult(

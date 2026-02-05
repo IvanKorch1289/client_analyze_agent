@@ -7,9 +7,8 @@ Coverage: Authentication, cache management, LLM stats, health checks
 
 import pytest
 import os
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 from httpx import ASGITransport, AsyncClient
-
 
 # Test constants
 VALID_ADMIN_TOKEN = "test_admin_token_with_minimum_32_characters_for_security"

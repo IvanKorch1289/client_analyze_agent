@@ -10,12 +10,11 @@ Tests for:
 
 import asyncio
 import time
-from typing import List, Tuple
-from unittest.mock import AsyncMock, patch, MagicMock
+from typing import List
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-
 
 # ============================================================================
 # PERFORMANCE BENCHMARKS (pytest-benchmark style)
@@ -101,7 +100,11 @@ class TestPerformanceBenchmarks:
             "risk_score": 45,
             "report_data": {
                 "findings": [
-                    {"category": f"cat-{i}", "sentiment": "neutral", "key_points": f"Point {i}"}
+                    {
+                        "category": f"cat-{i}",
+                        "sentiment": "neutral",
+                        "key_points": f"Point {i}",
+                    }
                     for i in range(30)
                 ],
                 "risk_assessment": {"factors": [f"Factor {i}" for i in range(10)]},
@@ -150,7 +153,7 @@ class TestConcurrentLoad:
             {
                 "report_id": f"test-{i}",
                 "client_name": f"Company {i}",
-                "inn": f"77070838{90+i:02d}",
+                "inn": f"77070838{90 + i:02d}",
                 "created_at": 1705324800,
                 "risk_level": "low",
                 "risk_score": i * 5,
@@ -221,9 +224,7 @@ class TestApiThroughput:
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
             mock_repo = AsyncMock()
-            mock_repo.get_all.return_value = [
-                {"report_id": f"r-{i}", "client_name": f"Company {i}"} for i in range(10)
-            ]
+            mock_repo.get_all.return_value = [{"report_id": f"r-{i}", "client_name": f"Company {i}"} for i in range(10)]
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
@@ -580,7 +581,7 @@ class TestPerformanceRegression:
 
         avg_time = sum(times) / len(times)
         assert avg_time < self.BASELINE_TIMES["risk_calculation"] * 2, (
-            f"Risk calculation regressed: {avg_time:.4f}s > {self.BASELINE_TIMES['risk_calculation']*2:.4f}s"
+            f"Risk calculation regressed: {avg_time:.4f}s > {self.BASELINE_TIMES['risk_calculation'] * 2:.4f}s"
         )
 
     def test_json_export_regression(self):
@@ -597,5 +598,5 @@ class TestPerformanceRegression:
 
         avg_time = sum(times) / len(times)
         assert avg_time < self.BASELINE_TIMES["json_export"] * 2, (
-            f"JSON export regressed: {avg_time:.4f}s > {self.BASELINE_TIMES['json_export']*2:.4f}s"
+            f"JSON export regressed: {avg_time:.4f}s > {self.BASELINE_TIMES['json_export'] * 2:.4f}s"
         )

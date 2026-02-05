@@ -15,9 +15,8 @@ Tests for common security vulnerabilities:
 """
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 from httpx import ASGITransport, AsyncClient
-
 
 # ============================================================================
 # A01:2021 - BROKEN ACCESS CONTROL
@@ -43,18 +42,21 @@ class TestBrokenAccessControl:
             for endpoint in admin_endpoints:
                 # Without token
                 response = await client.get(endpoint)
-                assert response.status_code in [401, 403, 422], (
-                    f"Endpoint {endpoint} accessible without auth (got {response.status_code})"
-                )
+                assert response.status_code in [
+                    401,
+                    403,
+                    422,
+                ], f"Endpoint {endpoint} accessible without auth (got {response.status_code})"
 
                 # With invalid token
                 response = await client.get(
                     endpoint,
                     headers={"X-Admin-Token": "invalid-token-123"},
                 )
-                assert response.status_code in [401, 403], (
-                    f"Endpoint {endpoint} accepts invalid token (got {response.status_code})"
-                )
+                assert response.status_code in [
+                    401,
+                    403,
+                ], f"Endpoint {endpoint} accepts invalid token (got {response.status_code})"
 
     @pytest.mark.asyncio
     async def test_path_traversal_prevention(self):
@@ -186,7 +188,6 @@ class TestCryptographicFailures:
 
     def test_api_keys_masked_in_errors(self):
         """API keys should be masked in error messages."""
-        from app.services.http_client import ResilientHTTPClient
 
         # Verify that error handling doesn't expose API keys
         # This is a design check - actual implementation varies
@@ -368,7 +369,7 @@ class TestSecurityMisconfiguration:
             if response.status_code >= 400:
                 # Should not contain stack traces
                 assert "Traceback" not in response.text
-                assert "File \"" not in response.text
+                assert 'File "' not in response.text
                 assert "line " not in response.text.lower() or "line" in response.text.lower()
 
     def test_default_credentials_not_used(self):
@@ -438,9 +439,7 @@ class TestAuthenticationFailures:
 
             # Time difference should be minimal (constant-time comparison)
             # Allow some variance due to network/processing
-            assert abs(avg_short - avg_long) < 0.1, (
-                f"Timing difference detected: {avg_short:.4f}s vs {avg_long:.4f}s"
-            )
+            assert abs(avg_short - avg_long) < 0.1, f"Timing difference detected: {avg_short:.4f}s vs {avg_long:.4f}s"
 
 
 # ============================================================================
@@ -454,7 +453,6 @@ class TestSecurityLogging:
     def test_audit_logging_exists(self):
         """Audit logging should be implemented for sensitive operations."""
         # Check that audit logging is configured
-        from app.storage.tarantool import TarantoolClient
 
         # LLM Audit Trail should exist
         # This is verified by the existence of the audit endpoint
@@ -464,7 +462,6 @@ class TestSecurityLogging:
     async def test_failed_auth_logged(self):
         """Failed authentication attempts should be logged."""
         from app.api.v1 import v1_app as app
-        from app.shared.toolkit.logging import logger
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Trigger failed auth
@@ -506,7 +503,6 @@ class TestSSRF:
     @pytest.mark.asyncio
     async def test_url_validation(self):
         """URLs should be validated before making requests."""
-        from app.services.http_client import ResilientHTTPClient
 
         # Invalid URLs should not be requested
         invalid_urls = [
@@ -620,7 +616,7 @@ class TestPIIProtection:
 
     def test_pii_reversible_after_llm(self):
         """PII should be restorable after LLM processing."""
-        from app.shared.pii_protection import mask_pii, unmask_pii
+        from app.shared.pii_protection import mask_pii
 
         original = "ИНН компании: 7707083893"
         masked = mask_pii(original)

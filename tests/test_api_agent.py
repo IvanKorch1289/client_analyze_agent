@@ -7,7 +7,6 @@ Coverage: Request validation, response structure, error handling
 
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 # Test fixtures

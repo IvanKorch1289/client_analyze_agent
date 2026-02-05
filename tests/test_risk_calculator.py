@@ -5,8 +5,6 @@ Sprint 12: P0 Critical Tests
 Coverage: Risk scoring algorithm, category calculations, normalization
 """
 
-import pytest
-from typing import Dict, Any, List
 
 from app.agents.risk_calculator import (
     RiskScoreCalculator,
@@ -57,7 +55,10 @@ class TestRiskScoreCalculator:
         extreme_data = {
             "dadata": {"success": True, "data": {"state": {"status": "LIQUIDATING"}}},
             "casebook": {"success": True, "data": [{"category": "банкротство"}] * 50},
-            "infosphere": {"success": True, "data": {"liquidity_ratio": 0.1, "debt_ratio": 0.95}},
+            "infosphere": {
+                "success": True,
+                "data": {"liquidity_ratio": 0.1, "debt_ratio": 0.95},
+            },
         }
         search = [{"success": True, "content": "скандал мошенничество санкции штраф"}]
         score2, _, _ = self.calculator.calculate_risk_score(extreme_data, search)
@@ -108,7 +109,7 @@ class TestRiskScoreCalculator:
                 "data": [
                     {"category": "банкротство", "case_name": "Дело о банкротстве"},
                     {"category": "банкротство", "case_name": "Дело о банкротстве 2"},
-                ]
+                ],
             },
         }
         score, factors, level = self.calculator.calculate_risk_score(source_data)
@@ -145,7 +146,7 @@ class TestRiskScoreCalculator:
                 "data": [
                     {"role": "plaintiff"},
                     {"role": "plaintiff"},
-                ]
+                ],
             },
         }
         score, factors, level = self.calculator.calculate_risk_score(source_data)
@@ -317,7 +318,10 @@ class TestRiskScoreCalculator:
         source_data = {
             "dadata": {"success": True, "data": {"state": {"status": "ACTIVE"}}},
             "casebook": {"success": True, "data": [{"category": "банкротство"}]},
-            "infosphere": {"success": True, "data": {"liquidity_ratio": 0.4, "debt_ratio": 0.85}},
+            "infosphere": {
+                "success": True,
+                "data": {"liquidity_ratio": 0.4, "debt_ratio": 0.85},
+            },
         }
         score, factors, level = self.calculator.calculate_risk_score(source_data)
 
@@ -330,7 +334,10 @@ class TestRiskScoreCalculator:
         source_data = {
             "dadata": {"success": True, "data": {"state": {"status": "LIQUIDATING"}}},
             "casebook": {"success": True, "data": [{"category": "банкротство"}] * 5},
-            "infosphere": {"success": True, "data": {"liquidity_ratio": 0.2, "credit_rating": "D"}},
+            "infosphere": {
+                "success": True,
+                "data": {"liquidity_ratio": 0.2, "credit_rating": "D"},
+            },
         }
         search = [{"success": True, "content": "скандал санкции мошенничество"}]
         score, factors, level = self.calculator.calculate_risk_score(source_data, search)
@@ -460,7 +467,7 @@ class TestIntegration:
                 "data": {
                     "state": {"status": "ACTIVE"},
                     "name": {"full_with_opf": 'ПАО "Газпром"'},
-                }
+                },
             },
             "casebook": {
                 "success": True,
@@ -472,7 +479,7 @@ class TestIntegration:
                     "liquidity_ratio": 1.8,
                     "debt_ratio": 0.4,
                     "credit_rating": "BBB+",
-                }
+                },
             },
         }
         search_results = [
@@ -493,7 +500,7 @@ class TestIntegration:
                 "data": {
                     "state": {"status": "LIQUIDATING"},
                     "name": {"full_with_opf": 'ООО "Банкрот"'},
-                }
+                },
             },
             "casebook": {
                 "success": True,
@@ -505,11 +512,14 @@ class TestIntegration:
                     "liquidity_ratio": 0.1,
                     "debt_ratio": 0.95,
                     "credit_rating": "D",
-                }
+                },
             },
         }
         search_results = [
-            {"success": True, "content": "компания объявила о банкротстве скандал с долгами"},
+            {
+                "success": True,
+                "content": "компания объявила о банкротстве скандал с долгами",
+            },
         ]
 
         result = calculate_normalized_risk(source_data, search_results)
@@ -526,7 +536,7 @@ class TestIntegration:
                 "data": {
                     "state": {"status": "ACTIVE"},
                     "name": {"full_with_opf": 'ООО "Стартап"'},
-                }
+                },
             },
             "casebook": {"success": True, "data": []},
             "infosphere": {"success": False, "error": "Нет финансовых данных"},

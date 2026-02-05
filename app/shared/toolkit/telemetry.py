@@ -269,13 +269,9 @@ def init_telemetry():
 
             otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
             provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
-            logging.getLogger(__name__).info(
-                f"OTLP trace exporter enabled → {otlp_endpoint}"
-            )
+            logging.getLogger(__name__).info(f"OTLP trace exporter enabled → {otlp_endpoint}")
         except ImportError:
-            logging.getLogger(__name__).warning(
-                "opentelemetry-exporter-otlp not installed, traces stay in-memory only"
-            )
+            logging.getLogger(__name__).warning("opentelemetry-exporter-otlp not installed, traces stay in-memory only")
 
     trace.set_tracer_provider(provider)
     _tracer = trace.get_tracer(__name__)

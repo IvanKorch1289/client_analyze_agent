@@ -8,15 +8,14 @@ Coverage: Export endpoints, export helpers, file generation
 import pytest
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, patch, MagicMock
-from io import BytesIO, StringIO
+from unittest.mock import AsyncMock, patch
 
 from httpx import ASGITransport, AsyncClient
-
 
 # ============================================================================
 # FIXTURES AND MOCK DATA
 # ============================================================================
+
 
 @pytest.fixture
 def sample_report():
@@ -99,8 +98,8 @@ def multiple_reports(sample_report):
         report = sample_report.copy()
         report["id"] = f"report-{i}"
         report["report_id"] = f"report-{i}"
-        report["client_name"] = f"ООО Компания {i+1}"
-        report["inn"] = f"77070838{90+i}"
+        report["client_name"] = f"ООО Компания {i + 1}"
+        report["inn"] = f"77070838{90 + i}"
         report["risk_score"] = 30 + i * 20
         reports.append(report)
     return reports
@@ -364,10 +363,9 @@ class TestExcelExport:
 
             if response.status_code == 200:
                 # Check content type
-                assert (
-                    "spreadsheetml" in response.headers.get("content-type", "")
-                    or "octet-stream" in response.headers.get("content-type", "")
-                )
+                assert "spreadsheetml" in response.headers.get(
+                    "content-type", ""
+                ) or "octet-stream" in response.headers.get("content-type", "")
                 # Check filename in disposition
                 disposition = response.headers.get("content-disposition", "")
                 assert "report_report-123" in disposition
@@ -419,10 +417,9 @@ class TestWordExport:
 
             if response.status_code == 200:
                 # Check content type
-                assert (
-                    "wordprocessingml" in response.headers.get("content-type", "")
-                    or "octet-stream" in response.headers.get("content-type", "")
-                )
+                assert "wordprocessingml" in response.headers.get(
+                    "content-type", ""
+                ) or "octet-stream" in response.headers.get("content-type", "")
                 # Check filename
                 disposition = response.headers.get("content-disposition", "")
                 assert ".docx" in disposition
@@ -630,9 +627,7 @@ class TestBulkExport:
         with patch("app.storage.tarantool.TarantoolClient.get_instance", new_callable=AsyncMock) as mock_tarantool:
             mock_client = AsyncMock()
             mock_repo = AsyncMock()
-            mock_repo.get.side_effect = lambda rid: next(
-                (r for r in multiple_reports if r["report_id"] == rid), None
-            )
+            mock_repo.get.side_effect = lambda rid: next((r for r in multiple_reports if r["report_id"] == rid), None)
             mock_client.get_reports_repository.return_value = mock_repo
             mock_tarantool.return_value = mock_client
 
@@ -718,7 +713,13 @@ class TestExportEdgeCases:
             "risk_level": "low",
             "risk_score": 10,
             "report_data": {
-                "findings": [{"category": "test", "sentiment": "neutral", "key_points": "Text with <html> & \"quotes\""}]
+                "findings": [
+                    {
+                        "category": "test",
+                        "sentiment": "neutral",
+                        "key_points": 'Text with <html> & "quotes"',
+                    }
+                ]
             },
         }
 
@@ -733,7 +734,10 @@ class TestExportEdgeCases:
     @pytest.mark.asyncio
     async def test_export_with_none_values(self):
         """Export should handle None values gracefully."""
-        from app.shared.toolkit.export import report_to_json, normalize_report_for_export
+        from app.shared.toolkit.export import (
+            report_to_json,
+            normalize_report_for_export,
+        )
 
         report = {
             "report_id": "test-123",
@@ -764,7 +768,11 @@ class TestExportEdgeCases:
             "risk_score": 50,
             "report_data": {
                 "findings": [
-                    {"category": f"cat-{i}", "sentiment": "neutral", "key_points": f"Finding {i} " * 100}
+                    {
+                        "category": f"cat-{i}",
+                        "sentiment": "neutral",
+                        "key_points": f"Finding {i} " * 100,
+                    }
                     for i in range(100)
                 ],
                 "recommendations": [f"Recommendation {i} " * 50 for i in range(50)],
@@ -822,7 +830,11 @@ class TestExportEdgeCases:
             "risk_score": 10,
             "report_data": {
                 "findings": [
-                    {"category": "legal", "sentiment": "neutral", "key_points": "Issue A, Issue B, Issue C"}
+                    {
+                        "category": "legal",
+                        "sentiment": "neutral",
+                        "key_points": "Issue A, Issue B, Issue C",
+                    }
                 ]
             },
         }

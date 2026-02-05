@@ -62,9 +62,7 @@ class Experiment:
             )
         total = sum(self.traffic_split.values())
         if abs(total - 1.0) > 0.01:
-            raise ValueError(
-                f"Experiment '{self.name}': traffic_split must sum to 1.0, got {total}"
-            )
+            raise ValueError(f"Experiment '{self.name}': traffic_split must sum to 1.0, got {total}")
 
 
 @dataclass
@@ -106,8 +104,7 @@ class ABTestingManager:
         """Register a new experiment."""
         self._experiments[experiment.name] = experiment
         logger.info(
-            f"A/B experiment registered: {experiment.name} "
-            f"variants={list(experiment.variants.keys())}",
+            f"A/B experiment registered: {experiment.name} variants={list(experiment.variants.keys())}",
             component="ab_testing",
         )
 
@@ -130,12 +127,8 @@ class ABTestingManager:
                 "variants": list(exp.variants.keys()),
                 "traffic_split": exp.traffic_split,
                 "description": exp.description,
-                "assignments": sum(
-                    1 for a in self._assignments if a.experiment_name == exp.name
-                ),
-                "outcomes": sum(
-                    1 for o in self._outcomes if o.experiment_name == exp.name
-                ),
+                "assignments": sum(1 for a in self._assignments if a.experiment_name == exp.name),
+                "outcomes": sum(1 for o in self._outcomes if o.experiment_name == exp.name),
             }
             for exp in self._experiments.values()
         ]
@@ -195,8 +188,7 @@ class ABTestingManager:
             pass
 
         logger.debug(
-            f"A/B assigned: {experiment_name} → {assigned_variant} "
-            f"(request={request_id})",
+            f"A/B assigned: {experiment_name} → {assigned_variant} (request={request_id})",
             component="ab_testing",
         )
 
@@ -216,11 +208,7 @@ class ABTestingManager:
             outcome_metrics: Dict of metric_name → value (e.g. latency, score, quality)
         """
         # Find matching assignment
-        matching = [
-            a
-            for a in self._assignments
-            if a.experiment_name == experiment_name and a.request_id == request_id
-        ]
+        matching = [a for a in self._assignments if a.experiment_name == experiment_name and a.request_id == request_id]
         if not matching:
             logger.warning(
                 f"A/B outcome for unassigned request: {experiment_name}/{request_id}",
@@ -252,9 +240,7 @@ class ABTestingManager:
         if not experiment:
             return {"error": f"Experiment '{experiment_name}' not found"}
 
-        outcomes_by_variant: Dict[str, List[Dict[str, Any]]] = {
-            v: [] for v in experiment.variants
-        }
+        outcomes_by_variant: Dict[str, List[Dict[str, Any]]] = {v: [] for v in experiment.variants}
         for o in self._outcomes:
             if o.experiment_name == experiment_name:
                 outcomes_by_variant.setdefault(o.variant, []).append(o.metrics)

@@ -12,7 +12,6 @@ import pytest
 
 from app.agents.risk_calculator import calculate_normalized_risk
 
-
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 GROUND_TRUTH_FILE = os.path.join(FIXTURES_DIR, "ground_truth_risk_scores.json")
 
@@ -66,7 +65,13 @@ class TestGroundTruthDatasetIntegrity:
         assert len(GROUND_TRUTH) >= 10
 
     def test_all_cases_have_required_fields(self):
-        required = {"id", "description", "source_data", "expected_level", "expected_score_range"}
+        required = {
+            "id",
+            "description",
+            "source_data",
+            "expected_level",
+            "expected_score_range",
+        }
         for case in GROUND_TRUTH:
             missing = required - set(case.keys())
             assert not missing, f"Case {case.get('id')}: missing fields {missing}"

@@ -99,8 +99,7 @@ def _run_coroutine_sync(coro, timeout: float = 300.0):
     import warnings
 
     warnings.warn(
-        "invoke() вызван из async-контекста. "
-        "Используйте ainvoke() для избежания блокировки event loop.",
+        "invoke() вызван из async-контекста. Используйте ainvoke() для избежания блокировки event loop.",
         RuntimeWarning,
         stacklevel=3,
     )
@@ -676,13 +675,14 @@ class LLMManager:
                             component="llm_manager",
                         )
                     else:
-                        logger.info(f"Attempting LLM call with {provider}", component="llm_manager")
+                        logger.info(
+                            f"Attempting LLM call with {provider}",
+                            component="llm_manager",
+                        )
 
                     provider_start = time.perf_counter()
 
-                    response_text = await self.ainvoke_with_provider(
-                        prompt=masked_prompt, provider=provider, **kwargs
-                    )
+                    response_text = await self.ainvoke_with_provider(prompt=masked_prompt, provider=provider, **kwargs)
 
                     provider_duration = time.perf_counter() - provider_start
                     self._log_provider_success(
@@ -706,7 +706,7 @@ class LLMManager:
                     # Check for 429 rate limit — retry same provider with backoff
                     is_rate_limit = "429" in error_str or "rate limit" in error_str or "too many requests" in error_str
                     if is_rate_limit and retry < rate_limit_retries:
-                        delay = rate_limit_base_delay * (2 ** retry)
+                        delay = rate_limit_base_delay * (2**retry)
                         logger.warning(
                             f"Rate limit (429) from {provider}, retrying in {delay}s "
                             f"(attempt {retry + 1}/{rate_limit_retries})",

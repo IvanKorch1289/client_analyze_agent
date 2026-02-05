@@ -9,7 +9,6 @@ Run: pytest tests/test_prompt_regression.py -v
 
 import hashlib
 
-import pytest
 
 from app.mcp_server.prompts.system_prompts import (
     SYSTEM_PROMPTS,
@@ -122,15 +121,11 @@ class TestPromptVersioning:
 
     def test_all_prompts_have_version(self):
         for role, prompt in SYSTEM_PROMPTS.items():
-            assert hasattr(prompt, "version") or hasattr(prompt, "name"), (
-                f"Prompt {role.name} missing version metadata"
-            )
+            assert hasattr(prompt, "version") or hasattr(prompt, "name"), f"Prompt {role.name} missing version metadata"
 
     def test_report_analyzer_and_cot_differ(self):
         """report_analyzer and report_analyzer_cot should have different content."""
         base = SYSTEM_PROMPTS[AnalyzerRole.REPORT_ANALYZER].content
         cot = SYSTEM_PROMPTS[AnalyzerRole.REPORT_ANALYZER_COT].content
         # They may share a prefix but should differ overall
-        assert base != cot or len(base) != len(cot), (
-            "report_analyzer and report_analyzer_cot should not be identical"
-        )
+        assert base != cot or len(base) != len(cot), "report_analyzer and report_analyzer_cot should not be identical"

@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-
 # Ensure `import app` works when running tests without installing the package.
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -28,4 +27,3 @@ def async_client():
         return AsyncClient(transport=transport, base_url=base_url)
 
     return _make_client
-

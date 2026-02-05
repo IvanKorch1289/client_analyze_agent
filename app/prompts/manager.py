@@ -24,9 +24,7 @@ class PromptManager:
         from app.mcp_server.prompts.system_prompts import SYSTEM_PROMPTS, AnalyzerRole
 
         self._system_prompts = SYSTEM_PROMPTS
-        self._role_map: Dict[str, AnalyzerRole] = {
-            role.value: role for role in AnalyzerRole
-        }
+        self._role_map: Dict[str, AnalyzerRole] = {role.value: role for role in AnalyzerRole}
 
     @classmethod
     def get_instance(cls) -> "PromptManager":
@@ -56,10 +54,7 @@ class PromptManager:
         """
         role = self._role_map.get(template_name)
         if role is None:
-            raise KeyError(
-                f"Prompt template '{template_name}' not found. "
-                f"Available: {list(self._role_map.keys())}"
-            )
+            raise KeyError(f"Prompt template '{template_name}' not found. Available: {list(self._role_map.keys())}")
 
         prompt_obj = self._system_prompts.get(role)
         if prompt_obj is None:
@@ -67,8 +62,7 @@ class PromptManager:
 
         if version != "latest" and prompt_obj.version != version:
             logger.warning(
-                f"Requested prompt version {version} for {template_name}, "
-                f"but only {prompt_obj.version} is available",
+                f"Requested prompt version {version} for {template_name}, but only {prompt_obj.version} is available",
                 component="prompt_manager",
             )
 
@@ -95,7 +89,4 @@ class PromptManager:
 
     def list_templates(self) -> Dict[str, str]:
         """Получить список всех шаблонов с версиями."""
-        return {
-            role.value: self._system_prompts[role].version
-            for role in self._system_prompts
-        }
+        return {role.value: self._system_prompts[role].version for role in self._system_prompts}

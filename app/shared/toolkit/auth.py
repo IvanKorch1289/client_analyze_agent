@@ -1,14 +1,19 @@
 """
-Role-based access control for utility endpoints.
+Role-based access control (RBAC) with granular permissions.
 
-Provides simple token-based authentication for admin-level operations
-like cache clearing and system configuration changes.
+Provides token-based authentication with 4 roles:
+- admin: Full system access
+- analyst: Analysis, reports, data, LLM operations
+- viewer: Read-only access to reports and analysis results
+- guest: Minimal read access (unauthenticated)
+
+Token resolution: ADMIN_TOKEN → admin, ANALYST_TOKEN → analyst, VIEWER_TOKEN → viewer.
 """
 
 import os
 import secrets
 import warnings
-from typing import Optional, Tuple
+from typing import Optional, Set, Tuple
 
 from fastapi import Depends, Header, HTTPException, status
 
@@ -30,13 +35,23 @@ _security_warning_shown = False
 
 
 def get_admin_token() -> str:
-    """Get admin token from config (Vault → ENV → YAML)."""
+    """Get admin token from config (Vault -> ENV -> YAML)."""
     try:
         from app.config.settings import settings
 
         return settings.secure.admin_token or ""
     except Exception:
         return os.getenv("ADMIN_TOKEN", "")
+
+
+def _get_analyst_token() -> str:
+    """Get analyst token from env."""
+    return os.getenv("ANALYST_TOKEN", "")
+
+
+def _get_viewer_token() -> str:
+    """Get viewer token from env."""
+    return os.getenv("VIEWER_TOKEN", "")
 
 
 def validate_admin_token_security() -> Tuple[bool, str]:
@@ -92,7 +107,7 @@ def check_security_on_startup() -> None:
         # Use warnings module for visibility
         warnings.warn(
             f"\n{'=' * 60}\n"
-            f"⚠️  SECURITY WARNING: {message}\n"
+            f"SECURITY WARNING: {message}\n"
             f"Set a strong ADMIN_TOKEN (32+ random characters) in .env\n"
             f'Generate with: python -c "import secrets; print(secrets.token_hex(32))"\n'
             f"{'=' * 60}\n",
@@ -104,10 +119,96 @@ def check_security_on_startup() -> None:
 
 
 class Role:
-    """User roles for access control."""
+    """User roles for access control.
+
+    Hierarchy: admin > analyst > viewer > guest
+    Each higher role inherits all permissions of lower roles.
+    """
 
     ADMIN = "admin"
+    ANALYST = "analyst"
+    VIEWER = "viewer"
     GUEST = "guest"
+
+    ALL = {ADMIN, ANALYST, VIEWER, GUEST}
+    AUTHENTICATED = {ADMIN, ANALYST, VIEWER}
+
+
+class Permission:
+    """Granular permissions for RBAC."""
+
+    # Analysis
+    ANALYSIS_CREATE = "analysis:create"
+    ANALYSIS_READ = "analysis:read"
+    ANALYSIS_BATCH = "analysis:batch"
+
+    # Reports
+    REPORT_READ = "report:read"
+    REPORT_DELETE = "report:delete"
+    REPORT_EXPORT = "report:export"
+
+    # Data
+    DATA_FETCH = "data:fetch"
+
+    # LLM
+    LLM_INVOKE = "llm:invoke"
+    LLM_PROVIDERS = "llm:providers"
+
+    # Admin
+    ADMIN_CACHE = "admin:cache"
+    ADMIN_CONFIG = "admin:config"
+    ADMIN_USERS = "admin:users"
+    ADMIN_WEBHOOKS = "admin:webhooks"
+
+    # Audit
+    AUDIT_READ = "audit:read"
+
+
+# Role -> permissions mapping
+ROLE_PERMISSIONS: dict[str, Set[str]] = {
+    Role.ADMIN: {
+        Permission.ANALYSIS_CREATE,
+        Permission.ANALYSIS_READ,
+        Permission.ANALYSIS_BATCH,
+        Permission.REPORT_READ,
+        Permission.REPORT_DELETE,
+        Permission.REPORT_EXPORT,
+        Permission.DATA_FETCH,
+        Permission.LLM_INVOKE,
+        Permission.LLM_PROVIDERS,
+        Permission.ADMIN_CACHE,
+        Permission.ADMIN_CONFIG,
+        Permission.ADMIN_USERS,
+        Permission.ADMIN_WEBHOOKS,
+        Permission.AUDIT_READ,
+    },
+    Role.ANALYST: {
+        Permission.ANALYSIS_CREATE,
+        Permission.ANALYSIS_READ,
+        Permission.ANALYSIS_BATCH,
+        Permission.REPORT_READ,
+        Permission.REPORT_EXPORT,
+        Permission.DATA_FETCH,
+        Permission.LLM_INVOKE,
+        Permission.LLM_PROVIDERS,
+        Permission.AUDIT_READ,
+    },
+    Role.VIEWER: {
+        Permission.ANALYSIS_READ,
+        Permission.REPORT_READ,
+        Permission.REPORT_EXPORT,
+        Permission.LLM_PROVIDERS,
+    },
+    Role.GUEST: {
+        Permission.ANALYSIS_READ,
+        Permission.REPORT_READ,
+    },
+}
+
+
+def role_has_permission(role: str, permission: str) -> bool:
+    """Check if a role has a specific permission."""
+    return permission in ROLE_PERMISSIONS.get(role, set())
 
 
 def generate_token() -> str:
@@ -126,18 +227,30 @@ def get_current_role(
     """
     Determine user role based on authentication token.
 
+    Token resolution order: admin -> analyst -> viewer -> guest.
+
     Args:
         x_auth_token: Authentication token from X-Auth-Token header.
 
     Returns:
-        str: User role (admin or guest).
+        str: User role.
     """
     if not x_auth_token:
         return Role.GUEST
 
+    token = x_auth_token.strip()
+
     admin_token = get_admin_token()
-    if admin_token and x_auth_token.strip() == admin_token.strip():
+    if admin_token and token == admin_token.strip():
         return Role.ADMIN
+
+    analyst_token = _get_analyst_token()
+    if analyst_token and token == analyst_token.strip():
+        return Role.ANALYST
+
+    viewer_token = _get_viewer_token()
+    if viewer_token and token == viewer_token.strip():
+        return Role.VIEWER
 
     return Role.GUEST
 
@@ -145,12 +258,6 @@ def get_current_role(
 def require_admin(role: str = Depends(get_current_role)) -> str:
     """
     Dependency that requires admin role.
-
-    Args:
-        role: Current user role from get_current_role.
-
-    Returns:
-        str: The role if admin.
 
     Raises:
         HTTPException: 403 if not admin.
@@ -163,25 +270,67 @@ def require_admin(role: str = Depends(get_current_role)) -> str:
     return role
 
 
-def is_admin(role: str) -> bool:
+def require_role(*allowed_roles: str):
     """
-    Check if role is admin.
+    Factory for role-based access dependencies.
+
+    Usage:
+        @router.get("/reports", dependencies=[Depends(require_role(Role.VIEWER, Role.ANALYST, Role.ADMIN))])
 
     Args:
-        role: User role string.
-
-    Returns:
-        bool: True if admin.
+        allowed_roles: One or more roles that are allowed access.
     """
+    allowed = set(allowed_roles)
+
+    def _check(role: str = Depends(get_current_role)) -> str:
+        if role not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Недостаточно прав. Требуется роль: {', '.join(sorted(allowed))}",
+            )
+        return role
+
+    return _check
+
+
+def require_permission(permission: str):
+    """
+    Factory for permission-based access dependencies.
+
+    Usage:
+        @router.post("/analyze", dependencies=[Depends(require_permission(Permission.ANALYSIS_CREATE))])
+
+    Args:
+        permission: Required permission string.
+    """
+
+    def _check(role: str = Depends(get_current_role)) -> str:
+        if not role_has_permission(role, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Недостаточно прав. Требуется разрешение: {permission}",
+            )
+        return role
+
+    return _check
+
+
+def is_admin(role: str) -> bool:
+    """Check if role is admin."""
     return role == Role.ADMIN
 
 
 __all__ = [
     "Role",
+    "Permission",
+    "ROLE_PERMISSIONS",
     "get_admin_token",
     "generate_token",
     "get_current_role",
     "require_admin",
+    "require_role",
+    "require_permission",
+    "role_has_permission",
     "is_admin",
     "validate_admin_token_security",
     "check_security_on_startup",

@@ -201,9 +201,7 @@ async def handle_async_llm_request(msg: AsyncLLMQueueMessage) -> Dict[str, Any]:
 
         # PII unmasking AFTER receiving LLM response
         if pii_result.pii_detected and pii_result.replacements:
-            response = pii_protection.unmask_pii(
-                masked_text=response, replacements=pii_result.replacements
-            )
+            response = pii_protection.unmask_pii(masked_text=response, replacements=pii_result.replacements)
             logger.info(
                 f"Request {msg.request_id}: PII unmasked in response",
                 component="faststream",
@@ -267,7 +265,7 @@ async def handle_async_llm_request(msg: AsyncLLMQueueMessage) -> Dict[str, Any]:
                 break  # Success — exit retry loop
         except Exception as e:
             if attempt < callback_max_retries - 1:
-                delay = callback_base_delay * (2 ** attempt)
+                delay = callback_base_delay * (2**attempt)
                 logger.warning(
                     f"Callback attempt {attempt + 1}/{callback_max_retries} failed for "
                     f"{msg.request_id}: {e}. Retrying in {delay}s",
@@ -276,8 +274,7 @@ async def handle_async_llm_request(msg: AsyncLLMQueueMessage) -> Dict[str, Any]:
                 await asyncio.sleep(delay)
             else:
                 logger.error(
-                    f"Callback failed for {msg.request_id} after {callback_max_retries} "
-                    f"attempts: {e}",
+                    f"Callback failed for {msg.request_id} after {callback_max_retries} attempts: {e}",
                     component="faststream",
                 )
 

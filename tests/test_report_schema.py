@@ -9,7 +9,14 @@ def test_report_analyzer_produces_canonical_report_schema():
         "client_name": "Тест",
         "inn": "7707083893",
         "source_data": {
-            "dadata": {"success": True, "data": {"name": {"full_with_opf": "ООО Тест"}, "state": {"status": "ACTIVE"}, "address": {"value": "Москва"}}},
+            "dadata": {
+                "success": True,
+                "data": {
+                    "name": {"full_with_opf": "ООО Тест"},
+                    "state": {"status": "ACTIVE"},
+                    "address": {"value": "Москва"},
+                },
+            },
             "infosphere": {"success": True, "data": []},
             "casebook": {"success": True, "data": []},
         },
@@ -30,4 +37,3 @@ def test_report_analyzer_produces_canonical_report_schema():
     report = out["report"]
     # validate shape
     ClientAnalysisReport.model_validate(report)
-

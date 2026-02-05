@@ -204,7 +204,10 @@ PII_MASKING_ERRORS = create_counter(
 RAG_QUERIES = create_counter(
     "client_rag_queries_total",
     "Total RAG semantic search queries",
-    ["query_type", "status"],  # query_type: reports/documents, status: success/failure/empty
+    [
+        "query_type",
+        "status",
+    ],  # query_type: reports/documents, status: success/failure/empty
 )
 
 RAG_RELEVANCY = create_histogram(

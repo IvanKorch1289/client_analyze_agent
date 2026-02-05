@@ -18,14 +18,19 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
-
 # ============================================================================
 # Sample LLM outputs for evaluation (mock responses)
 # ============================================================================
 
 VALID_COT_RESPONSE = {
     "reasoning": {
-        "sources_analyzed": ["dadata", "casebook", "infosphere", "perplexity", "tavily"],
+        "sources_analyzed": [
+            "dadata",
+            "casebook",
+            "infosphere",
+            "perplexity",
+            "tavily",
+        ],
         "data_quality": {
             "complete_sources": 4,
             "partial_sources": 1,
@@ -42,7 +47,11 @@ VALID_COT_RESPONSE = {
             }
         ],
         "positive_factors": [
-            {"factor": "Длительная история работы (12 лет)", "impact": -5, "source": "dadata"}
+            {
+                "factor": "Длительная история работы (12 лет)",
+                "impact": -5,
+                "source": "dadata",
+            }
         ],
         "calculation": "0 + 25 + 20 - 5 = 40",
         "confidence": 0.8,
@@ -196,12 +205,8 @@ def evaluate_reasoning_quality(response: Dict[str, Any]) -> Dict[str, Any]:
     # Risk factors
     factors = reasoning.get("risk_factors", [])
     quality["risk_factors_count"] = len(factors)
-    quality["factors_have_evidence"] = all(
-        f.get("evidence") or f.get("source") for f in factors
-    )
-    quality["factors_have_impact"] = all(
-        isinstance(f.get("impact"), (int, float)) for f in factors
-    )
+    quality["factors_have_evidence"] = all(f.get("evidence") or f.get("source") for f in factors)
+    quality["factors_have_impact"] = all(isinstance(f.get("impact"), (int, float)) for f in factors)
 
     # Calculation present
     quality["has_calculation"] = bool(reasoning.get("calculation"))
@@ -210,8 +215,8 @@ def evaluate_reasoning_quality(response: Dict[str, Any]) -> Dict[str, Any]:
     confidence = reasoning.get("confidence")
     quality["has_confidence"] = confidence is not None
     quality["confidence_reasonable"] = (
-        isinstance(confidence, (int, float)) and 0 <= confidence <= 1
-    ) if confidence is not None else False
+        (isinstance(confidence, (int, float)) and 0 <= confidence <= 1) if confidence is not None else False
+    )
 
     return quality
 
