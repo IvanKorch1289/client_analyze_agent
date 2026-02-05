@@ -11,8 +11,10 @@ Graceful degradation: если Chroma/RAG недоступны — возвра�
 
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, List, Optional
 
+from app.shared.prometheus_metrics import metrics
 from app.shared.toolkit.logging import logger
 
 # Максимальный размер RAG-контекста в символах (~2000 токенов)
@@ -37,6 +39,7 @@ class RAGContextBuilder:
         Returns:
             Список похожих отчётов с метаданными и distance
         """
+        t0 = time.monotonic()
         try:
             from app.services.chroma_service import get_chroma_service
             from app.services.embedding_service import get_embedding_service
@@ -47,6 +50,9 @@ class RAGContextBuilder:
             chroma = get_chroma_service()
             results = chroma.search_similar_reports(query_embedding, k=k)
 
+            latency = time.monotonic() - t0
+            metrics.record_rag_query("reports", results, latency=latency)
+
             logger.debug(
                 f"RAG: found {len(results)} similar reports",
                 component="rag_context",
@@ -54,6 +60,7 @@ class RAGContextBuilder:
             return results
 
         except Exception as e:
+            metrics.record_rag_failure("reports")
             logger.warning(f"RAG similar reports failed: {e}", component="rag_context")
             return []
 
@@ -72,6 +79,7 @@ class RAGContextBuilder:
         Returns:
             Список релевантных чанков
         """
+        t0 = time.monotonic()
         try:
             from app.services.chroma_service import get_chroma_service
             from app.services.embedding_service import get_embedding_service
@@ -82,6 +90,9 @@ class RAGContextBuilder:
             chroma = get_chroma_service()
             results = chroma.search_documents(query_embedding, k=k)
 
+            latency = time.monotonic() - t0
+            metrics.record_rag_query("documents", results, latency=latency)
+
             logger.debug(
                 f"RAG: found {len(results)} relevant documents",
                 component="rag_context",
@@ -89,6 +100,7 @@ class RAGContextBuilder:
             return results
 
         except Exception as e:
+            metrics.record_rag_failure("documents")
             logger.warning(f"RAG document search failed: {e}", component="rag_context")
             return []
 
