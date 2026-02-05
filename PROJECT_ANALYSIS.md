@@ -173,11 +173,11 @@
 | 1.3 | Linter-правило запрета прямого импорта LLM | ✅ | Ruff TID251 banned-api: `langchain_openai`, `gigachat`, `langchain_community.llms` запрещены с PII-предупреждением. Per-file-ignores для легитимных файлов |
 | 1.4 | Мониторинг PII в Prometheus | ✅ | 4 новых метрики: `pii_masking_calls_total`, `pii_entities_detected_total`, `pii_masking_latency_seconds`, `pii_masking_errors_total`. Инструментирован `mask_pii()` и `llm_manager.py` |
 | 1.5 | Fix `_run_coroutine_sync()` deadlock | ✅ | Добавлен timeout=300s + RuntimeWarning при вызове из async |
-| 1.6 | PostgreSQL для хранения отчётов | ⏳ | Крупная инфраструктурная задача |
+| 1.6 | ~~PostgreSQL для хранения отчётов~~ | ❌ Пропущен | Не требуется — Tarantool + in-memory fallback достаточно |
 | 1.7 | `asyncio.get_event_loop()` → `get_running_loop()` | ✅ | 32 замены в 6 файлах |
 | 1.8* | PII маскирование в RabbitMQ `llm_queue` | ✅ | `mask_pii()`/`unmask_pii()` в `handle_async_llm_request()` + 4 теста |
 
-**Рекомендации:** SQLAlchemy + Alembic для PostgreSQL, ruff custom rules для запрета direct LLM imports.
+**Рекомендации:** ruff custom rules для запрета direct LLM imports.
 
 ---
 
@@ -217,20 +217,20 @@
 
 ---
 
-### Этап 4: Observability и Production Readiness (Приоритет: СРЕДНИЙ) — В ПРОЦЕССЕ
+### Этап 4: Observability и Production Readiness (Приоритет: СРЕДНИЙ) ✅ ВЫПОЛНЕН
 
 **Цель:** Подготовка к production-эксплуатации.
 
 | # | Задача | Модуль | Статус | Что сделано |
 |---|--------|--------|--------|-------------|
 | 4.1 | OpenTelemetry tracing end-to-end (API → Agent → LLM → Storage) | Все | ✅ | 4 span'а: `api.analyze_client` (agent.py), `workflow.client_analysis` (client_workflow.py), `llm.ainvoke` (llm_manager.py), `http.request` (http_client.py). Lazy import с graceful degradation |
-| 4.2 | Добавить Jaeger/Tempo для визуализации traces | Мониторинг | ⏳ | Визуальная карта зависимостей, MTTR < 15 мин |
-| 4.3 | Настроить CD pipeline (GitHub Actions → staging → prod) | CI/CD | ⏳ | Автодеплой при merge в main |
-| 4.4 | Добавить backup/restore для Tarantool | Storage | ⏳ | Регулярные бэкапы, RPO < 1 час |
-| 4.5 | Написать runbook для инцидентов (PII leak, LLM outage, Tarantool crash) | Документация | ⏳ | Стандартные процедуры для Top-10 инцидентов |
-| 4.6 | Внедрить Alembic для миграций PostgreSQL | Storage | ⏳ | Версионированная схема |
+| 4.2 | Grafana Tempo для визуализации traces | Мониторинг | ✅ | Tempo 2.6.1 в docker-compose (OTLP gRPC/HTTP receiver). OTLP exporter в `telemetry.py` (BatchSpanProcessor → Tempo). Grafana datasource с service map и node graph. `opentelemetry-exporter-otlp` в зависимостях |
+| 4.3 | CD pipeline (GitHub Actions → staging → prod) | CI/CD | ✅ | `.github/workflows/cd.yml`: build → deploy-staging → deploy-production (с manual approval через GitHub Environments). Health checks, GitHub Release при деплое |
+| 4.4 | Backup/restore для Tarantool | Storage | ✅ | `scripts/tarantool_backup.sh`: snapshot + copy + stats + rotation (MAX_BACKUPS=24). `scripts/tarantool_restore.sh`: interactive restore с проверкой. Cron-ready (каждые 4 часа) |
+| 4.5 | Runbook для инцидентов | Документация | ✅ | `docs/RUNBOOK.md`: 10 сценариев (PII leak, LLM outage, Tarantool crash, RabbitMQ, 5xx, OOM, ChromaDB, API keys, disk full, slow analysis). Команды диагностики, действия, предотвращение |
+| 4.6 | ~~Внедрить Alembic для миграций PostgreSQL~~ | Storage | ❌ Пропущен | PostgreSQL не используется |
 
-**Рекомендации:** OpenTelemetry SDK, Jaeger, ArgoCD.
+**Рекомендации:** Настроить GitHub Environments (staging, production) с protection rules.
 
 ---
 

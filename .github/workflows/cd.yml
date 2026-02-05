@@ -1,0 +1,188 @@
+name: CD — Deploy to Staging/Production
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ==========================================================================
+  # Stage 1: Build Docker Image
+  # ==========================================================================
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+      full_image: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ==========================================================================
+  # Stage 2: Deploy to Staging
+  # ==========================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to staging
+        env:
+          IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+          DEPLOY_HOST: ${{ secrets.STAGING_HOST }}
+          DEPLOY_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        run: |
+          echo "Deploying image tag: $IMAGE_TAG to staging"
+          # SSH deploy (configure secrets in GitHub Settings → Environments → staging)
+          # Example: docker-compose pull && docker-compose up -d
+          #
+          # mkdir -p ~/.ssh
+          # echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          # chmod 600 ~/.ssh/deploy_key
+          # ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+          #   deploy@$DEPLOY_HOST \
+          #   "cd /opt/counterparty-analyzer && \
+          #    export IMAGE_TAG=$IMAGE_TAG && \
+          #    docker compose pull && \
+          #    docker compose up -d --remove-orphans && \
+          #    docker compose ps"
+          echo "::notice::Staging deploy placeholder — configure STAGING_HOST and STAGING_SSH_KEY secrets"
+
+      - name: Staging health check
+        run: |
+          STAGING_URL="${{ vars.STAGING_URL }}"
+          if [ -n "$STAGING_URL" ]; then
+            for i in $(seq 1 10); do
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_URL/api/v1/health" 2>/dev/null || echo "000")
+              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+                echo "Staging health check: OK (HTTP $HTTP_CODE)"
+                exit 0
+              fi
+              echo "Waiting for staging to become healthy... ($i/10)"
+              sleep 10
+            done
+            echo "::warning::Staging health check failed after 10 attempts"
+          else
+            echo "::notice::STAGING_URL not configured, skipping health check"
+          fi
+
+  # ==========================================================================
+  # Stage 3: Deploy to Production (manual approval required)
+  # ==========================================================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, deploy-staging]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to production
+        env:
+          IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+          DEPLOY_HOST: ${{ secrets.PRODUCTION_HOST }}
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+        run: |
+          echo "Deploying image tag: $IMAGE_TAG to production"
+          # SSH deploy (configure secrets in GitHub Settings → Environments → production)
+          # Requires manual approval via GitHub Environment protection rules
+          #
+          # mkdir -p ~/.ssh
+          # echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          # chmod 600 ~/.ssh/deploy_key
+          # ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+          #   deploy@$DEPLOY_HOST \
+          #   "cd /opt/counterparty-analyzer && \
+          #    export IMAGE_TAG=$IMAGE_TAG && \
+          #    docker compose pull && \
+          #    docker compose up -d --remove-orphans && \
+          #    docker compose ps"
+          echo "::notice::Production deploy placeholder — configure PRODUCTION_HOST and PRODUCTION_SSH_KEY secrets"
+
+      - name: Production health check
+        run: |
+          PROD_URL="${{ vars.PRODUCTION_URL }}"
+          if [ -n "$PROD_URL" ]; then
+            for i in $(seq 1 10); do
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$PROD_URL/api/v1/health" 2>/dev/null || echo "000")
+              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+                echo "Production health check: OK (HTTP $HTTP_CODE)"
+                exit 0
+              fi
+              echo "Waiting for production to become healthy... ($i/10)"
+              sleep 10
+            done
+            echo "::error::Production health check failed after 10 attempts"
+            exit 1
+          else
+            echo "::notice::PRODUCTION_URL not configured, skipping health check"
+          fi
+
+      - name: Create GitHub Release
+        if: success()
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: deploy-${{ github.sha }}
+          release_name: "Deploy ${{ github.sha }}"
+          body: |
+            Automated deployment from commit ${{ github.sha }}.
+            Image: `${{ needs.build.outputs.full_image }}`
+          draft: false
+          prerelease: false

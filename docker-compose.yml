@@ -23,6 +23,8 @@ services:
       - CHROMA_MODE=client
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8100
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+      - OTEL_SERVICE_NAME=counterparty-analyzer
     env_file:
       - .env
     depends_on:
@@ -403,6 +405,40 @@ services:
       timeout: 5s
       retries: 3
 
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: tempo
+    ports:
+      - "3200:3200"   # Tempo HTTP API
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+    volumes:
+      - ./infra/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo_data:/var/tempo
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    networks:
+      - app-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3200/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 volumes:
   chroma_data:
   tarantool_data:
@@ -410,6 +446,7 @@ volumes:
   prometheus_data:
   alertmanager_data:
   grafana_data:
+  tempo_data:
 
 networks:
   app-network:

@@ -14,6 +14,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
     SimpleSpanProcessor,
     SpanExporter,
     SpanExportResult,
@@ -257,6 +258,24 @@ def init_telemetry():
 
     _span_exporter = InMemorySpanExporter(max_spans=1000)
     provider.add_span_processor(SimpleSpanProcessor(_span_exporter))
+
+    # OTLP exporter → Tempo/Jaeger (if OTEL_EXPORTER_OTLP_ENDPOINT is set)
+    otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if otlp_endpoint:
+        try:
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+                OTLPSpanExporter,
+            )
+
+            otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
+            provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+            logging.getLogger(__name__).info(
+                f"OTLP trace exporter enabled → {otlp_endpoint}"
+            )
+        except ImportError:
+            logging.getLogger(__name__).warning(
+                "opentelemetry-exporter-otlp not installed, traces stay in-memory only"
+            )
 
     trace.set_tracer_provider(provider)
     _tracer = trace.get_tracer(__name__)
