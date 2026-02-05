@@ -1,10 +1,42 @@
 -- Tarantool initialization script
 -- Creates spaces for cache, reports, and threads with proper indexing
+--
+-- Schema Version: 1.0
+-- IMPORTANT: Do not make breaking changes without incrementing the version
+-- and adding a migration function below.
 
 box.cfg {
     listen = 3302,
     log_level = 5,
 }
+
+-- ============================================================================
+-- SCHEMA VERSION TRACKING
+-- ============================================================================
+
+local SCHEMA_VERSION = "1.0"
+
+box.schema.space.create('_schema_version', {if_not_exists = true})
+box.space._schema_version:format({
+    {name = 'key', type = 'string'},
+    {name = 'value', type = 'string'},
+    {name = 'applied_at', type = 'number'},
+})
+box.space._schema_version:create_index('primary', {
+    parts = {'key'},
+    if_not_exists = true
+})
+
+-- Record current schema version
+box.space._schema_version:replace({'version', SCHEMA_VERSION, os.time()})
+
+function get_schema_version()
+    local tuple = box.space._schema_version:get('version')
+    if tuple then
+        return tuple[2]
+    end
+    return 'unknown'
+end
 
 -- ============================================================================
 -- SPACE 1: CACHE

@@ -5,7 +5,6 @@ Sprint 12: P0 Critical Tests
 Coverage: Risk scoring algorithm, category calculations, normalization
 """
 
-
 from app.agents.risk_calculator import (
     RiskScoreCalculator,
     RiskCategory,

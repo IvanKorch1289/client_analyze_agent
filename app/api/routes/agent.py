@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import re
 import time
 import uuid
@@ -189,7 +188,14 @@ async def prompt_agent(request: Request, data: PromptRequest) -> Dict[str, Any]:
     }
 
 
-_STREAM_MAX_DURATION_S = int(os.environ.get("STREAM_MAX_DURATION_S", "900"))  # 15 min
+_STREAM_MAX_DURATION_S: int = 900  # overridden from settings at import time
+
+try:
+    from app.config.settings import settings
+
+    _STREAM_MAX_DURATION_S = settings.app.stream_max_duration_seconds
+except Exception:
+    pass  # keep default
 _STREAM_KEEPALIVE_S = 15  # send keepalive comment every 15s
 
 

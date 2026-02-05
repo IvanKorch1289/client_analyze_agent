@@ -5,7 +5,6 @@ Sprint 12: P0 Critical Security Tests
 Coverage: All 7 Russian recognizers, mask/unmask operations, hash functions
 """
 
-
 from app.shared.pii_protection import (
     PIIMaskingResult,
     mask_pii,

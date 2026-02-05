@@ -41,7 +41,12 @@ from app.shared.toolkit.logging import logger
 SCHEDULER_JOBS_KEY = "scheduler:pending_jobs"
 
 # Distributed lock: only one gunicorn worker should run the scheduler.
-_SCHEDULER_LOCK_PATH = Path(os.environ.get("SCHEDULER_LOCK_PATH", "/tmp/scheduler.lock"))
+try:
+    from app.config.settings import settings as _sched_settings
+
+    _SCHEDULER_LOCK_PATH = Path(_sched_settings.scheduler.lock_path)
+except Exception:
+    _SCHEDULER_LOCK_PATH = Path("/tmp/scheduler.lock")
 
 
 class SchedulerService:

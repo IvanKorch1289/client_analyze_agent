@@ -5,7 +5,6 @@ Covers: registration, unregistration, dispatch, HMAC signing,
 delivery tracking, event filtering.
 """
 
-
 import pytest
 
 from app.shared.webhooks import WebhookDelivery, WebhookEndpoint, WebhookManager

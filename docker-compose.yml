@@ -101,7 +101,7 @@ services:
         max-size: "50m"
         max-file: "5"
     healthcheck:
-      test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/tmp/worker_heartbeat') else 1)"]
+      test: ["CMD", "python", "-c", "import os,time; f='/tmp/worker_heartbeat'; exit(0 if os.path.exists(f) and (time.time()-os.path.getmtime(f))<120 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3

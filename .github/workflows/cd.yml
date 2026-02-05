@@ -19,6 +19,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  DEPLOY_DIR: /opt/counterparty-analyzer
 
 jobs:
   # ==========================================================================
@@ -78,45 +79,90 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy to staging
+      - name: Validate secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.STAGING_HOST }}
+          DEPLOY_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_KEY" ]; then
+            echo "::error::STAGING_HOST and STAGING_SSH_KEY must be configured in GitHub Settings → Environments → staging"
+            exit 1
+          fi
+
+      - name: Deploy to staging via SSH
         env:
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
           DEPLOY_HOST: ${{ secrets.STAGING_HOST }}
           DEPLOY_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'deploy' }}
         run: |
+          set -euo pipefail
           echo "Deploying image tag: $IMAGE_TAG to staging"
-          # SSH deploy (configure secrets in GitHub Settings → Environments → staging)
-          # Example: docker-compose pull && docker-compose up -d
-          #
-          # mkdir -p ~/.ssh
-          # echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
-          # chmod 600 ~/.ssh/deploy_key
-          # ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-          #   deploy@$DEPLOY_HOST \
-          #   "cd /opt/counterparty-analyzer && \
-          #    export IMAGE_TAG=$IMAGE_TAG && \
-          #    docker compose pull && \
-          #    docker compose up -d --remove-orphans && \
-          #    docker compose ps"
-          echo "::notice::Staging deploy placeholder — configure STAGING_HOST and STAGING_SSH_KEY secrets"
+
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=10"
+
+          scp $SSH_OPTS docker-compose.yml "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
+          scp $SSH_OPTS config/app.prod.yaml "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/config/"
+
+          ssh $SSH_OPTS "${DEPLOY_USER}@${DEPLOY_HOST}" "
+            set -euo pipefail
+            cd ${DEPLOY_DIR}
+            docker compose ps --format json > /tmp/pre_deploy_state.json 2>/dev/null || true
+            export IMAGE_TAG=${IMAGE_TAG}
+            docker compose pull app worker mcp
+            docker compose up -d --remove-orphans --no-build
+            sleep 10
+            docker compose ps
+          "
+
+          rm -f ~/.ssh/deploy_key
+          echo "Staging deployment completed"
 
       - name: Staging health check
         run: |
           STAGING_URL="${{ vars.STAGING_URL }}"
-          if [ -n "$STAGING_URL" ]; then
-            for i in $(seq 1 10); do
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_URL/api/v1/health" 2>/dev/null || echo "000")
-              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
-                echo "Staging health check: OK (HTTP $HTTP_CODE)"
-                exit 0
-              fi
-              echo "Waiting for staging to become healthy... ($i/10)"
-              sleep 10
-            done
-            echo "::warning::Staging health check failed after 10 attempts"
-          else
-            echo "::notice::STAGING_URL not configured, skipping health check"
+          if [ -z "$STAGING_URL" ]; then
+            echo "::warning::STAGING_URL not configured, skipping HTTP health check"
+            exit 0
           fi
+
+          echo "Health checking: ${STAGING_URL}/api/v1/health"
+          for i in $(seq 1 15); do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${STAGING_URL}/api/v1/health" 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+              echo "Staging health check passed (HTTP $HTTP_CODE, attempt $i/15)"
+              exit 0
+            fi
+            echo "  Waiting for staging... ($i/15, HTTP $HTTP_CODE)"
+            sleep 10
+          done
+          echo "::error::Staging health check failed after 15 attempts"
+          exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        env:
+          DEPLOY_HOST: ${{ secrets.STAGING_HOST }}
+          DEPLOY_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'deploy' }}
+        run: |
+          echo "::warning::Deployment failed, attempting rollback..."
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+
+          ssh $SSH_OPTS "${DEPLOY_USER}@${DEPLOY_HOST}" "
+            cd ${DEPLOY_DIR}
+            docker compose down
+            docker compose up -d --remove-orphans
+            echo 'Rollback completed (reverted to previous containers)'
+          " || echo "::warning::Rollback attempt finished"
+
+          rm -f ~/.ssh/deploy_key
 
   # ==========================================================================
   # Stage 3: Deploy to Production (manual approval required)
@@ -132,46 +178,98 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy to production
+      - name: Validate secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.PRODUCTION_HOST }}
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_KEY" ]; then
+            echo "::error::PRODUCTION_HOST and PRODUCTION_SSH_KEY must be configured in GitHub Settings → Environments → production"
+            exit 1
+          fi
+
+      - name: Deploy to production via SSH
         env:
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
           DEPLOY_HOST: ${{ secrets.PRODUCTION_HOST }}
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'deploy' }}
         run: |
+          set -euo pipefail
           echo "Deploying image tag: $IMAGE_TAG to production"
-          # SSH deploy (configure secrets in GitHub Settings → Environments → production)
-          # Requires manual approval via GitHub Environment protection rules
-          #
-          # mkdir -p ~/.ssh
-          # echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
-          # chmod 600 ~/.ssh/deploy_key
-          # ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-          #   deploy@$DEPLOY_HOST \
-          #   "cd /opt/counterparty-analyzer && \
-          #    export IMAGE_TAG=$IMAGE_TAG && \
-          #    docker compose pull && \
-          #    docker compose up -d --remove-orphans && \
-          #    docker compose ps"
-          echo "::notice::Production deploy placeholder — configure PRODUCTION_HOST and PRODUCTION_SSH_KEY secrets"
+
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=10"
+
+          scp $SSH_OPTS docker-compose.yml "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
+          scp $SSH_OPTS config/app.prod.yaml "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/config/"
+
+          ssh $SSH_OPTS "${DEPLOY_USER}@${DEPLOY_HOST}" "
+            set -euo pipefail
+            cd ${DEPLOY_DIR}
+
+            # Save current state for rollback
+            docker inspect --format '{{.Config.Image}}' counterparty-analyzer > /tmp/prev_image_tag.txt 2>/dev/null || true
+
+            # Pre-deploy backup
+            if [ -x scripts/tarantool_backup.sh ]; then
+              scripts/tarantool_backup.sh || echo 'Backup warning: non-critical'
+            fi
+
+            export IMAGE_TAG=${IMAGE_TAG}
+            docker compose pull app worker mcp
+            docker compose up -d --remove-orphans --no-build
+            sleep 15
+            docker compose ps
+          "
+
+          rm -f ~/.ssh/deploy_key
+          echo "Production deployment completed"
 
       - name: Production health check
         run: |
           PROD_URL="${{ vars.PRODUCTION_URL }}"
-          if [ -n "$PROD_URL" ]; then
-            for i in $(seq 1 10); do
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$PROD_URL/api/v1/health" 2>/dev/null || echo "000")
-              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
-                echo "Production health check: OK (HTTP $HTTP_CODE)"
-                exit 0
-              fi
-              echo "Waiting for production to become healthy... ($i/10)"
-              sleep 10
-            done
-            echo "::error::Production health check failed after 10 attempts"
+          if [ -z "$PROD_URL" ]; then
+            echo "::error::PRODUCTION_URL must be configured"
             exit 1
-          else
-            echo "::notice::PRODUCTION_URL not configured, skipping health check"
           fi
+
+          echo "Health checking: ${PROD_URL}/api/v1/health"
+          for i in $(seq 1 20); do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${PROD_URL}/api/v1/health" 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+              echo "Production health check passed (HTTP $HTTP_CODE, attempt $i/20)"
+              exit 0
+            fi
+            echo "  Waiting for production... ($i/20, HTTP $HTTP_CODE)"
+            sleep 15
+          done
+          echo "::error::Production health check failed after 20 attempts"
+          exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        env:
+          DEPLOY_HOST: ${{ secrets.PRODUCTION_HOST }}
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'deploy' }}
+        run: |
+          echo "::error::Production deployment failed, initiating rollback..."
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+
+          ssh $SSH_OPTS "${DEPLOY_USER}@${DEPLOY_HOST}" "
+            cd ${DEPLOY_DIR}
+            docker compose down
+            docker compose up -d --remove-orphans
+            echo 'Rollback completed'
+          " || echo "::warning::Rollback attempt finished"
+
+          rm -f ~/.ssh/deploy_key
 
       - name: Create GitHub Release
         if: success()

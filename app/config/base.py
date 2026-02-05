@@ -52,6 +52,10 @@ class AppBaseSettings(BaseSettingsWithLoader):
         default=600,
         description="Таймаут анализа клиента (секунды)",
     )
+    stream_max_duration_seconds: int = Field(
+        default=900,
+        description="Максимальная длительность SSE-стриминга (секунды)",
+    )
 
     # Circuit Breaker (application-level)
     cb_failure_threshold: int = Field(default=30, description="Порог ошибок для открытия circuit breaker")
@@ -89,6 +93,12 @@ class SchedulerSettings(BaseSettingsWithLoader):
     # Время жизни данных
     old_reports_ttl_days: int = Field(default=30, description="TTL для старых отчётов (дни)")
     old_logs_ttl_days: int = Field(default=7, description="TTL для старых логов (дни)")
+
+    # Distributed lock
+    lock_path: str = Field(
+        default="/tmp/scheduler.lock",
+        description="Путь к файлу блокировки планировщика",
+    )
 
     model_config = ConfigDict(env_prefix="SCHEDULER_")
 

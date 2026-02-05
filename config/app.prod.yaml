@@ -20,8 +20,9 @@ app:
 
 security:
   cors_enabled: true
+  # Override via SECURITY_CORS_ORIGINS env var before deploy
   cors_origins:
-    - "https://your-domain.example.com"
+    - "https://app.example.com"
   cors_methods:
     - "GET"
     - "POST"
@@ -32,7 +33,7 @@ security:
     - "Content-Type"
     - "Authorization"
     - "X-Request-ID"
-    - "X-Admin-Token"
+    - "X-Auth-Token"
   cors_credentials: true
   rate_limit_enabled: true
   rate_limit_storage: "memory://"
@@ -40,7 +41,7 @@ security:
   hsts_enabled: true
   encryption_enabled: true
   trusted_hosts:
-    - "your-domain.example.com"
+    - "app.example.com"
     - "localhost"
 
 scheduler:
@@ -156,7 +157,7 @@ openrouter:
   max_tokens: 1000
   top_p: 1.0
   timeout: 60.0
-  http_referer: "https://your-domain.example.com"
+  http_referer: "https://app.example.com"
   http_title: "Client Analysis System"
 
 huggingface:

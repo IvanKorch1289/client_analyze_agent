@@ -4,7 +4,6 @@ Tests for validation utilities.
 Tests both shared security validators and frontend validators.
 """
 
-
 from app.frontend.lib.validators import (
     ValidationResult,
     validate_client_name,

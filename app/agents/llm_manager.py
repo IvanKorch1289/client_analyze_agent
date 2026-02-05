@@ -184,7 +184,40 @@ class LLMManager:
         self._model_availability_cache: Dict[str, tuple[bool, float]] = {}
         self._current_openrouter_model: Optional[str] = None
 
+        # Jay Guard circuit breaker state
+        self._jayguard_failures: int = 0
+        self._jayguard_failure_threshold: int = 3
+        self._jayguard_open_until: float = 0.0
+        self._jayguard_recovery_seconds: float = 60.0
+
         logger.info("LLMManager initialized", component="llm_manager")
+
+    def _is_jayguard_circuit_open(self) -> bool:
+        """Check if Jay Guard circuit breaker is open (tripped)."""
+        if self._jayguard_failures < self._jayguard_failure_threshold:
+            return False
+        if time.time() >= self._jayguard_open_until:
+            # Half-open: allow one attempt to check recovery
+            return False
+        return True
+
+    def _record_jayguard_failure(self) -> None:
+        """Record a Jay Guard proxy failure."""
+        self._jayguard_failures += 1
+        if self._jayguard_failures >= self._jayguard_failure_threshold:
+            self._jayguard_open_until = time.time() + self._jayguard_recovery_seconds
+            logger.warning(
+                f"Jay Guard circuit breaker OPEN after {self._jayguard_failures} failures, "
+                f"will retry in {self._jayguard_recovery_seconds}s",
+                component="llm_manager",
+            )
+
+    def _record_jayguard_success(self) -> None:
+        """Reset Jay Guard circuit breaker on success."""
+        if self._jayguard_failures > 0:
+            logger.info("Jay Guard circuit breaker CLOSED (recovered)", component="llm_manager")
+        self._jayguard_failures = 0
+        self._jayguard_open_until = 0.0
 
     def _get_openrouter_llm(self, model: Optional[str] = None) -> Any:
         """
@@ -218,14 +251,16 @@ class LLMManager:
             jayguard_url = settings.jayguard.api_url
             jayguard_key = settings.jayguard.api_key
 
-            if jayguard_enabled and jayguard_url and jayguard_key:
+            use_jayguard = jayguard_enabled and jayguard_url and jayguard_key and not self._is_jayguard_circuit_open()
+
+            if use_jayguard:
                 self._openrouter_llm = ChatOpenAI(
                     api_key=jayguard_key,
                     base_url=jayguard_url,
                     model=selected_model,
                     temperature=settings.openrouter.temperature,
                     max_tokens=settings.openrouter.max_tokens,
-                    timeout=settings.jayguard.timeout,
+                    timeout=min(settings.jayguard.timeout, 30.0),
                     default_headers={
                         "HTTP-Referer": settings.openrouter.http_referer,
                         "X-Title": settings.openrouter.http_title,
@@ -235,6 +270,26 @@ class LLMManager:
                 logger.info(
                     f"OpenRouter LLM via Jay Guard proxy: {selected_model}",
                     component="llm_manager",
+                )
+            elif jayguard_enabled and self._is_jayguard_circuit_open():
+                logger.warning(
+                    "Jay Guard circuit breaker OPEN — falling back to direct OpenRouter",
+                    component="llm_manager",
+                )
+                if not settings.openrouter.api_key:
+                    raise ValueError("OpenRouter API key not configured for direct fallback")
+
+                self._openrouter_llm = ChatOpenAI(
+                    api_key=settings.openrouter.api_key,
+                    base_url=settings.openrouter.api_url,
+                    model=selected_model,
+                    temperature=settings.openrouter.temperature,
+                    max_tokens=settings.openrouter.max_tokens,
+                    timeout=settings.openrouter.timeout,
+                    default_headers={
+                        "HTTP-Referer": settings.openrouter.http_referer,
+                        "X-Title": settings.openrouter.http_title,
+                    },
                 )
             else:
                 if not settings.openrouter.api_key:
@@ -697,11 +752,35 @@ class LLMManager:
 
                     self._provider_status[provider] = True
                     used_provider = provider
+
+                    # Track Jay Guard circuit breaker on OpenRouter success
+                    if provider == LLMProvider.OPENROUTER and settings.jayguard.enabled:
+                        self._record_jayguard_success()
+
                     return True, response_text, used_provider, attempts, None
 
                 except Exception as e:
                     last_error = e
                     error_str = str(e).lower()
+
+                    # Track Jay Guard failures (connection/timeout errors via proxy)
+                    if provider == LLMProvider.OPENROUTER and settings.jayguard.enabled:
+                        is_proxy_error = any(
+                            kw in error_str
+                            for kw in (
+                                "connection",
+                                "timeout",
+                                "refused",
+                                "unreachable",
+                                "502",
+                                "503",
+                                "504",
+                            )
+                        )
+                        if is_proxy_error:
+                            self._record_jayguard_failure()
+                            # Force LLM recreation on next attempt (may switch to direct)
+                            self._openrouter_llm = None
 
                     # Check for 429 rate limit — retry same provider with backoff
                     is_rate_limit = "429" in error_str or "rate limit" in error_str or "too many requests" in error_str
