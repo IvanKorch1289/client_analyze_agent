@@ -204,6 +204,7 @@ class TestBrokerHandlers:
                 additional_notes="Тест",
                 save_report=False,
                 session_id=None,
+                correlation_id=None,
             )
 
     @pytest.mark.asyncio

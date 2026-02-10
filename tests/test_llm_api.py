@@ -161,7 +161,7 @@ class TestLLMSchemas:
 
         assert response.status == "accepted"
         assert response.request_id == "llm_abc123_1234567890"
-        assert response.message == "Request queued for processing"
+        assert response.message == "Запрос поставлен в очередь на обработку"
         assert response.estimated_time_seconds == 30
 
     def test_llm_callback_payload_success(self):

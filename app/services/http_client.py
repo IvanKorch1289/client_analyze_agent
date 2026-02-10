@@ -328,8 +328,6 @@ class AsyncHttpClient:
                 # Sprint 2: Увеличены для лучшего connection pooling
                 max_connections=100,  # Было 50 - больше параллельных соединений
                 max_keepalive_connections=50,  # Было 20 - больше reuse
-                # Pool timeout - макс время ожидания свободного соединения
-                pool_timeout=10.0,  # Добавлено для production stability
             ),
             timeout=self._default_timeout.to_httpx_timeout(),
             event_hooks={

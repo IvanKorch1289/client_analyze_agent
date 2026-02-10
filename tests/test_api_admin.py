@@ -366,42 +366,43 @@ class TestAdminSecurityValidation:
 
     def test_weak_token_detection(self):
         """Weak tokens should be detected."""
+        from unittest.mock import patch
         from app.shared.toolkit.auth import validate_admin_token_security
 
-        # Test with weak token
-        os.environ["ADMIN_TOKEN"] = "admin"
-        is_secure, message = validate_admin_token_security()
-        assert not is_secure
-        assert "weak" in message.lower() or "default" in message.lower()
+        with patch("app.shared.toolkit.auth.get_admin_token", return_value="admin"):
+            is_secure, message = validate_admin_token_security()
+            assert not is_secure
+            assert "weak" in message.lower() or "default" in message.lower()
 
     def test_short_token_detection(self):
         """Short tokens should be flagged."""
+        from unittest.mock import patch
         from app.shared.toolkit.auth import validate_admin_token_security
 
-        os.environ["ADMIN_TOKEN"] = "short_token_123"  # Less than 32 chars
-        is_secure, message = validate_admin_token_security()
-        assert not is_secure
-        assert "32" in message or "character" in message.lower()
+        with patch("app.shared.toolkit.auth.get_admin_token", return_value="short_token_123"):
+            is_secure, message = validate_admin_token_security()
+            assert not is_secure
+            assert "32" in message or "character" in message.lower()
 
     def test_secure_token_passes(self):
         """Secure tokens should pass validation."""
+        from unittest.mock import patch
         from app.shared.toolkit.auth import validate_admin_token_security
 
-        os.environ["ADMIN_TOKEN"] = "a" * 64  # 64 random chars
-        is_secure, message = validate_admin_token_security()
-        assert is_secure
-        assert "passed" in message.lower()
+        with patch("app.shared.toolkit.auth.get_admin_token", return_value="a" * 64):
+            is_secure, message = validate_admin_token_security()
+            assert is_secure
+            assert "passed" in message.lower()
 
     def test_missing_token_detection(self):
         """Missing token should be detected."""
+        from unittest.mock import patch
         from app.shared.toolkit.auth import validate_admin_token_security
 
-        if "ADMIN_TOKEN" in os.environ:
-            del os.environ["ADMIN_TOKEN"]
-
-        is_secure, message = validate_admin_token_security()
-        assert not is_secure
-        assert "not set" in message.lower()
+        with patch("app.shared.toolkit.auth.get_admin_token", return_value=""):
+            is_secure, message = validate_admin_token_security()
+            assert not is_secure
+            assert "not set" in message.lower()
 
 
 class TestAdminRouterExists:

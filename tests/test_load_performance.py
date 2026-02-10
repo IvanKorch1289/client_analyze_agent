@@ -20,7 +20,15 @@ from httpx import ASGITransport, AsyncClient
 # PERFORMANCE BENCHMARKS (pytest-benchmark style)
 # ============================================================================
 
+try:
+    import pytest_benchmark  # noqa: F401
 
+    _has_benchmark = True
+except ImportError:
+    _has_benchmark = False
+
+
+@pytest.mark.skipif(not _has_benchmark, reason="pytest-benchmark not installed")
 class TestPerformanceBenchmarks:
     """Performance benchmarks for critical operations."""
 

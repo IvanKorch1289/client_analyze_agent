@@ -9,7 +9,15 @@ Run with:
 import pytest
 import json
 
+try:
+    import pytest_benchmark  # noqa: F401
 
+    _has_benchmark = True
+except ImportError:
+    _has_benchmark = False
+
+
+@pytest.mark.skipif(not _has_benchmark, reason="pytest-benchmark not installed")
 class TestRiskCalculatorBenchmark:
     """Benchmark tests for risk score calculation."""
 
@@ -72,6 +80,7 @@ class TestRiskCalculatorBenchmark:
         assert result["total_score"] >= 0
 
 
+@pytest.mark.skipif(not _has_benchmark, reason="pytest-benchmark not installed")
 class TestPIIMaskingBenchmark:
     """Benchmark tests for PII masking performance."""
 
@@ -116,6 +125,7 @@ class TestPIIMaskingBenchmark:
             pytest.skip("PII protection module not available")
 
 
+@pytest.mark.skipif(not _has_benchmark, reason="pytest-benchmark not installed")
 class TestSerializationBenchmark:
     """Benchmark tests for serialization operations."""
 
@@ -156,6 +166,7 @@ class TestSerializationBenchmark:
         assert result["client_name"] == sample_report["client_name"]
 
 
+@pytest.mark.skipif(not _has_benchmark, reason="pytest-benchmark not installed")
 class TestCacheKeyGeneration:
     """Benchmark tests for cache key generation."""
 
@@ -189,6 +200,7 @@ class TestCacheKeyGeneration:
         assert len(result) == 16
 
 
+@pytest.mark.skipif(not _has_benchmark, reason="pytest-benchmark not installed")
 class TestSentimentAnalysis:
     """Benchmark tests for sentiment analysis."""
 
