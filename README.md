@@ -4,126 +4,235 @@
 
 ## Возможности
 
-- **Анализ компаний по ИНН** — сбор данных из DaData (ЕГРЮЛ), InfoSphere, Casebook (суды), Perplexity AI и Tavily
-- **Мультиагентный workflow** на LangGraph (Orchestrator -> DataCollector -> ReportAnalyzer -> FileWriter)
+### Основные функции
+- **Анализ компаний по ИНН** — сбор данных из DaData (ЕГРЮЛ), InfoSphere (12+ баз), Casebook (суды), Perplexity AI и Tavily
+- **Мультиагентный workflow** на LangGraph (Orchestrator → DataCollector → ReportAnalyzer → FileWriter)
 - **Оценка рисков (0-100)** с нормализованным скором по 6 категориям + генерация PDF/JSON отчётов
 - **PII-защита** — обязательное маскирование персональных данных перед отправкой в LLM (Microsoft Presidio + 7 кастомных RU-распознавателей)
-- **LLM с fallback** — OpenRouter (Claude) -> HuggingFace -> GigaChat -> YandexGPT
+
+### Enterprise-функции (Phase 6)
+- **RBAC** — 4 роли (admin, analyst, viewer, guest) с гранулярными правами доступа
+- **Batch API** — пакетный анализ до 100 клиентов в одном запросе
+- **Webhooks** — подписка на события системы (analysis.completed, batch.completed)
+- **Audit Trail** — журнал всех действий для compliance-мониторинга
+
+### Инфраструктура
+- **LLM с fallback** — OpenRouter (Claude) → HuggingFace → GigaChat → YandexGPT
 - **REST API** — FastAPI с SSE-стримингом, планировщиком задач и версионированным API `/api/v1/`
 - **RabbitMQ** — три очереди (analysis, cache, llm) с DLQ, как альтернативный вход к REST API
 - **RAG** — обогащение контекста анализа из ChromaDB (семантический поиск похожих отчётов)
 - **Кэширование** — Tarantool с TTL и in-memory fallback
 - **Браузерный интерфейс** — Streamlit с 8 вкладками
-- **MCP-сервер** для интеграции с IDE
+- **MCP-сервер** — интеграция с IDE (Cursor, VS Code)
 - **Мониторинг** — Prometheus + Grafana + Alertmanager
-
-## Технологии
-
-| Технология | Назначение |
-|------------|------------|
-| Python 3.12 | Язык |
-| FastAPI + Uvicorn | Backend API |
-| Streamlit | Web UI |
-| LangGraph | Оркестрация агентов |
-| OpenRouter (Claude 3.5 Sonnet) | LLM с fallback на HuggingFace, GigaChat, YandexGPT |
-| Microsoft Presidio + spaCy | PII-защита (152-ФЗ) |
-| Tarantool | Кэширование с TTL |
-| RabbitMQ (FastStream) | Очереди сообщений |
-| ChromaDB | Векторная БД для RAG |
-| Prometheus + Grafana | Мониторинг |
-| Docker Compose | Контейнеризация (10 сервисов) |
 
 ## Быстрый старт
 
 ### Docker Compose (рекомендуется)
 
 ```bash
-cp .env.example .env
-# Отредактируйте .env и добавьте API ключи
+# 1. Клонируйте репозиторий
+git clone https://github.com/IvanKorch1289/client_analyze_agent.git
+cd client_analyze_agent
 
+# 2. Создайте файл .env
+cp .env.example .env
+
+# 3. Добавьте API-ключи в .env (см. раздел "Переменные окружения")
+nano .env
+
+# 4. Запустите
 docker-compose up -d
 ```
 
-Приложение будет доступно:
-- Web UI: http://localhost:5000
-- API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
-- Prometheus: http://localhost:9090
-- Grafana: http://localhost:3000
+**Доступные адреса:**
+| Сервис | URL | Описание |
+|--------|-----|----------|
+| Web UI | http://localhost:5000 | Streamlit интерфейс |
+| API | http://localhost:8000 | REST API |
+| API Docs | http://localhost:8000/docs | Swagger документация |
+| Prometheus | http://localhost:9090 | Метрики |
+| Grafana | http://localhost:3000 | Дашборды (admin/admin) |
 
-### Локальный запуск
+### Локальный запуск (для разработки)
 
 ```bash
-# Установка зависимостей через Poetry
+# Установка зависимостей
 poetry install --with dev
 
 # Запуск (backend + Streamlit)
 python run.py
+
+# Или отдельно backend
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Или отдельно Streamlit
+streamlit run app/frontend/app.py --server.port 5000
 ```
 
 ## Переменные окружения
 
-Создайте файл `.env` на основе `.env.example`:
+Создайте `.env` на основе `.env.example`:
 
 ```env
-# Аутентификация
-ADMIN_TOKEN=your_admin_token
+# ===== ОБЯЗАТЕЛЬНЫЕ =====
 
-# LLM
-OPENROUTER_API_KEY=your_openrouter_api_key
+# Аутентификация (32+ символов для production)
+ADMIN_TOKEN=your_strong_admin_token_here_32chars
+
+# LLM API (минимум один из провайдеров)
+OPENROUTER_API_KEY=sk-or-v1-...
+
+# ===== РЕКОМЕНДУЕМЫЕ =====
 
 # Поисковые сервисы
-PERPLEXITY_API_KEY=your_perplexity_api_key
-TAVILY_API_KEY=your_tavily_api_key
+PERPLEXITY_API_KEY=pplx-...
+TAVILY_API_KEY=tvly-...
 
 # Источники данных по ИНН
-DADATA_API_KEY=your_dadata_api_key
-INFOSPHERE_LOGIN=your_login
-INFOSPHERE_PASSWORD=your_password
-CASEBOOK_API_KEY=your_casebook_api_key
+DADATA_API_KEY=...
+INFOSPHERE_LOGIN=...
+INFOSPHERE_PASSWORD=...
+CASEBOOK_API_KEY=...
 
-# Кэш (опционально)
+# ===== ОПЦИОНАЛЬНЫЕ =====
+
+# Дополнительные LLM (fallback)
+HUGGINGFACE_API_KEY=hf_...
+GIGACHAT_CREDENTIALS=...
+YANDEX_API_KEY=...
+
+# RBAC токены для разных ролей
+ANALYST_TOKEN=...
+VIEWER_TOKEN=...
+
+# Кэш (если не указано — in-memory fallback)
 TARANTOOL_HOST=localhost
 TARANTOOL_PORT=3302
 
-# RabbitMQ (опционально)
+# RabbitMQ (если не указано — background tasks)
 RABBITMQ_HOST=localhost
 RABBITMQ_PORT=5672
 
-# Email (опционально)
+# Email-уведомления
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
-SMTP_USER=your_email
-SMTP_PASSWORD=your_password
+SMTP_USER=...
+SMTP_PASSWORD=...
 ```
 
-## API Endpoints
+## Использование API
 
-### Версионированный API (`/api/v1/`)
+### Анализ клиента (основной сценарий)
 
 ```bash
-# Анализ клиента
+# Простой анализ
 curl -X POST http://localhost:8000/api/v1/agent/analyze-client \
   -H "Content-Type: application/json" \
+  -H "X-Auth-Token: your_admin_token" \
   -d '{"client_name": "Газпром", "inn": "7736050003"}'
 
-# С SSE streaming
+# С SSE streaming (для отображения прогресса)
 curl -X POST "http://localhost:8000/api/v1/agent/analyze-client?stream=true" \
   -H "Content-Type: application/json" \
+  -H "X-Auth-Token: your_admin_token" \
   -d '{"client_name": "Сбербанк"}'
+```
 
-# Отчёты
-curl http://localhost:8000/api/v1/reports
+### Пакетный анализ (Batch API)
 
-# Данные из внешних источников
+```bash
+# Анализ нескольких клиентов за один запрос
+curl -X POST http://localhost:8000/api/v1/batch/analyze \
+  -H "Content-Type: application/json" \
+  -H "X-Auth-Token: your_admin_token" \
+  -d '{
+    "clients": [
+      {"client_name": "Газпром", "inn": "7736050003"},
+      {"client_name": "Сбербанк", "inn": "7707083893"},
+      {"client_name": "Яндекс", "inn": "7736207543"}
+    ],
+    "save_reports": true,
+    "webhook_url": "https://your-server.com/webhook"
+  }'
+```
+
+### Работа с отчётами
+
+```bash
+# Список отчётов
+curl http://localhost:8000/api/v1/reports \
+  -H "X-Auth-Token: your_token"
+
+# Получить отчёт по ID
+curl http://localhost:8000/api/v1/reports/{report_id}
+
+# Экспорт в PDF
+curl http://localhost:8000/api/v1/export/pdf/{report_id} \
+  -o report.pdf
+```
+
+### Webhooks (подписка на события)
+
+```bash
+# Зарегистрировать webhook
+curl -X POST http://localhost:8000/api/v1/webhooks \
+  -H "Content-Type: application/json" \
+  -H "X-Auth-Token: your_admin_token" \
+  -d '{
+    "url": "https://your-server.com/webhook",
+    "events": ["analysis.completed", "batch.completed"],
+    "secret": "optional_hmac_secret"
+  }'
+
+# Список webhooks
+curl http://localhost:8000/api/v1/webhooks \
+  -H "X-Auth-Token: your_admin_token"
+
+# История доставки
+curl http://localhost:8000/api/v1/webhooks/deliveries \
+  -H "X-Auth-Token: your_admin_token"
+```
+
+### Audit Trail (журнал аудита)
+
+```bash
+# Получить записи аудита
+curl "http://localhost:8000/api/v1/audit/entries?action=analysis&limit=100" \
+  -H "X-Auth-Token: your_admin_token"
+
+# Статистика аудита
+curl http://localhost:8000/api/v1/audit/stats \
+  -H "X-Auth-Token: your_admin_token"
+```
+
+### Внешние источники данных
+
+```bash
+# Поиск через Perplexity AI
 curl -X POST http://localhost:8000/api/v1/data/perplexity/search \
   -H "Content-Type: application/json" \
+  -H "X-Auth-Token: your_token" \
   -d '{"query": "судебные дела Газпром"}'
 
-# Асинхронный LLM запрос
+# Данные из DaData
+curl -X POST http://localhost:8000/api/v1/data/dadata/suggest \
+  -H "Content-Type: application/json" \
+  -H "X-Auth-Token: your_token" \
+  -d '{"inn": "7736050003"}'
+```
+
+### Асинхронный LLM API
+
+```bash
+# Асинхронный запрос с webhook callback
 curl -X POST http://localhost:8000/api/v1/llm/async \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "Анализ рисков компании", "callback_url": "http://..."}'
+  -H "X-Auth-Token: your_token" \
+  -d '{
+    "prompt": "Проанализируй риски компании...",
+    "callback_url": "https://your-server.com/llm-callback"
+  }'
 
 # Тестирование PII-маскирования
 curl -X POST http://localhost:8000/api/v1/llm/mask-text \
@@ -137,87 +246,29 @@ curl -X POST http://localhost:8000/api/v1/llm/mask-text \
 # Healthcheck
 curl http://localhost:8000/api/v1/health
 
-# Метрики
+# Метрики Prometheus
 curl http://localhost:8000/api/v1/metrics
 
 # Статус circuit breakers
 curl http://localhost:8000/api/v1/circuit-breakers
 
-# Административные (требуют X-Auth-Token)
-curl -X POST http://localhost:8000/api/v1/cache/clear \
+# Очистка кэша (admin)
+curl -X POST http://localhost:8000/api/v1/admin/cache/clear \
+  -H "X-Auth-Token: your_admin_token"
+
+# Статистика LLM (admin)
+curl http://localhost:8000/api/v1/admin/llm/stats \
   -H "X-Auth-Token: your_admin_token"
 ```
 
-> **Примечание:** Legacy endpoints `/agent/...`, `/data/...` deprecated (sunset: 2026-12-31). Используйте `/api/v1/...`.
+## Роли и права доступа (RBAC)
 
-## Структура проекта
-
-```
-app/
-├── main.py                     # FastAPI приложение, middleware, lifespan
-├── run.py                      # Точка входа (backend + Streamlit)
-├── config/                     # Конфигурация (YAML + env + hot-reload)
-│   ├── settings.py             # Facade настроек
-│   ├── base.py                 # AppBaseSettings, SchedulerSettings
-│   ├── database.py             # Tarantool, Mongo, PostgreSQL
-│   ├── external_api.py         # Все внешние API
-│   ├── security.py             # CORS, HSTS, CSP, IP-filter
-│   └── services.py             # Queue, Mail, Chroma, MCP
-├── agents/                     # LangGraph агенты
-│   ├── orchestrator.py         # Оркестратор: валидация, DaData, LLM search intents
-│   ├── client_workflow.py      # StateGraph workflow
-│   ├── data_collector/         # Параллельный сбор данных
-│   ├── collectors/             # Registry-паттерн коллекторов
-│   ├── report_analyzer.py      # LLM-анализ с Chain-of-Thought
-│   ├── risk_calculator.py      # Нормализованный риск-скор (0-100)
-│   ├── file_writer.py          # Генерация PDF/JSON
-│   ├── llm_manager.py          # LLM: fallback chain, PII masking, audit, cache
-│   ├── rag_context.py          # RAG: обогащение из ChromaDB
-│   └── web_scraper.py          # Web scraping
-├── api/                        # REST API
-│   ├── v1.py                   # Versioned API (/api/v1)
-│   ├── routes/                 # agent, data, reports, analytics, llm, scheduler...
-│   ├── error_handlers.py       # Обработка ошибок
-│   └── rate_limit.py           # Rate limiting
-├── services/                   # Клиенты внешних сервисов
-│   ├── http_client.py          # AsyncHttpClient с circuit breaker
-│   ├── openrouter_client.py    # OpenRouter API
-│   ├── perplexity_client.py    # Perplexity AI
-│   ├── tavily_client.py        # Tavily Search
-│   ├── chroma_service.py       # ChromaDB
-│   ├── email_client.py         # SMTP
-│   └── scheduler_service.py    # APScheduler
-├── storage/                    # Хранилище данных
-│   ├── tarantool.py            # TarantoolClient: singleton, LRU cache
-│   ├── repositories/           # Repository pattern (cache, reports, threads)
-│   └── init.lua                # Tarantool schema
-├── schemas/                    # Pydantic-схемы
-│   ├── report.py               # ClientAnalysisReport
-│   ├── requests.py             # Request models
-│   └── llm.py                  # LLM API schemas
-├── shared/                     # Shared utilities
-│   ├── pii_protection.py       # Presidio PII masking (7 RU recognizers)
-│   ├── llm_audit.py            # LLM audit logging (152-ФЗ)
-│   ├── security.py             # INN validation, sanitization
-│   ├── prometheus_metrics.py   # Prometheus metrics
-│   └── toolkit/                # Logging, circuit breaker, auth, helpers...
-├── messaging/                  # RabbitMQ
-│   ├── broker.py               # FastStream (analysis, cache, llm queues + DLQ)
-│   ├── publisher.py            # Message publisher
-│   └── worker.py               # Background worker
-├── prompts/                    # Prompt management
-│   ├── manager.py              # PromptManager с версионированием
-│   └── adaptive_prompt_engine.py  # Адаптация промптов по фидбекам
-├── mcp_server/                 # MCP Server для IDE-интеграции
-│   ├── main.py                 # FastMCP server
-│   ├── tools/                  # MCP tools
-│   ├── resources/              # API specs, reference data
-│   └── prompts/                # System prompts (typed, versioned)
-└── frontend/                   # Streamlit UI
-    ├── app.py                  # 8 вкладок
-    ├── api_client.py           # HTTP client for API
-    └── tabs/                   # UI tabs
-```
+| Роль | Токен | Права |
+|------|-------|-------|
+| **admin** | `ADMIN_TOKEN` | Полный доступ: анализ, отчёты, webhooks, audit, кэш, конфигурация |
+| **analyst** | `ANALYST_TOKEN` | Анализ, batch, отчёты, данные, LLM, audit (чтение) |
+| **viewer** | `VIEWER_TOKEN` | Только чтение: отчёты, результаты анализа |
+| **guest** | (без токена) | Минимальный доступ: просмотр публичных отчётов |
 
 ## Workflow анализа
 
@@ -234,24 +285,24 @@ InfoSphere   Casebook   Perplexity + Tavily
                  ↓
 Data Collector (агрегация)
                  ↓
-Report Analyzer (PII mask -> LLM + CoT + RAG -> PII unmask -> Risk score)
+Report Analyzer (PII mask → LLM + CoT + RAG → PII unmask → Risk score)
                  ↓
 File Writer (PDF + JSON отчёт)
 ```
 
 ## Уровни риска
 
-| Уровень | Баллы | Рекомендация |
-|---------|-------|--------------|
-| low | 0-24 | Стандартная процедура |
-| medium | 25-49 | Дополнительная проверка |
-| high | 50-74 | Глубокое расследование |
-| critical | 75-100 | Рекомендуется отказ |
+| Уровень | Баллы | Цвет | Рекомендация |
+|---------|-------|------|--------------|
+| low | 0-24 | Зелёный | Стандартная процедура |
+| medium | 25-49 | Жёлтый | Дополнительная проверка |
+| high | 50-74 | Оранжевый | Глубокое расследование |
+| critical | 75-100 | Красный | Рекомендуется отказ |
 
 ## Resilience
 
 - **Circuit Breaker** для всех внешних сервисов (per-service + app-level)
-- **Retry с exponential backoff** (до 3 попыток, включая 429 rate limit retry)
+- **Retry с exponential backoff** (до 3 попыток, включая 429 rate limit)
 - **LLM fallback chain** — автоматический переход между провайдерами
 - **Таймауты** — DaData: 30s, InfoSphere/Casebook: 360s, Perplexity/Tavily: 60s
 - **Dead Letter Queue** — failed RabbitMQ messages сохраняются в DLQ
@@ -259,10 +310,44 @@ File Writer (PDF + JSON отчёт)
 - **Graceful degradation** — RAG работает без ChromaDB, analysis без RabbitMQ
 - **PII fail-safe** — при ошибке маскирования LLM-вызов блокируется полностью
 
+## Структура проекта
+
+```
+app/
+├── main.py                     # FastAPI приложение, middleware, lifespan
+├── run.py                      # Точка входа (backend + Streamlit)
+├── config/                     # Конфигурация (YAML + env + hot-reload)
+├── agents/                     # LangGraph агенты
+│   ├── orchestrator.py         # Оркестратор: валидация, DaData, LLM search intents
+│   ├── client_workflow.py      # StateGraph workflow
+│   ├── data_collector/         # Параллельный сбор данных
+│   ├── report_analyzer.py      # LLM-анализ с Chain-of-Thought
+│   ├── risk_calculator.py      # Нормализованный риск-скор (0-100)
+│   ├── file_writer.py          # Генерация PDF/JSON
+│   ├── llm_manager.py          # LLM: fallback chain, PII masking, audit, cache
+│   └── rag_context.py          # RAG: обогащение из ChromaDB
+├── api/                        # REST API
+│   ├── v1.py                   # Versioned API (/api/v1)
+│   └── routes/                 # agent, data, reports, batch, webhooks, audit...
+├── services/                   # Клиенты внешних сервисов
+│   ├── http_client.py          # AsyncHttpClient с circuit breaker
+│   └── ...                     # openrouter, perplexity, tavily, chroma...
+├── storage/                    # Tarantool + repositories
+├── schemas/                    # Pydantic-схемы
+├── shared/                     # Shared utilities
+│   ├── pii_protection.py       # Presidio PII masking (7 RU recognizers)
+│   ├── audit_trail.py          # Audit logging
+│   ├── webhooks.py             # Webhook manager
+│   └── toolkit/                # Logging, auth, circuit breaker...
+├── messaging/                  # RabbitMQ (FastStream)
+├── mcp_server/                 # MCP Server для IDE
+└── frontend/                   # Streamlit UI (8 вкладок)
+```
+
 ## Разработка
 
 ```bash
-# Линтинг
+# Линтинг и форматирование
 make lint                # ruff + pyright + vulture + bandit + pip-audit
 make format              # black + ruff format
 
@@ -273,6 +358,22 @@ pytest tests/ -q --cov=app
 # Безопасность
 make audit               # security-check + deps-check + secrets-check
 ```
+
+## Технологии
+
+| Технология | Назначение |
+|------------|------------|
+| Python 3.12 | Язык |
+| FastAPI + Uvicorn | Backend API |
+| Streamlit | Web UI |
+| LangGraph | Оркестрация агентов |
+| OpenRouter (Claude 3.5 Sonnet) | LLM с fallback |
+| Microsoft Presidio + spaCy | PII-защита (152-ФЗ) |
+| Tarantool | Кэширование с TTL |
+| RabbitMQ (FastStream) | Очереди сообщений |
+| ChromaDB | Векторная БД для RAG |
+| Prometheus + Grafana | Мониторинг |
+| Docker Compose | Контейнеризация (10 сервисов) |
 
 ## Лицензия
 
