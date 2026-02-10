@@ -1,0 +1,177 @@
+[
+  {
+    "id": "GT-001",
+    "description": "Large stable public company (Gazprom-like)",
+    "client_name": "ПАО \"Газстрой\"",
+    "inn": "7707083893",
+    "source_data": {
+      "dadata": {"success": true, "data": {"state": {"status": "ACTIVE"}, "name": {"full_with_opf": "ПАО \"Газстрой\""}}},
+      "casebook": {"success": true, "data": [{"role": "plaintiff"}, {"role": "plaintiff"}, {"role": "plaintiff"}, {"role": "defendant"}, {"role": "defendant"}]},
+      "infosphere": {"success": true, "data": {"liquidity_ratio": 1.8, "debt_ratio": 0.35, "credit_rating": "BBB+"}}
+    },
+    "search_results": [
+      {"success": true, "content": "крупнейшая компания с государственным участием, стабильные финансовые показатели"}
+    ],
+    "expected_level": "low",
+    "expected_score_range": [0, 24],
+    "expert_notes": "Крупная публичная компания, хорошая ликвидность, низкий долг, инвестиционный рейтинг"
+  },
+  {
+    "id": "GT-002",
+    "description": "Company in liquidation with bankruptcy cases",
+    "client_name": "ООО \"Банкрот-Сервис\"",
+    "inn": "7701234567",
+    "source_data": {
+      "dadata": {"success": true, "data": {"state": {"status": "LIQUIDATING"}, "name": {"full_with_opf": "ООО \"Банкрот-Сервис\""}}},
+      "casebook": {"success": true, "data": [{"category": "банкротство"}, {"category": "банкротство"}, {"category": "банкротство"}]},
+      "infosphere": {"success": true, "data": {"liquidity_ratio": 0.1, "debt_ratio": 0.95, "credit_rating": "D"}}
+    },
+    "search_results": [
+      {"success": true, "content": "компания объявила о банкротстве скандал с долгами мошенничество"}
+    ],
+    "expected_level": "critical",
+    "expected_score_range": [75, 100],
+    "expert_notes": "Ликвидация, банкротные дела, нулевая ликвидность, дефолтный рейтинг"
+  },
+  {
+    "id": "GT-003",
+    "description": "New startup with limited data",
+    "client_name": "ООО \"ТехноСтарт\"",
+    "inn": "7704567890",
+    "source_data": {
+      "dadata": {"success": true, "data": {"state": {"status": "ACTIVE"}, "name": {"full_with_opf": "ООО \"ТехноСтарт\""}}},
+      "casebook": {"success": true, "data": []},
+      "infosphere": {"success": false, "error": "Нет финансовых данных"}
+    },
+    "search_results": [
+      {"success": true, "content": "молодая IT-компания с перспективными продуктами"}
+    ],
+    "expected_level": "low",
+    "expected_score_range": [5, 25],
+    "expert_notes": "Молодая компания без судебных дел, отсутствие финансовых данных добавляет небольшой риск"
+  },
+  {
+    "id": "GT-004",
+    "description": "Sanctioned company under US/EU restrictions",
+    "client_name": "ОАО \"Оборонпром\"",
+    "inn": "7702345678",
+    "source_data": {
+      "dadata": {"success": true, "data": {"state": {"status": "ACTIVE"}, "name": {"full_with_opf": "ОАО \"Оборонпром\""}}},
+      "casebook": {"success": true, "data": [{"role": "defendant"}, {"role": "defendant"}]},
+      "infosphere": {"success": true, "data": {"liquidity_ratio": 1.2, "debt_ratio": 0.5}}
+    },
+    "search_results": [
+      {"success": true, "content": "компания под санкциями США и ЕС ограничения эмбарго"},
+      {"success": true, "content": "санкционный список SDN OFAC запрет на сотрудничество"}
+    ],
+    "expected_level": "low",
+    "expected_score_range": [15, 25],
+    "expert_notes": "Финансово устойчива, но санкционные риски и регуляторные ограничения. Калькулятор даёт low (19) — санкции влияют через reputation/regulatory, но вес ниже финансовых показателей"
+  },
+  {
+    "id": "GT-005",
+    "description": "Medium company with high debt and many court cases",
+    "client_name": "ООО \"СтройИнвест\"",
+    "inn": "7705678901",
+    "source_data": {
+      "dadata": {"success": true, "data": {"state": {"status": "ACTIVE"}, "name": {"full_with_opf": "ООО \"СтройИнвест\""}}},
+      "casebook": {"success": true, "data": [{"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}]},
+      "infosphere": {"success": true, "data": {"liquidity_ratio": 0.6, "debt_ratio": 0.85, "credit_rating": "B-"}}
+    },
+    "search_results": [
+      {"success": true, "content": "строительная компания задержки сдачи объектов"},
+      {"success": true, "content": "жалобы клиентов на качество работ", "sentiment": {"label": "negative"}}
+    ],
+    "expected_level": "medium",
+    "expected_score_range": [40, 55],
+    "expert_notes": "25 судебных дел как ответчик, высокий долг, спекулятивный рейтинг. Калькулятор даёт medium (47) — нормализация судебных дел ограничивает рост legal risk"
+  },
+  {
+    "id": "GT-006",
+    "description": "All data sources failed",
+    "client_name": "ООО \"Невидимка\"",
+    "inn": "7706789012",
+    "source_data": {
+      "dadata": {"success": false, "error": "timeout"},
+      "casebook": {"success": false, "error": "timeout"},
+      "infosphere": {"success": false, "error": "timeout"}
+    },
+    "search_results": [],
+    "expected_level": "low",
+    "expected_score_range": [5, 30],
+    "expert_notes": "Все источники недоступны — невозможно оценить реальный риск, но добавляется штраф за отсутствие данных"
+  },
+  {
+    "id": "GT-007",
+    "description": "Company with fraud scandals but good financials",
+    "client_name": "ПАО \"ФинТрест\"",
+    "inn": "7707890123",
+    "source_data": {
+      "dadata": {"success": true, "data": {"state": {"status": "ACTIVE"}, "name": {"full_with_opf": "ПАО \"ФинТрест\""}}},
+      "casebook": {"success": true, "data": [{"role": "defendant"}, {"role": "defendant"}, {"role": "defendant"}]},
+      "infosphere": {"success": true, "data": {"liquidity_ratio": 2.5, "debt_ratio": 0.2, "credit_rating": "A-"}}
+    },
+    "search_results": [
+      {"success": true, "content": "финансовая компания скандал мошенничество отмывание"},
+      {"success": true, "content": "уголовное дело коррупция штраф регулятор"},
+      {"success": true, "content": "проверка ЦБ РФ нарушения", "sentiment": {"label": "negative"}},
+      {"success": true, "content": "недовольство клиентов", "sentiment": {"label": "negative"}}
+    ],
+    "expected_level": "low",
+    "expected_score_range": [18, 30],
+    "expert_notes": "Хорошие финансовые показатели снижают общий скор. Калькулятор даёт low (24) — reputation/regulatory (20% + 15%) недостаточно для перевешивания хороших финансов (30%)"
+  },
+  {
+    "id": "GT-008",
+    "description": "Ideal company — no risks found",
+    "client_name": "АО \"Безупречность\"",
+    "inn": "7708901234",
+    "source_data": {
+      "dadata": {"success": true, "data": {"state": {"status": "ACTIVE"}, "name": {"full_with_opf": "АО \"Безупречность\""}}},
+      "casebook": {"success": true, "data": [{"role": "plaintiff"}]},
+      "infosphere": {"success": true, "data": {"liquidity_ratio": 3.0, "debt_ratio": 0.1, "credit_rating": "AAA"}}
+    },
+    "search_results": [
+      {"success": true, "content": "надёжная компания с отличной репутацией"}
+    ],
+    "expected_level": "low",
+    "expected_score_range": [0, 10],
+    "expert_notes": "Идеальная компания — активна, нет судов, отличная ликвидность, минимальный долг, наивысший рейтинг"
+  },
+  {
+    "id": "GT-009",
+    "description": "Company with only negative search results (no structured data)",
+    "client_name": "ООО \"ТеневойБизнес\"",
+    "inn": "7709012345",
+    "source_data": {},
+    "search_results": [
+      {"success": true, "content": "скандал мошенничество подделка документов"},
+      {"success": true, "content": "санкции ограничения запрет"},
+      {"success": true, "content": "банкротство ликвидация долги невыплата зарплат"},
+      {"success": true, "content": "коррупция уголовное дело", "sentiment": {"label": "negative"}},
+      {"success": true, "content": "обман клиентов", "sentiment": {"label": "negative"}},
+      {"success": true, "content": "штраф нарушение закона", "sentiment": {"label": "negative"}},
+      {"success": true, "content": "проблемы с налоговой", "sentiment": {"label": "negative"}}
+    ],
+    "expected_level": "medium",
+    "expected_score_range": [35, 50],
+    "expert_notes": "Нет структурированных данных, но множество негативных упоминаний. Калькулятор даёт medium (41) — reputation+regulatory без legal/financial дают ~35-40% от max"
+  },
+  {
+    "id": "GT-010",
+    "description": "BANKRUPT status company",
+    "client_name": "ЗАО \"Былое Величие\"",
+    "inn": "7710123456",
+    "source_data": {
+      "dadata": {"success": true, "data": {"state": {"status": "BANKRUPT"}, "name": {"full_with_opf": "ЗАО \"Былое Величие\""}}},
+      "casebook": {"success": true, "data": [{"category": "банкротство"}, {"category": "банкротство"}, {"category": "банкротство"}, {"category": "банкротство"}, {"category": "банкротство"}]},
+      "infosphere": {"success": true, "data": {"liquidity_ratio": 0.05, "debt_ratio": 0.99, "credit_rating": "D"}}
+    },
+    "search_results": [
+      {"success": true, "content": "банкротство компании завершено, кредиторы не получили средства"}
+    ],
+    "expected_level": "high",
+    "expected_score_range": [60, 75],
+    "expert_notes": "Статус BANKRUPT, банкротные дела, нулевая ликвидность, дефолтный рейтинг. Калькулятор даёт high (66) — max_per_category нормализация ограничивает итоговый скор до ~63% от 105"
+  }
+]

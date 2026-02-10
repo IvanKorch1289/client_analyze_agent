@@ -36,6 +36,7 @@ msgpack = "^1.1.0"
 opentelemetry-api = "^1.39.1"
 opentelemetry-sdk = "^1.39.1"
 opentelemetry-instrumentation-fastapi = "^0.60b1"
+opentelemetry-exporter-otlp = "^1.39.1"
 tavily-python = "^0.7.17"
 openai = "^2.13.0"
 faststream = {extras = ["rabbit"], version = "^0.6.4"}
@@ -122,9 +123,22 @@ select = [
   "I",   # isort
   "B",   # flake8-bugbear
   "C4",  # flake8-comprehensions
+  "TID", # flake8-tidy-imports (banned-api для LLM imports)
 ]
 ignore = ["E501"]
-per-file-ignores = { "__init__.py" = ["F401"] }
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+# These files legitimately import LLM providers:
+"app/agents/llm_manager.py" = ["TID251"]
+"app/agents/llm_init.py" = ["TID251"]
+"app/services/openrouter_client.py" = ["TID251"]
+"app/services/llm_provider.py" = ["TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"langchain_openai".msg = "Use LLMManager.ainvoke() instead of direct LLM imports (PII masking required by 152-ФЗ)"
+"gigachat".msg = "Use LLMManager.ainvoke() instead of direct GigaChat imports (PII masking required by 152-ФЗ)"
+"langchain_community.llms".msg = "Use LLMManager.ainvoke() instead of direct LLM imports (PII masking required by 152-ФЗ)"
 
 [tool.ruff.format]
 line-ending = "auto"

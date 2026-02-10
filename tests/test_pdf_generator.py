@@ -31,4 +31,3 @@ def test_normalize_report_for_pdf_supports_legacy_shape():
     assert normalized["risk_score"] == 12
     assert normalized["risk_level"] == "low"
     assert normalized["findings"] == ["F1"]
-

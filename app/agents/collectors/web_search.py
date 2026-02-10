@@ -8,6 +8,12 @@ from typing import Any, Dict, List, Optional
 
 from app.agents.collectors.base import BaseCollector, CollectorResult
 from app.config import MAX_CONTENT_LENGTH, SEARCH_TIMEOUT_SECONDS
+from app.mcp_server.prompts.system_prompts import (
+    CASCADE_QUESTION_TEMPLATE,
+    CASCADE_SYSTEM_PROMPT_CONTENT,
+    DATA_COLLECTOR_PROMPT_CONTENT,
+    PERPLEXITY_SYSTEM_PROMPT_CONTENT,
+)
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
 from app.shared.toolkit.formatters import truncate
@@ -60,27 +66,15 @@ class PerplexityCollector(BaseCollector):
                 intent_id=intent_id,
             )
 
-        question = f"""Найди проверяемые факты о компании и укажи источники.
-
-Компания: {client_name}
-ИНН: {inn if inn else "не указан"}
-Запрос: {query}
-
-Формат ответа:
-- Кратко, по пунктам
-- Только проверяемые факты
-- Источники (URL, даты)
-- Категории: факты/риски/суды/финансы/репутация
-
-Период поиска: ПОСЛЕДНИЙ ГОД (актуальная информация)."""
-
-        system_prompt = (
-            "Глубокий анализ за последний год. Ищи 20+ источников. Только проверяемые факты. Пиши по-русски."
+        question = DATA_COLLECTOR_PROMPT_CONTENT.format(
+            client_name=client_name,
+            inn=inn if inn else "не указан",
+            query=query,
         )
 
         result = await self._client.ask(
             question=question,
-            system_prompt=system_prompt,
+            system_prompt=PERPLEXITY_SYSTEM_PROMPT_CONTENT,
             search_recency_filter="year",
             max_tokens=2000,
         )
@@ -201,20 +195,17 @@ async def cascade_perplexity_analysis(
         if result.get("success") and result.get("content"):
             initial_facts.append(result["content"][:500])
 
-    question = f"""Углублённый анализ компании {client_name} (ИНН: {inn}).
-
-ПЕРВИЧНЫЕ НАХОДКИ Perplexity:
-{chr(10).join(f"- {fact}" for fact in initial_facts)}
-
-ДОПОЛНИТЕЛЬНЫЕ ИСТОЧНИКИ (Tavily):
-{chr(10).join(f"- {url}" for url in urls[:5])}
-
-Проанализируй источники, сопоставь с первичными находками, выяви риски."""
+    question = CASCADE_QUESTION_TEMPLATE.format(
+        client_name=client_name,
+        inn=inn,
+        initial_facts=chr(10).join(f"- {fact}" for fact in initial_facts),
+        tavily_urls=chr(10).join(f"- {url}" for url in urls[:5]),
+    )
 
     try:
         result = await client.ask(
             question=question,
-            system_prompt="Финансовый аналитик. Глубокий due diligence. Ищи риски и противоречия.",
+            system_prompt=CASCADE_SYSTEM_PROMPT_CONTENT,
             search_recency_filter="year",
             max_tokens=3000,
             use_cache=True,

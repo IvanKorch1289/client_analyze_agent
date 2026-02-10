@@ -7,11 +7,17 @@ Run with:
 """
 
 import pytest
-import time
 import json
-from unittest.mock import MagicMock, patch
+
+try:
+    import pytest_benchmark  # noqa: F401
+
+    _has_benchmark = True
+except ImportError:
+    _has_benchmark = False
 
 
+@pytest.mark.skipif(not _has_benchmark, reason="pytest-benchmark not installed")
 class TestRiskCalculatorBenchmark:
     """Benchmark tests for risk score calculation."""
 
@@ -29,10 +35,7 @@ class TestRiskCalculatorBenchmark:
             },
             "casebook": {
                 "success": True,
-                "data": [
-                    {"caseNumber": f"A40-{i}", "category": "bankruptcy"}
-                    for i in range(5)
-                ],
+                "data": [{"caseNumber": f"A40-{i}", "category": "bankruptcy"} for i in range(5)],
             },
             "infosphere": {
                 "success": True,
@@ -68,10 +71,7 @@ class TestRiskCalculatorBenchmark:
             "dadata": {"success": True, "data": {"state": {"status": "ACTIVE"}}},
             "casebook": {
                 "success": True,
-                "data": [
-                    {"caseNumber": f"A40-{i}", "category": "civil"}
-                    for i in range(100)
-                ],
+                "data": [{"caseNumber": f"A40-{i}", "category": "civil"} for i in range(100)],
             },
             "infosphere": {"success": True, "data": {}},
         }
@@ -80,6 +80,7 @@ class TestRiskCalculatorBenchmark:
         assert result["total_score"] >= 0
 
 
+@pytest.mark.skipif(not _has_benchmark, reason="pytest-benchmark not installed")
 class TestPIIMaskingBenchmark:
     """Benchmark tests for PII masking performance."""
 
@@ -110,10 +111,13 @@ class TestPIIMaskingBenchmark:
             from app.shared.pii_protection import mask_pii
 
             # Generate long text with repeated PII patterns
-            long_text = """
+            long_text = (
+                """
             Компания ООО "Тест" (ИНН 7707083893) работает с клиентами.
             Директор: Петров Пётр Петрович, тел: +7 (999) 111-22-33.
-            """ * 50  # ~5000 characters
+            """
+                * 50
+            )  # ~5000 characters
 
             result = benchmark(lambda: mask_pii(long_text))
             assert result is not None
@@ -121,6 +125,7 @@ class TestPIIMaskingBenchmark:
             pytest.skip("PII protection module not available")
 
 
+@pytest.mark.skipif(not _has_benchmark, reason="pytest-benchmark not installed")
 class TestSerializationBenchmark:
     """Benchmark tests for serialization operations."""
 
@@ -161,6 +166,7 @@ class TestSerializationBenchmark:
         assert result["client_name"] == sample_report["client_name"]
 
 
+@pytest.mark.skipif(not _has_benchmark, reason="pytest-benchmark not installed")
 class TestCacheKeyGeneration:
     """Benchmark tests for cache key generation."""
 
@@ -194,6 +200,7 @@ class TestCacheKeyGeneration:
         assert len(result) == 16
 
 
+@pytest.mark.skipif(not _has_benchmark, reason="pytest-benchmark not installed")
 class TestSentimentAnalysis:
     """Benchmark tests for sentiment analysis."""
 
@@ -225,6 +232,4 @@ class TestSentimentAnalysis:
 # Pytest configuration for benchmarks
 def pytest_configure(config):
     """Add benchmark markers."""
-    config.addinivalue_line(
-        "markers", "benchmark: mark test as a benchmark test"
-    )
+    config.addinivalue_line("markers", "benchmark: mark test as a benchmark test")

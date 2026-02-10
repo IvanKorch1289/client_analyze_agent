@@ -86,7 +86,7 @@ async def data_collector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     search_results = build_search_results(source_data, intents)
 
     # Calculate stats
-    successful_sources = [k for k, v in source_data.items() if v and v.get("success")]
+    successful_sources = [k for k, v in source_data.items() if isinstance(v, dict) and v.get("success")]
     duration_ms = (time.perf_counter() - start_time) * 1000
 
     logger.structured(

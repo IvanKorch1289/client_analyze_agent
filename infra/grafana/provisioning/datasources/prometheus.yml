@@ -1,4 +1,4 @@
-# Grafana Datasource: Prometheus
+# Grafana Datasources: Prometheus + Tempo
 apiVersion: 1
 
 datasources:
@@ -11,3 +11,23 @@ datasources:
     jsonData:
       timeInterval: "15s"
       httpMethod: POST
+
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      tracesToMetrics:
+        datasourceUid: prometheus
+        tags:
+          - key: service.name
+            value: service
+          - key: http.method
+            value: method
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      lokiSearch:
+        datasourceUid: ""

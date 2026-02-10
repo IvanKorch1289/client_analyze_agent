@@ -11,7 +11,7 @@ P1-1: Добавлена поддержка Dead Letter Queue (DLQ) для об�
 
 from __future__ import annotations
 
-import os
+import asyncio
 import time
 from typing import Any, Dict
 
@@ -48,7 +48,7 @@ broker = get_rabbit_broker()
 # P1-1: Настройка очередей с DLQ поддержкой
 _dlx = RabbitExchange("dlx", type=ExchangeType.TOPIC, durable=True)
 
-_MAX_DELIVERY_ATTEMPTS = int(os.environ.get("MAX_DELIVERY_ATTEMPTS", "3"))
+_MAX_DELIVERY_ATTEMPTS = settings.queue.max_retries
 
 _analysis_queue = RabbitQueue(
     settings.queue.analysis_queue,
@@ -146,10 +146,14 @@ async def handle_async_llm_request(msg: AsyncLLMQueueMessage) -> Dict[str, Any]:
     Обработчик асинхронных LLM запросов.
 
     Выполняет LLM вызов и отправляет результат на callback URL.
+
+    ВАЖНО: Применяет PII маскирование ПЕРЕД отправкой в LLM и
+    размаскирование ПОСЛЕ получения ответа (152-ФЗ compliance).
     """
     import httpx
 
     from app.agents.llm_manager import LLMProvider, get_llm_manager
+    from app.shared import pii_protection
 
     start_time = time.perf_counter()
     callback_payload: Dict[str, Any]
@@ -178,13 +182,30 @@ async def handle_async_llm_request(msg: AsyncLLMQueueMessage) -> Dict[str, Any]:
         if msg.system_prompt:
             full_prompt = f"{msg.system_prompt}\n\n{msg.prompt}"
 
-        # Call LLM
+        # PII masking BEFORE sending to LLM (152-ФЗ compliance)
+        pii_result = pii_protection.mask_pii(text=full_prompt, language="ru", mask_level="high")
+
+        if pii_result.pii_detected:
+            logger.warning(
+                f"Request {msg.request_id}: PII detected and masked ({pii_result.pii_count} items)",
+                component="faststream",
+            )
+
+        # Call LLM with masked prompt
         response = await manager.ainvoke_with_provider(
-            prompt=full_prompt,
+            prompt=pii_result.masked_text,
             provider=llm_provider,
             temperature=msg.temperature,
             max_tokens=msg.max_tokens,
         )
+
+        # PII unmasking AFTER receiving LLM response
+        if pii_result.pii_detected and pii_result.replacements:
+            response = pii_protection.unmask_pii(masked_text=response, replacements=pii_result.replacements)
+            logger.info(
+                f"Request {msg.request_id}: PII unmasked in response",
+                component="faststream",
+            )
 
         processing_time = (time.perf_counter() - start_time) * 1000
 
@@ -222,27 +243,40 @@ async def handle_async_llm_request(msg: AsyncLLMQueueMessage) -> Dict[str, Any]:
             component="faststream",
         )
 
-    # Send callback
-    try:
-        headers = dict(msg.callback_headers) if msg.callback_headers else {}
-        headers["Content-Type"] = "application/json"
+    # Send callback with retry (3 attempts, exponential backoff)
+    callback_max_retries = 3
+    callback_base_delay = 2.0
+    headers = dict(msg.callback_headers) if msg.callback_headers else {}
+    headers["Content-Type"] = "application/json"
 
-        async with httpx.AsyncClient() as client:
-            callback_response = await client.post(
-                msg.callback_url,
-                json=callback_payload,
-                headers=headers,
-                timeout=30.0,
-            )
-            logger.info(
-                f"Callback sent for {msg.request_id}: status {callback_response.status_code}",
-                component="faststream",
-            )
-    except Exception as e:
-        logger.error(
-            f"Callback failed for {msg.request_id}: {e}",
-            component="faststream",
-        )
+    for attempt in range(callback_max_retries):
+        try:
+            async with httpx.AsyncClient() as client:
+                callback_response = await client.post(
+                    msg.callback_url,
+                    json=callback_payload,
+                    headers=headers,
+                    timeout=30.0,
+                )
+                logger.info(
+                    f"Callback sent for {msg.request_id}: status {callback_response.status_code}",
+                    component="faststream",
+                )
+                break  # Success — exit retry loop
+        except Exception as e:
+            if attempt < callback_max_retries - 1:
+                delay = callback_base_delay * (2**attempt)
+                logger.warning(
+                    f"Callback attempt {attempt + 1}/{callback_max_retries} failed for "
+                    f"{msg.request_id}: {e}. Retrying in {delay}s",
+                    component="faststream",
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.error(
+                    f"Callback failed for {msg.request_id} after {callback_max_retries} attempts: {e}",
+                    component="faststream",
+                )
 
     return callback_payload
 

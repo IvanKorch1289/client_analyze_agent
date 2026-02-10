@@ -132,13 +132,28 @@ def mask_pii_in_text(text: str) -> Tuple[str, bool]:
         return text, False
 
 
-def validate_upload(filename: str, file_size: int, max_size_mb: int = 10) -> None:
+def validate_upload(filename: str, file_size: int, max_size_mb: int = 10, content: bytes | None = None) -> None:
     """
-    Валидирует загружаемый файл.
+    Валидирует загружаемый файл: расширение, размер и magic bytes.
+
+    Args:
+        filename: Имя файла
+        file_size: Размер в байтах
+        max_size_mb: Максимальный размер в МБ
+        content: Содержимое файла для проверки magic bytes (опционально)
 
     Raises:
         ValueError: Если файл не проходит валидацию
     """
+    # Sanitize filename — block path traversal
+    import os
+
+    basename = os.path.basename(filename)
+    if basename != filename or ".." in filename:
+        raise ValueError("Недопустимое имя файла")
+    if len(filename) > 255:
+        raise ValueError("Имя файла слишком длинное (макс. 255 символов)")
+
     ext = _get_extension(filename)
     if ext not in ALLOWED_EXTENSIONS:
         raise ValueError(f"Формат {ext} не поддерживается. Допустимые: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
@@ -146,6 +161,26 @@ def validate_upload(filename: str, file_size: int, max_size_mb: int = 10) -> Non
     max_bytes = max_size_mb * 1024 * 1024
     if file_size > max_bytes:
         raise ValueError(f"Файл слишком большой: {file_size / 1024 / 1024:.1f}MB. Максимум: {max_size_mb}MB")
+
+    # Magic bytes verification (prevents extension spoofing)
+    if content and len(content) >= 4:
+        _verify_magic_bytes(ext, content)
+
+
+# Magic byte signatures for file type verification
+_MAGIC_SIGNATURES: dict[str, list[bytes]] = {
+    ".pdf": [b"%PDF"],
+    ".docx": [b"PK\x03\x04"],  # ZIP-based (OOXML)
+}
+
+
+def _verify_magic_bytes(ext: str, content: bytes) -> None:
+    """Verify that file content matches expected magic bytes for the extension."""
+    signatures = _MAGIC_SIGNATURES.get(ext)
+    if not signatures:
+        return  # .txt and .md have no magic bytes
+    if not any(content[: len(sig)] == sig for sig in signatures):
+        raise ValueError(f"Содержимое файла не соответствует расширению {ext} (magic bytes mismatch)")
 
 
 # =============================================================================

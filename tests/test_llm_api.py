@@ -161,7 +161,7 @@ class TestLLMSchemas:
 
         assert response.status == "accepted"
         assert response.request_id == "llm_abc123_1234567890"
-        assert response.message == "Request queued for processing"
+        assert response.message == "Запрос поставлен в очередь на обработку"
         assert response.estimated_time_seconds == 30
 
     def test_llm_callback_payload_success(self):
@@ -350,12 +350,8 @@ class TestBrokerHandlerLLM:
         with patch("app.agents.llm_manager.get_llm_manager", return_value=mock_manager):
             with patch("httpx.AsyncClient") as MockClient:
                 mock_client_instance = AsyncMock()
-                mock_client_instance.post = AsyncMock(
-                    return_value=MagicMock(status_code=200)
-                )
-                MockClient.return_value.__aenter__ = AsyncMock(
-                    return_value=mock_client_instance
-                )
+                mock_client_instance.post = AsyncMock(return_value=MagicMock(status_code=200))
+                MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
                 MockClient.return_value.__aexit__ = AsyncMock(return_value=None)
 
                 result = await handle_async_llm_request(msg)
@@ -380,19 +376,13 @@ class TestBrokerHandlerLLM:
         )
 
         mock_manager = MagicMock()
-        mock_manager.ainvoke_with_provider = AsyncMock(
-            side_effect=Exception("Provider unavailable")
-        )
+        mock_manager.ainvoke_with_provider = AsyncMock(side_effect=Exception("Provider unavailable"))
 
         with patch("app.agents.llm_manager.get_llm_manager", return_value=mock_manager):
             with patch("httpx.AsyncClient") as MockClient:
                 mock_client_instance = AsyncMock()
-                mock_client_instance.post = AsyncMock(
-                    return_value=MagicMock(status_code=200)
-                )
-                MockClient.return_value.__aenter__ = AsyncMock(
-                    return_value=mock_client_instance
-                )
+                mock_client_instance.post = AsyncMock(return_value=MagicMock(status_code=200))
+                MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
                 MockClient.return_value.__aexit__ = AsyncMock(return_value=None)
 
                 result = await handle_async_llm_request(msg)
@@ -421,17 +411,16 @@ class TestBrokerHandlerLLM:
         with patch("app.agents.llm_manager.get_llm_manager", return_value=mock_manager):
             with patch("httpx.AsyncClient") as MockClient:
                 mock_client_instance = AsyncMock()
-                mock_client_instance.post = AsyncMock(
-                    return_value=MagicMock(status_code=200)
-                )
-                MockClient.return_value.__aenter__ = AsyncMock(
-                    return_value=mock_client_instance
-                )
+                mock_client_instance.post = AsyncMock(return_value=MagicMock(status_code=200))
+                MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
                 MockClient.return_value.__aexit__ = AsyncMock(return_value=None)
 
                 result = await handle_async_llm_request(msg)
 
-        assert result["request_metadata"] == {"correlation_id": "xyz789", "source": "api"}
+        assert result["request_metadata"] == {
+            "correlation_id": "xyz789",
+            "source": "api",
+        }
 
 
 class TestLLMQueueConfiguration:

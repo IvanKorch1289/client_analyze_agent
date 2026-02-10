@@ -74,7 +74,7 @@ def _get_metrics():
     return _prometheus_metrics
 
 
-def _run_coroutine_sync(coro):
+def _run_coroutine_sync(coro, timeout: float = 300.0):
     """
     Безопасно выполнить coroutine из sync-кода.
 
@@ -82,11 +82,27 @@ def _run_coroutine_sync(coro):
       в отдельном потоке с отдельным loop. Это блокирует текущий поток (как и любой
       sync I/O), но не приводит к ошибке "asyncio.run() cannot be called...".
     - Если loop не запущен — используем asyncio.run().
+
+    ВНИМАНИЕ: Вызов из async-контекста блокирует текущий поток.
+    Предпочтительно использовать ainvoke() вместо invoke().
+
+    Args:
+        coro: Coroutine для выполнения
+        timeout: Максимальное время ожидания в секундах (по умолчанию 300).
+                 Предотвращает бесконечную блокировку при deadlock.
     """
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
+
+    import warnings
+
+    warnings.warn(
+        "invoke() вызван из async-контекста. Используйте ainvoke() для избежания блокировки event loop.",
+        RuntimeWarning,
+        stacklevel=3,
+    )
 
     result_box: Dict[str, Any] = {}
 
@@ -98,7 +114,12 @@ def _run_coroutine_sync(coro):
 
     t = threading.Thread(target=_runner, daemon=True)
     t.start()
-    t.join()
+    t.join(timeout=timeout)
+    if t.is_alive():
+        raise TimeoutError(
+            f"_run_coroutine_sync: coroutine не завершился за {timeout}s. "
+            "Возможен deadlock. Используйте ainvoke() из async-контекста."
+        )
     if "error" in result_box:
         raise result_box["error"]
     return result_box.get("value")
@@ -163,7 +184,40 @@ class LLMManager:
         self._model_availability_cache: Dict[str, tuple[bool, float]] = {}
         self._current_openrouter_model: Optional[str] = None
 
+        # Jay Guard circuit breaker state
+        self._jayguard_failures: int = 0
+        self._jayguard_failure_threshold: int = 3
+        self._jayguard_open_until: float = 0.0
+        self._jayguard_recovery_seconds: float = 60.0
+
         logger.info("LLMManager initialized", component="llm_manager")
+
+    def _is_jayguard_circuit_open(self) -> bool:
+        """Check if Jay Guard circuit breaker is open (tripped)."""
+        if self._jayguard_failures < self._jayguard_failure_threshold:
+            return False
+        if time.time() >= self._jayguard_open_until:
+            # Half-open: allow one attempt to check recovery
+            return False
+        return True
+
+    def _record_jayguard_failure(self) -> None:
+        """Record a Jay Guard proxy failure."""
+        self._jayguard_failures += 1
+        if self._jayguard_failures >= self._jayguard_failure_threshold:
+            self._jayguard_open_until = time.time() + self._jayguard_recovery_seconds
+            logger.warning(
+                f"Jay Guard circuit breaker OPEN after {self._jayguard_failures} failures, "
+                f"will retry in {self._jayguard_recovery_seconds}s",
+                component="llm_manager",
+            )
+
+    def _record_jayguard_success(self) -> None:
+        """Reset Jay Guard circuit breaker on success."""
+        if self._jayguard_failures > 0:
+            logger.info("Jay Guard circuit breaker CLOSED (recovered)", component="llm_manager")
+        self._jayguard_failures = 0
+        self._jayguard_open_until = 0.0
 
     def _get_openrouter_llm(self, model: Optional[str] = None) -> Any:
         """
@@ -197,14 +251,16 @@ class LLMManager:
             jayguard_url = settings.jayguard.api_url
             jayguard_key = settings.jayguard.api_key
 
-            if jayguard_enabled and jayguard_url and jayguard_key:
+            use_jayguard = jayguard_enabled and jayguard_url and jayguard_key and not self._is_jayguard_circuit_open()
+
+            if use_jayguard:
                 self._openrouter_llm = ChatOpenAI(
                     api_key=jayguard_key,
                     base_url=jayguard_url,
                     model=selected_model,
                     temperature=settings.openrouter.temperature,
                     max_tokens=settings.openrouter.max_tokens,
-                    timeout=settings.jayguard.timeout,
+                    timeout=min(settings.jayguard.timeout, 30.0),
                     default_headers={
                         "HTTP-Referer": settings.openrouter.http_referer,
                         "X-Title": settings.openrouter.http_title,
@@ -214,6 +270,26 @@ class LLMManager:
                 logger.info(
                     f"OpenRouter LLM via Jay Guard proxy: {selected_model}",
                     component="llm_manager",
+                )
+            elif jayguard_enabled and self._is_jayguard_circuit_open():
+                logger.warning(
+                    "Jay Guard circuit breaker OPEN — falling back to direct OpenRouter",
+                    component="llm_manager",
+                )
+                if not settings.openrouter.api_key:
+                    raise ValueError("OpenRouter API key not configured for direct fallback")
+
+                self._openrouter_llm = ChatOpenAI(
+                    api_key=settings.openrouter.api_key,
+                    base_url=settings.openrouter.api_url,
+                    model=selected_model,
+                    temperature=settings.openrouter.temperature,
+                    max_tokens=settings.openrouter.max_tokens,
+                    timeout=settings.openrouter.timeout,
+                    default_headers={
+                        "HTTP-Referer": settings.openrouter.http_referer,
+                        "X-Title": settings.openrouter.http_title,
+                    },
                 )
             else:
                 if not settings.openrouter.api_key:
@@ -610,6 +686,9 @@ class LLMManager:
                 exc_info=True,
             )
             # НЕ делаем исключений для DEBUG режима - PII утечки критичны везде
+            m = _get_metrics()
+            if m:
+                m.record_pii_error("masking_failure")
             raise PIIMaskingError(
                 message="Невозможно замаскировать персональные данные - вызов LLM заблокирован",
                 original_error=e,
@@ -621,6 +700,10 @@ class LLMManager:
         """
         Try calling LLM providers in fallback order.
 
+        For 429 (rate limit) errors, retries the same provider with exponential
+        backoff before falling back to the next provider. This avoids unnecessary
+        fallback to slower providers on transient rate limits.
+
         Returns:
             Tuple of (success, response_text, used_provider, attempts, last_error)
         """
@@ -628,6 +711,8 @@ class LLMManager:
         attempts = 0
         response_text = ""
         used_provider = None
+        rate_limit_retries = 3
+        rate_limit_base_delay = 2.0  # seconds
 
         for provider in self._fallback_order:
             attempts += 1
@@ -636,32 +721,85 @@ class LLMManager:
                 logger.warning(f"Skipping {provider} (unavailable)", component="llm_manager")
                 continue
 
-            try:
-                logger.info(f"Attempting LLM call with {provider}", component="llm_manager")
-                provider_start = time.perf_counter()
+            # Retry loop for 429 rate limits on the same provider
+            for retry in range(rate_limit_retries + 1):
+                try:
+                    if retry > 0:
+                        logger.info(
+                            f"Rate limit retry {retry}/{rate_limit_retries} for {provider}",
+                            component="llm_manager",
+                        )
+                    else:
+                        logger.info(
+                            f"Attempting LLM call with {provider}",
+                            component="llm_manager",
+                        )
 
-                response_text = await self.ainvoke_with_provider(prompt=masked_prompt, provider=provider, **kwargs)
+                    provider_start = time.perf_counter()
 
-                provider_duration = time.perf_counter() - provider_start
-                self._log_provider_success(
-                    provider,
-                    masked_prompt,
-                    response_text,
-                    provider_duration,
-                    start_time,
-                    attempts,
-                    pii_result,
-                )
+                    response_text = await self.ainvoke_with_provider(prompt=masked_prompt, provider=provider, **kwargs)
 
-                self._provider_status[provider] = True
-                used_provider = provider
-                return True, response_text, used_provider, attempts, None
+                    provider_duration = time.perf_counter() - provider_start
+                    self._log_provider_success(
+                        provider,
+                        masked_prompt,
+                        response_text,
+                        provider_duration,
+                        start_time,
+                        attempts,
+                        pii_result,
+                    )
 
-            except Exception as e:
-                last_error = e
-                logger.error(f"LLM call failed with {provider}: {e}", component="llm_manager")
-                self._provider_status[provider] = False
-                self._record_provider_failure(provider, provider_start, attempts)
+                    self._provider_status[provider] = True
+                    used_provider = provider
+
+                    # Track Jay Guard circuit breaker on OpenRouter success
+                    if provider == LLMProvider.OPENROUTER and settings.jayguard.enabled:
+                        self._record_jayguard_success()
+
+                    return True, response_text, used_provider, attempts, None
+
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e).lower()
+
+                    # Track Jay Guard failures (connection/timeout errors via proxy)
+                    if provider == LLMProvider.OPENROUTER and settings.jayguard.enabled:
+                        is_proxy_error = any(
+                            kw in error_str
+                            for kw in (
+                                "connection",
+                                "timeout",
+                                "refused",
+                                "unreachable",
+                                "502",
+                                "503",
+                                "504",
+                            )
+                        )
+                        if is_proxy_error:
+                            self._record_jayguard_failure()
+                            # Force LLM recreation on next attempt (may switch to direct)
+                            self._openrouter_llm = None
+
+                    # Check for 429 rate limit — retry same provider with backoff
+                    is_rate_limit = "429" in error_str or "rate limit" in error_str or "too many requests" in error_str
+                    if is_rate_limit and retry < rate_limit_retries:
+                        delay = rate_limit_base_delay * (2**retry)
+                        logger.warning(
+                            f"Rate limit (429) from {provider}, retrying in {delay}s "
+                            f"(attempt {retry + 1}/{rate_limit_retries})",
+                            component="llm_manager",
+                        )
+                        await asyncio.sleep(delay)
+                        attempts += 1
+                        continue
+
+                    # Not a rate limit or retries exhausted — mark provider failed and try next
+                    logger.error(f"LLM call failed with {provider}: {e}", component="llm_manager")
+                    self._provider_status[provider] = False
+                    self._record_provider_failure(provider, provider_start, attempts)
+                    break  # Exit retry loop, move to next provider
 
         return False, response_text, used_provider, attempts, last_error
 
@@ -823,6 +961,13 @@ class LLMManager:
         Raises:
             Exception: Если все провайдеры недоступны
         """
+        from app.shared.toolkit.telemetry import create_span
+
+        with create_span("llm.ainvoke", attributes={"llm.cache_enabled": cache_enabled}):
+            return await self._ainvoke_inner(prompt, cache_enabled, **kwargs)
+
+    async def _ainvoke_inner(self, prompt: str, cache_enabled: bool = True, **kwargs) -> str:
+        """Internal ainvoke logic wrapped by tracing span."""
         start_time = time.perf_counter()
 
         # Step 1: Check cache

@@ -284,7 +284,7 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
 
     # 2. Валидация
     max_size = settings.chroma.max_upload_size_mb
-    validate_upload(filename, file_size, max_size_mb=max_size)
+    validate_upload(filename, file_size, max_size_mb=max_size, content=content)
 
     # 3. Извлечение текста
     raw_text = parse_file(content, filename)

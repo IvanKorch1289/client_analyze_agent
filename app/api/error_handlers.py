@@ -87,9 +87,7 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         rid = _ensure_request_id()
-        errors = exc.errors()
-        if _IS_PRODUCTION:
-            errors = _sanitize_validation_errors(errors)
+        errors = _sanitize_validation_errors(exc.errors())
         return JSONResponse(
             status_code=422,
             content=_error_payload(

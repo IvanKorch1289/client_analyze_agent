@@ -11,6 +11,8 @@ from fastapi import FastAPI
 
 from app.api.error_handlers import install_error_handlers
 from app.api.routes.admin import admin_router
+from app.api.routes.audit import audit_router
+from app.api.routes.batch import batch_router
 from app.config.constants import APP_VERSION
 from app.api.routes.agent import agent_router
 from app.api.routes.analytics import analytics_router
@@ -21,6 +23,7 @@ from app.api.routes.rag import rag_router
 from app.api.routes.reports import reports_router
 from app.api.routes.scheduler import scheduler_router
 from app.api.routes.utility import utility_router
+from app.api.routes.webhooks import webhooks_router
 
 
 def create_v1_app() -> FastAPI:
@@ -55,6 +58,11 @@ def create_v1_app() -> FastAPI:
 
     # RAG (Retrieval Augmented Generation)
     app.include_router(rag_router)
+
+    # Phase 6: Enterprise features
+    app.include_router(batch_router)
+    app.include_router(webhooks_router)
+    app.include_router(audit_router)
 
     return app
 

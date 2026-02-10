@@ -171,6 +171,74 @@ HIGH_RISK_ALERTS = create_counter(
 )
 
 
+# ========== PII Protection Metrics ==========
+
+PII_MASKING_CALLS = create_counter(
+    "client_pii_masking_calls_total",
+    "Total PII masking calls",
+    ["status"],  # status: detected/clean/error
+)
+
+PII_ENTITIES_DETECTED = create_counter(
+    "client_pii_entities_detected_total",
+    "PII entities detected by type",
+    ["entity_type"],  # RU_INN, RU_PERSON, RU_PHONE, etc.
+)
+
+PII_MASKING_LATENCY = create_histogram(
+    "client_pii_masking_latency_seconds",
+    "PII masking latency in seconds",
+    [],
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0),
+)
+
+PII_MASKING_ERRORS = create_counter(
+    "client_pii_masking_errors_total",
+    "PII masking errors (LLM calls blocked)",
+    ["error_type"],  # masking_failure, analyzer_init
+)
+
+
+# ========== RAG Quality Metrics ==========
+
+RAG_QUERIES = create_counter(
+    "client_rag_queries_total",
+    "Total RAG semantic search queries",
+    [
+        "query_type",
+        "status",
+    ],  # query_type: reports/documents, status: success/failure/empty
+)
+
+RAG_RELEVANCY = create_histogram(
+    "client_rag_relevancy_score",
+    "RAG result relevancy (1 - cosine distance, higher = better)",
+    ["query_type"],
+    buckets=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0),
+)
+
+RAG_PRECISION_AT_K = create_histogram(
+    "client_rag_precision_at_k",
+    "Average relevancy of top-k RAG results",
+    ["k"],
+    buckets=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0),
+)
+
+RAG_SEARCH_LATENCY = create_histogram(
+    "client_rag_search_latency_seconds",
+    "RAG semantic search latency",
+    ["query_type"],
+    buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0),
+)
+
+RAG_RESULTS_COUNT = create_histogram(
+    "client_rag_results_count",
+    "Number of results returned per RAG query",
+    ["query_type"],
+    buckets=(0, 1, 2, 3, 5, 10),
+)
+
+
 # ========== System Metrics ==========
 
 QUEUE_SIZE = create_gauge(
@@ -347,6 +415,74 @@ class MetricsCollector:
         """Record high risk alert."""
         if HIGH_RISK_ALERTS:
             HIGH_RISK_ALERTS.labels(risk_level=risk_level).inc()
+
+    # ===== PII =====
+
+    def record_pii_masking(
+        self,
+        pii_detected: bool,
+        entity_types: list = None,
+        latency: float = 0.0,
+    ) -> None:
+        """Record PII masking call result."""
+        if PII_MASKING_CALLS:
+            status = "detected" if pii_detected else "clean"
+            PII_MASKING_CALLS.labels(status=status).inc()
+        if PII_MASKING_LATENCY and latency > 0:
+            PII_MASKING_LATENCY.observe(latency)
+        if PII_ENTITIES_DETECTED and entity_types:
+            for entity_type in entity_types:
+                PII_ENTITIES_DETECTED.labels(entity_type=entity_type).inc()
+
+    def record_pii_error(self, error_type: str = "masking_failure") -> None:
+        """Record PII masking error (LLM call blocked)."""
+        if PII_MASKING_CALLS:
+            PII_MASKING_CALLS.labels(status="error").inc()
+        if PII_MASKING_ERRORS:
+            PII_MASKING_ERRORS.labels(error_type=error_type).inc()
+
+    # ===== RAG =====
+
+    def record_rag_query(
+        self,
+        query_type: str,
+        results: list,
+        latency: float = 0.0,
+    ) -> None:
+        """Record RAG query with relevancy metrics.
+
+        Args:
+            query_type: 'reports' or 'documents'
+            results: List of result dicts (each may have 'distance' key)
+            latency: Query latency in seconds
+        """
+        status = "success" if results else "empty"
+        if RAG_QUERIES:
+            RAG_QUERIES.labels(query_type=query_type, status=status).inc()
+        if RAG_SEARCH_LATENCY and latency > 0:
+            RAG_SEARCH_LATENCY.labels(query_type=query_type).observe(latency)
+        if RAG_RESULTS_COUNT:
+            RAG_RESULTS_COUNT.labels(query_type=query_type).observe(len(results))
+
+        # Record individual relevancy scores
+        relevancies = []
+        for r in results:
+            distance = r.get("distance")
+            if distance is not None:
+                relevancy = max(0.0, 1.0 - distance)
+                relevancies.append(relevancy)
+                if RAG_RELEVANCY:
+                    RAG_RELEVANCY.labels(query_type=query_type).observe(relevancy)
+
+        # Precision@k = average relevancy of top-k results
+        if relevancies and RAG_PRECISION_AT_K:
+            avg_relevancy = sum(relevancies) / len(relevancies)
+            RAG_PRECISION_AT_K.labels(k=str(len(relevancies))).observe(avg_relevancy)
+
+    def record_rag_failure(self, query_type: str) -> None:
+        """Record RAG query failure."""
+        if RAG_QUERIES:
+            RAG_QUERIES.labels(query_type=query_type, status="failure").inc()
 
     # ===== Errors =====
 

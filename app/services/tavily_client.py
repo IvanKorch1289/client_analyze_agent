@@ -128,7 +128,7 @@ class TavilyClient:
 
         try:
             if use_cache:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 fut: asyncio.Future = loop.create_future()
                 self._inflight[cache_key] = fut
 
@@ -138,7 +138,7 @@ class TavilyClient:
                 include_raw_content=include_raw_content,
             )
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             payload: Dict[str, Any] = {"query": query}
             if include_domains:
                 payload["include_domains"] = include_domains

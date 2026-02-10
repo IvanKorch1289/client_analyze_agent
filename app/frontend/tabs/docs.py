@@ -44,8 +44,7 @@ def render(api: ApiClient) -> None:
     st.divider()
     section_header("Архитектура", emoji="🏗️")
 
-    st.markdown(
-        """
+    st.markdown("""
     ### Основные компоненты
     
     1. **FastAPI Backend** (`app/main.py`)
@@ -73,14 +72,12 @@ def render(api: ApiClient) -> None:
        - Perplexity AI (веб-поиск)
        - Tavily (расширенный поиск)
        - DaData, Casebook, InfoSphere (данные по ИНН)
-    """
-    )
+    """)
 
     st.divider()
     section_header("Безопасность", emoji="🔐")
 
-    st.markdown(
-        """
+    st.markdown("""
     ### Механизмы защиты
     
     - **Admin Token**: Переменная окружения `ADMIN_TOKEN` для доступа к административным функциям
@@ -88,14 +85,12 @@ def render(api: ApiClient) -> None:
     - **Circuit Breakers**: Защита от каскадных сбоев внешних сервисов
     - **Input Validation**: Pydantic схемы для всех входных данных
     - **CORS**: Настраиваемые политики для фронтенда
-    """
-    )
+    """)
 
     st.divider()
     section_header("Мониторинг", emoji="📊")
 
-    st.markdown(
-        """
+    st.markdown("""
     ### Доступные метрики
     
     - **Health Check**: `/utility/health` (с опцией `deep=true`)
@@ -103,5 +98,4 @@ def render(api: ApiClient) -> None:
     - **Circuit Breakers**: Состояние защитных механизмов
     - **Cache Metrics**: Использование Tarantool/in-memory кэша
     - **Logs & Traces**: Структурированное логирование с фильтрацией
-    """
-    )
+    """)

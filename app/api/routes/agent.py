@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import re
 import time
 import uuid
@@ -109,6 +108,21 @@ async def analyze_client(request: Request, data: ClientAnalysisRequest, stream: 
         )
 
     try:
+        from app.shared.toolkit.telemetry import create_span
+    except Exception:
+        create_span = None  # type: ignore[assignment]
+
+    _ctx = None
+    try:
+        _span_attrs = {
+            "api.endpoint": "/api/v1/agent/analyze-client",
+            "api.client_name": data.client_name,
+            "api.inn": data.inn or "",
+        }
+        _ctx = create_span("api.analyze_client", attributes=_span_attrs) if create_span else None
+        if _ctx is not None:
+            _ctx.__enter__()
+
         # Централизованный executor (единый путь для HTTP/RMQ/MCP/scheduler).
         result = await execute_client_analysis(
             client_name=data.client_name,
@@ -123,8 +137,12 @@ async def analyze_client(request: Request, data: ClientAnalysisRequest, stream: 
             status=result.get("status"),
             session_id=result.get("session_id"),
         )
+        if _ctx is not None:
+            _ctx.__exit__(None, None, None)
         return result
     except Exception as e:
+        if _ctx is not None:
+            _ctx.__exit__(type(e), e, e.__traceback__)
         logger.error(f"Client analysis error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка анализа: {str(e)}") from e
 
@@ -170,7 +188,14 @@ async def prompt_agent(request: Request, data: PromptRequest) -> Dict[str, Any]:
     }
 
 
-_STREAM_MAX_DURATION_S = int(os.environ.get("STREAM_MAX_DURATION_S", "900"))  # 15 min
+_STREAM_MAX_DURATION_S: int = 900  # overridden from settings at import time
+
+try:
+    from app.config.settings import settings
+
+    _STREAM_MAX_DURATION_S = settings.app.stream_max_duration_seconds
+except Exception:
+    pass  # keep default
 _STREAM_KEEPALIVE_S = 15  # send keepalive comment every 15s
 
 

@@ -1,0 +1,643 @@
+{
+  "dashboard": {
+    "annotations": { "list": [] },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 1,
+    "id": null,
+    "links": [
+      {
+        "asDropdown": false,
+        "icon": "external link",
+        "includeVars": true,
+        "keepTime": true,
+        "tags": ["client-analysis"],
+        "title": "Main Dashboard",
+        "type": "dashboards"
+      }
+    ],
+    "liveNow": false,
+    "panels": [
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+        "id": 1,
+        "panels": [],
+        "title": "LLM Reliability & Health",
+        "type": "row"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "yellow", "value": 90 },
+                { "color": "green", "value": 99 }
+              ]
+            },
+            "unit": "percent",
+            "decimals": 1
+          }
+        },
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+        "id": 2,
+        "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+        "targets": [{
+          "expr": "100 * sum(rate(client_llm_requests_total{status=\"success\"}[1h])) / sum(rate(client_llm_requests_total[1h]))",
+          "refId": "A"
+        }],
+        "title": "LLM Success Rate (1h)",
+        "type": "stat"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 5 },
+                { "color": "red", "value": 20 }
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+        "id": 3,
+        "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+        "targets": [{
+          "expr": "sum(increase(client_llm_fallbacks_total[1h]))",
+          "refId": "A"
+        }],
+        "title": "LLM Fallbacks (1h)",
+        "type": "stat"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 3 },
+                { "color": "red", "value": 10 }
+              ]
+            },
+            "unit": "s",
+            "decimals": 2
+          }
+        },
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+        "id": 4,
+        "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+        "targets": [{
+          "expr": "histogram_quantile(0.95, sum(rate(client_llm_latency_seconds_bucket[5m])) by (le))",
+          "refId": "A"
+        }],
+        "title": "LLM P95 Latency",
+        "type": "stat"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "red", "value": 1 }
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+        "id": 5,
+        "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+        "targets": [{
+          "expr": "sum(increase(client_pii_masking_errors_total[1h]))",
+          "refId": "A"
+        }],
+        "title": "PII Masking Errors (1h)",
+        "type": "stat"
+      },
+
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+        "id": 10,
+        "panels": [],
+        "title": "Provider Performance Comparison",
+        "type": "row"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "spanNulls": true },
+            "unit": "s",
+            "decimals": 2
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+        "id": 11,
+        "options": {
+          "legend": { "calcs": ["mean", "max", "lastNotNull"], "displayMode": "table", "placement": "bottom" },
+          "tooltip": { "mode": "multi" }
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(client_llm_latency_seconds_bucket[5m])) by (le, provider))",
+            "legendFormat": "{{provider}} p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(client_llm_latency_seconds_bucket[5m])) by (le, provider))",
+            "legendFormat": "{{provider}} p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(client_llm_latency_seconds_bucket[5m])) by (le, provider))",
+            "legendFormat": "{{provider}} p99",
+            "refId": "C"
+          }
+        ],
+        "title": "LLM Latency by Provider (p50/p95/p99)",
+        "type": "timeseries"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "showPoints": "never", "stacking": { "mode": "normal" } },
+            "unit": "reqps"
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+        "id": 12,
+        "options": {
+          "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" },
+          "tooltip": { "mode": "multi" }
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(client_llm_requests_total{status=\"success\"}[5m])) by (provider)",
+            "legendFormat": "{{provider}} success",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(client_llm_requests_total{status=\"failure\"}[5m])) by (provider)",
+            "legendFormat": "{{provider}} failure",
+            "refId": "B"
+          }
+        ],
+        "title": "LLM Request Rate by Provider & Status",
+        "type": "timeseries"
+      },
+
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+        "id": 20,
+        "panels": [],
+        "title": "Token Usage & Cost Estimation",
+        "type": "row"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } },
+            "unit": "short"
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+        "id": 21,
+        "options": {
+          "legend": { "calcs": ["sum", "mean"], "displayMode": "table", "placement": "bottom" },
+          "tooltip": { "mode": "multi" }
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(client_llm_tokens_total{type=\"input\"}[5m])) by (provider)",
+            "legendFormat": "{{provider}} input",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(client_llm_tokens_total{type=\"output\"}[5m])) by (provider)",
+            "legendFormat": "{{provider}} output",
+            "refId": "B"
+          }
+        ],
+        "title": "Token Rate by Provider (input/output)",
+        "type": "timeseries"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" },
+            "unit": "short",
+            "decimals": 0
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+        "id": 22,
+        "options": {
+          "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" },
+          "tooltip": { "mode": "multi" }
+        },
+        "targets": [
+          {
+            "expr": "sum(increase(client_llm_tokens_total{type=\"input\"}[1h])) by (provider)",
+            "legendFormat": "{{provider}} input tokens",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(increase(client_llm_tokens_total{type=\"output\"}[1h])) by (provider)",
+            "legendFormat": "{{provider}} output tokens",
+            "refId": "B"
+          }
+        ],
+        "title": "Cumulative Token Usage per Hour",
+        "type": "timeseries"
+      },
+
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+        "id": 30,
+        "panels": [],
+        "title": "PII Protection & Compliance",
+        "type": "row"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "showPoints": "never", "stacking": { "mode": "normal" } },
+            "unit": "short"
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+        "id": 31,
+        "options": {
+          "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" },
+          "tooltip": { "mode": "multi" }
+        },
+        "targets": [{
+          "expr": "sum(rate(client_pii_entities_detected_total[5m])) by (entity_type)",
+          "legendFormat": "{{entity_type}}",
+          "refId": "A"
+        }],
+        "title": "PII Entities Detected by Type",
+        "type": "timeseries"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" },
+            "unit": "s",
+            "decimals": 3
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+        "id": 32,
+        "options": {
+          "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+          "tooltip": { "mode": "multi" }
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(client_pii_masking_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(client_pii_masking_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(client_pii_masking_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p99",
+            "refId": "C"
+          }
+        ],
+        "title": "PII Masking Latency (p50/p95/p99)",
+        "type": "timeseries"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "yellow", "value": 95 },
+                { "color": "green", "value": 99.5 }
+              ]
+            },
+            "unit": "percent",
+            "decimals": 2
+          }
+        },
+        "gridPos": { "h": 4, "w": 8, "x": 0, "y": 32 },
+        "id": 33,
+        "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+        "targets": [{
+          "expr": "100 * sum(rate(client_pii_masking_calls_total{status=\"success\"}[1h])) / sum(rate(client_pii_masking_calls_total[1h]))",
+          "refId": "A"
+        }],
+        "title": "PII Masking Success Rate",
+        "type": "stat"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "blue", "value": null }
+              ]
+            },
+            "unit": "short",
+            "decimals": 0
+          }
+        },
+        "gridPos": { "h": 4, "w": 8, "x": 8, "y": 32 },
+        "id": 34,
+        "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+        "targets": [{
+          "expr": "sum(increase(client_pii_entities_detected_total[24h]))",
+          "refId": "A"
+        }],
+        "title": "Total PII Entities Detected (24h)",
+        "type": "stat"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "red", "value": 1 }
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": { "h": 4, "w": 8, "x": 16, "y": 32 },
+        "id": 35,
+        "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+        "targets": [{
+          "expr": "sum(increase(client_pii_masking_errors_total[24h]))",
+          "refId": "A"
+        }],
+        "title": "PII Errors (24h) — 0 = Compliant",
+        "type": "stat"
+      },
+
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+        "id": 40,
+        "panels": [],
+        "title": "Risk Score Distribution & Quality",
+        "type": "row"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "showPoints": "never", "stacking": { "mode": "normal" } },
+            "unit": "short"
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+        "id": 41,
+        "options": {
+          "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" },
+          "tooltip": { "mode": "multi" }
+        },
+        "targets": [{
+          "expr": "sum(increase(client_risk_score_bucket[1h])) by (le)",
+          "legendFormat": "≤{{le}}",
+          "refId": "A"
+        }],
+        "title": "Risk Score Distribution (1h)",
+        "type": "timeseries"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" },
+            "unit": "short"
+          }
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
+        "id": 42,
+        "options": {
+          "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" },
+          "tooltip": { "mode": "multi" }
+        },
+        "targets": [{
+          "expr": "sum(rate(client_high_risk_alerts_total[5m])) by (risk_level)",
+          "legendFormat": "{{risk_level}}",
+          "refId": "A"
+        }],
+        "title": "High Risk Alerts by Level",
+        "type": "timeseries"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 25 },
+                { "color": "orange", "value": 50 },
+                { "color": "red", "value": 75 }
+              ]
+            },
+            "unit": "short",
+            "decimals": 1
+          }
+        },
+        "gridPos": { "h": 4, "w": 8, "x": 0, "y": 45 },
+        "id": 43,
+        "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["mean"] } },
+        "targets": [{
+          "expr": "avg(client_risk_score)",
+          "refId": "A"
+        }],
+        "title": "Average Risk Score",
+        "type": "stat"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 10 },
+                { "color": "red", "value": 30 }
+              ]
+            },
+            "unit": "short",
+            "decimals": 0
+          }
+        },
+        "gridPos": { "h": 4, "w": 8, "x": 8, "y": 45 },
+        "id": 44,
+        "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+        "targets": [{
+          "expr": "sum(increase(client_high_risk_alerts_total[24h]))",
+          "refId": "A"
+        }],
+        "title": "High Risk Alerts (24h)",
+        "type": "stat"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 50 },
+                { "color": "red", "value": 80 }
+              ]
+            },
+            "unit": "percent",
+            "decimals": 1
+          }
+        },
+        "gridPos": { "h": 4, "w": 8, "x": 16, "y": 45 },
+        "id": 45,
+        "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+        "targets": [{
+          "expr": "100 * sum(rate(client_cache_operations_total{operation=\"hit\"}[1h])) / sum(rate(client_cache_operations_total{operation=~\"hit|miss\"}[1h]))",
+          "refId": "A"
+        }],
+        "title": "LLM Cache Hit Rate (1h)",
+        "type": "stat"
+      },
+
+      {
+        "collapsed": false,
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 49 },
+        "id": 50,
+        "panels": [],
+        "title": "Latency Drift Detection",
+        "type": "row"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "drawStyle": "line", "fillOpacity": 5, "lineWidth": 2, "showPoints": "never" },
+            "unit": "s",
+            "decimals": 2
+          }
+        },
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 50 },
+        "id": 51,
+        "options": {
+          "legend": { "calcs": ["mean", "max", "min"], "displayMode": "table", "placement": "right" },
+          "tooltip": { "mode": "multi" }
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(client_llm_latency_seconds_bucket[30m])) by (le, provider))",
+            "legendFormat": "{{provider}} p95 (30m window)",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(client_llm_latency_seconds_bucket[24h])) by (le, provider))",
+            "legendFormat": "{{provider}} p95 (24h baseline)",
+            "refId": "B"
+          }
+        ],
+        "title": "LLM Latency Drift: 30min vs 24h Baseline",
+        "description": "Compares recent p95 latency (30min window) against 24h baseline to detect drift. Large divergence indicates provider degradation.",
+        "type": "timeseries"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "drawStyle": "line", "fillOpacity": 5, "lineWidth": 2, "showPoints": "never" },
+            "unit": "short"
+          }
+        },
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 58 },
+        "id": 52,
+        "options": {
+          "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "right" },
+          "tooltip": { "mode": "multi" }
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(client_llm_tokens_total{type=\"output\"}[30m])) by (provider) / sum(rate(client_llm_tokens_total{type=\"input\"}[30m])) by (provider)",
+            "legendFormat": "{{provider}} output/input ratio",
+            "refId": "A"
+          }
+        ],
+        "title": "Token Output/Input Ratio by Provider (drift indicator)",
+        "description": "Ratio of output to input tokens. Significant changes may indicate prompt drift or model behavior changes.",
+        "type": "timeseries"
+      }
+    ],
+    "refresh": "30s",
+    "schemaVersion": 38,
+    "style": "dark",
+    "tags": ["llm-quality", "pii", "risk-scoring", "monitoring"],
+    "templating": { "list": [] },
+    "time": { "from": "now-3h", "to": "now" },
+    "timepicker": {},
+    "timezone": "browser",
+    "title": "LLM Quality & Compliance",
+    "uid": "llm-quality-v1",
+    "version": 1,
+    "weekStart": ""
+  },
+  "overwrite": true
+}
