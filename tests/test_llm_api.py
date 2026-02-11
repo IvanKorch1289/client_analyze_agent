@@ -9,9 +9,13 @@ Tests:
 - DLQ configuration for LLM queue
 """
 
+import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 import time
+
+# Token для аутентификации в тестах (минимум 32 символа)
+_TEST_ANALYST_TOKEN = "test_analyst_token_32chars_minimum_ok"
 
 from pydantic import ValidationError
 
@@ -454,22 +458,24 @@ class TestLLMAPIEndpoint:
 
         client = TestClient(v1_app)
 
-        with patch("app.api.routes.llm._is_provider_available", return_value=True):
-            with patch("app.api.routes.llm.settings") as mock_settings:
-                mock_settings.queue.enabled = False
+        with patch.dict(os.environ, {"ANALYST_TOKEN": _TEST_ANALYST_TOKEN}):
+            with patch("app.api.routes.llm._is_provider_available", return_value=True):
+                with patch("app.api.routes.llm.settings") as mock_settings:
+                    mock_settings.queue.enabled = False
 
-                with patch(
-                    "app.api.routes.llm._process_llm_request_background",
-                    new_callable=AsyncMock,
-                ):
-                    response = client.post(
-                        "/llm/async",
-                        json={
-                            "prompt": "Test prompt",
-                            "callback_url": "https://example.com/callback",
-                            "provider": "openrouter",
-                        },
-                    )
+                    with patch(
+                        "app.api.routes.llm._process_llm_request_background",
+                        new_callable=AsyncMock,
+                    ):
+                        response = client.post(
+                            "/llm/async",
+                            json={
+                                "prompt": "Test prompt",
+                                "callback_url": "https://example.com/callback",
+                                "provider": "openrouter",
+                            },
+                            headers={"X-Auth-Token": _TEST_ANALYST_TOKEN},
+                        )
 
         assert response.status_code == 202
         data = response.json()
@@ -485,15 +491,17 @@ class TestLLMAPIEndpoint:
 
         client = TestClient(v1_app)
 
-        with patch("app.api.routes.llm._is_provider_available", return_value=False):
-            response = client.post(
-                "/llm/async",
-                json={
-                    "prompt": "Test prompt",
-                    "callback_url": "https://example.com/callback",
-                    "provider": "gigachat",
-                },
-            )
+        with patch.dict(os.environ, {"ANALYST_TOKEN": _TEST_ANALYST_TOKEN}):
+            with patch("app.api.routes.llm._is_provider_available", return_value=False):
+                response = client.post(
+                    "/llm/async",
+                    json={
+                        "prompt": "Test prompt",
+                        "callback_url": "https://example.com/callback",
+                        "provider": "gigachat",
+                    },
+                    headers={"X-Auth-Token": _TEST_ANALYST_TOKEN},
+                )
 
         assert response.status_code == 400
         # Check error response - could be "detail" or in response body
