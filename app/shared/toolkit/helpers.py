@@ -196,31 +196,48 @@ def get_client_ip(request: "Request") -> str:
     Extract client IP address from request.
 
     Used by SlowAPI limiter in scheduler routes.
+
+    Security: X-Forwarded-For/X-Real-IP доверяются только если запрос пришёл
+    от known reverse proxy (Docker network / loopback). Иначе используется
+    request.client.host для предотвращения обхода rate limit через spoofing.
     """
-    # Prefer X-Forwarded-For (first IP in list)
-    try:
-        xff = request.headers.get("x-forwarded-for")
-        if xff:
-            return xff.split(",")[0].strip()
-    except Exception:
-        pass
+    import ipaddress
 
-    # Fallback: X-Real-IP
-    try:
-        x_real = request.headers.get("x-real-ip")
-        if x_real:
-            return x_real.strip()
-    except Exception:
-        pass
-
-    # Final fallback: request.client.host
+    # Определяем, пришёл ли запрос от доверенного прокси
+    direct_ip = ""
     try:
         if request.client and request.client.host:
-            return request.client.host
+            direct_ip = request.client.host
     except Exception:
         pass
 
-    return "unknown"
+    trusted_proxy = False
+    if direct_ip:
+        try:
+            ip = ipaddress.ip_address(direct_ip)
+            # Доверяем: loopback, Docker bridge (172.16-31.x.x), private 10.x.x.x
+            trusted_proxy = ip.is_loopback or ip.is_private
+        except ValueError:
+            pass
+
+    if trusted_proxy:
+        # Доверяем proxy headers только от известных прокси
+        try:
+            xff = request.headers.get("x-forwarded-for")
+            if xff:
+                return xff.split(",")[0].strip()
+        except Exception:
+            pass
+
+        try:
+            x_real = request.headers.get("x-real-ip")
+            if x_real:
+                return x_real.strip()
+        except Exception:
+            pass
+
+    # Используем реальный IP клиента
+    return direct_ip or "unknown"
 
 
 __all__ = [

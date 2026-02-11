@@ -46,8 +46,9 @@ from app.services.openrouter_client import get_openrouter_client
 from app.services.perplexity_client import PerplexityClient
 from app.services.tavily_client import TavilyClient
 from app.storage.tarantool import TarantoolClient
+from app.shared.security import sanitize_filename
 from app.shared.toolkit.metrics import app_metrics
-from app.shared.toolkit.auth import Role, get_current_role, require_admin
+from app.shared.toolkit.auth import Role, get_current_role, require_admin, require_role
 from app.shared.toolkit.helpers import get_client_ip
 from app.shared.toolkit.logging import logger
 from app.shared.toolkit.pdf import save_pdf_report
@@ -328,7 +329,11 @@ async def app_circuit_breaker_reset(request: Request, role: str = Depends(requir
 
 
 @utility_router.get("/circuit-breakers")
-async def get_circuit_breakers(request: Request, service: Optional[str] = None) -> Dict[str, Any]:
+async def get_circuit_breakers(
+    request: Request,
+    service: Optional[str] = None,
+    role: str = Depends(require_role(Role.ANALYST, Role.ADMIN)),
+) -> Dict[str, Any]:
     try:
         http_client = await AsyncHttpClient.get_instance()
         status = http_client.get_circuit_breaker_status(service)
@@ -359,7 +364,11 @@ async def reset_circuit_breaker(request: Request, service: str, role: str = Depe
 
 
 @utility_router.get("/metrics")
-async def get_metrics(request: Request, service: Optional[str] = None) -> Dict[str, Any]:
+async def get_metrics(
+    request: Request,
+    service: Optional[str] = None,
+    role: str = Depends(require_role(Role.ANALYST, Role.ADMIN)),
+) -> Dict[str, Any]:
     try:
         http_client = await AsyncHttpClient.get_instance()
         metrics = http_client.get_metrics(service)
@@ -478,13 +487,13 @@ async def force_config_reload(request: Request, role: str = Depends(require_admi
 
 
 @utility_router.get("/perplexity/status")
-async def perplexity_status():
+async def perplexity_status(role: str = Depends(require_role(Role.ANALYST, Role.ADMIN))):
     client = PerplexityClient.get_instance()
     return await client.healthcheck()
 
 
 @utility_router.get("/tavily/status")
-async def tavily_status():
+async def tavily_status(role: str = Depends(require_role(Role.ANALYST, Role.ADMIN))):
     client = TavilyClient.get_instance()
     return await client.healthcheck()
 
@@ -508,7 +517,7 @@ async def clear_perplexity_cache(request: Request, role: str = Depends(require_a
 
 
 @utility_router.get("/openrouter/status")
-async def openrouter_status() -> Dict[str, Any]:
+async def openrouter_status(role: str = Depends(require_role(Role.ANALYST, Role.ADMIN))) -> Dict[str, Any]:
     client = get_openrouter_client()
     status = await client.check_status()
     return {
@@ -520,15 +529,15 @@ async def openrouter_status() -> Dict[str, Any]:
 
 
 @utility_router.get("/email/status")
-async def email_status() -> Dict[str, Any]:
-    """Получить статус и проверку здоровья email сервиса."""
+async def email_status(role: str = Depends(require_role(Role.ANALYST, Role.ADMIN))) -> Dict[str, Any]:
+    """Получить статус и проверку здоровья email сервиса. Требуется аутентификация."""
     client = EmailClient.get_instance()
     return client.get_status()
 
 
 @utility_router.get("/email/healthcheck")
-async def email_healthcheck() -> Dict[str, Any]:
-    """Выполнить проверку здоровья SMTP сервера."""
+async def email_healthcheck(role: str = Depends(require_role(Role.ANALYST, Role.ADMIN))) -> Dict[str, Any]:
+    """Выполнить проверку здоровья SMTP сервера. Требуется аутентификация."""
     client = EmailClient.get_instance()
     return client.check_health()
 
@@ -579,9 +588,15 @@ async def generate_pdf_report(http_request: Request, payload: PDFReportRequest) 
 
 
 @utility_router.get("/reports/download/{filename}")
-async def download_report(filename: str):
-    """Скачать файл PDF отчёта."""
-    filepath = os.path.join("reports", filename)
+async def download_report(
+    filename: str,
+    role: str = Depends(require_role(Role.VIEWER, Role.ANALYST, Role.ADMIN)),
+):
+    """Скачать файл PDF отчёта. Требуется аутентификация."""
+    safe_name = sanitize_filename(filename)
+    filepath = os.path.realpath(os.path.join("reports", safe_name))
+    if not filepath.startswith(os.path.realpath("reports")):
+        raise HTTPException(status_code=400, detail="Invalid filename")
 
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="Report not found")
@@ -589,13 +604,16 @@ async def download_report(filename: str):
     return FileResponse(
         filepath,
         media_type="application/pdf",
-        filename=filename,
+        filename=safe_name,
     )
 
 
 @utility_router.get("/reports/list")
-async def list_reports(http_request: Request) -> Dict[str, Any]:
-    """Список всех доступных отчётов."""
+async def list_reports(
+    http_request: Request,
+    role: str = Depends(require_role(Role.VIEWER, Role.ANALYST, Role.ADMIN)),
+) -> Dict[str, Any]:
+    """Список всех доступных отчётов. Требуется аутентификация."""
     reports_dir = "reports"
 
     if not os.path.exists(reports_dir):
@@ -623,14 +641,17 @@ async def list_reports(http_request: Request) -> Dict[str, Any]:
 @limiter.limit(f"{RATE_LIMIT_ADMIN_PER_MINUTE}/minute")
 async def delete_report(request: Request, filename: str, role: str = Depends(require_admin)) -> Dict[str, Any]:
     """Удалить файл отчёта. Требуется роль администратора."""
-    filepath = os.path.join("reports", filename)
+    safe_name = sanitize_filename(filename)
+    filepath = os.path.realpath(os.path.join("reports", safe_name))
+    if not filepath.startswith(os.path.realpath("reports")):
+        raise HTTPException(status_code=400, detail="Invalid filename")
 
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="Report not found")
 
     try:
         os.remove(filepath)
-        return {"status": "success", "message": f"Report {filename} deleted"}
+        return {"status": "success", "message": f"Report {safe_name} deleted"}
     except Exception as e:
         if is_versioned_request(request):
             raise

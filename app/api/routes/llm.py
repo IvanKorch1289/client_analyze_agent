@@ -11,7 +11,7 @@ import time
 import uuid
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.rate_limit import limiter_for_client_ip
 from app.config import settings
@@ -25,6 +25,7 @@ from app.schemas.llm import (
     MaskTextRequest,
     MaskTextResponse,
 )
+from app.shared.toolkit.auth import Role, require_role
 from app.shared.toolkit.logging import logger
 
 llm_router = APIRouter(prefix="/llm", tags=["LLM"])
@@ -176,6 +177,7 @@ async def _process_llm_request_background(
 async def submit_async_llm_request(
     request: Request,
     data: AsyncLLMRequest,
+    role: str = Depends(require_role(Role.ANALYST, Role.ADMIN)),
 ) -> AsyncLLMAccepted:
     """
     Отправка асинхронного LLM запроса с webhook callback.
@@ -269,7 +271,11 @@ async def list_llm_providers(request: Request) -> LLMProvidersResponse:
 
 @llm_router.post("/mask-text", response_model=MaskTextResponse)
 @limiter.limit(f"{RATE_LIMIT_LLM_PER_MINUTE}/minute")
-async def mask_text(request: Request, data: MaskTextRequest) -> MaskTextResponse:
+async def mask_text(
+    request: Request,
+    data: MaskTextRequest,
+    role: str = Depends(require_role(Role.ANALYST, Role.ADMIN)),
+) -> MaskTextResponse:
     """
     Маскирование PII данных в тексте.
 
@@ -307,20 +313,22 @@ async def mask_text(request: Request, data: MaskTextRequest) -> MaskTextResponse
             mask_level=data.mask_level,
         )
 
+        # В production не возвращаем original_text и replacements для защиты PII
+        is_production = settings.app.is_production
         return MaskTextResponse(
-            original_text=result.original_text,
+            original_text="" if is_production else result.original_text,
             masked_text=result.masked_text,
             pii_detected=result.pii_detected,
             pii_count=result.pii_count,
             detected_pii_types=result.detected_pii_types,
-            replacements=result.replacements,
+            replacements=[] if is_production else result.replacements,
         )
 
     except Exception as e:
         logger.error(f"PII masking failed: {e}", component="llm_api", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Ошибка маскирования PII: {str(e)}",
+            detail="Ошибка маскирования PII",
         )
 
 

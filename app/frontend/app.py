@@ -100,7 +100,8 @@ def _apply_admin_token(token: str) -> None:
     st.session_state["admin_token"] = token
 
     if expected:
-        st.session_state["is_admin"] = token == expected
+        import hmac as _hmac
+        st.session_state["is_admin"] = _hmac.compare_digest(token, expected)
     else:
         is_dev = not _cfg.app.is_production
         st.session_state["is_admin"] = bool(is_dev and token)

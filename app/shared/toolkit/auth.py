@@ -10,6 +10,7 @@ Provides token-based authentication with 4 roles:
 Token resolution: ADMIN_TOKEN → admin, ANALYST_TOKEN → analyst, VIEWER_TOKEN → viewer.
 """
 
+import hmac
 import os
 import secrets
 import warnings
@@ -241,15 +242,15 @@ def get_current_role(
     token = x_auth_token.strip()
 
     admin_token = get_admin_token()
-    if admin_token and token == admin_token.strip():
+    if admin_token and hmac.compare_digest(token, admin_token.strip()):
         return Role.ADMIN
 
     analyst_token = _get_analyst_token()
-    if analyst_token and token == analyst_token.strip():
+    if analyst_token and hmac.compare_digest(token, analyst_token.strip()):
         return Role.ANALYST
 
     viewer_token = _get_viewer_token()
-    if viewer_token and token == viewer_token.strip():
+    if viewer_token and hmac.compare_digest(token, viewer_token.strip()):
         return Role.VIEWER
 
     return Role.GUEST

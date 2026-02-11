@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import os
 import time
+from collections import OrderedDict
 from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional
 
@@ -23,8 +24,9 @@ class TavilyClient:
         self.api_key = api_key or settings.tavily.api_key
         if self.api_key:
             os.environ["TAVILY_API_KEY"] = self.api_key
-        # L1 кэш в памяти процесса (быстрый, но не разделяется между воркерами)
-        self._cache: Dict[str, Dict[str, Any]] = {}
+        # L1 кэш в памяти процесса (LRU, ограничен по размеру)
+        self._cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        self._cache_max_size: int = 200
         self._cache_ttl = settings.tavily.cache_ttl or 300
         # Коалесинг (аналогично Perplexity): один внешний вызов на cache_key
         self._inflight: Dict[str, asyncio.Future] = {}
@@ -97,11 +99,16 @@ class TavilyClient:
             exclude_domains,
         )
         if use_cache:
-            # 1) L1 cache
+            # 1) L1 cache (с TTL-проверкой)
             if cache_key in self._cache:
                 cached = self._cache[cache_key]
-                logger.info(f"Tavily cache hit (L1) for query: {query[:50]}", component="tavily")
-                return cached
+                created_at = cached.get("_created_at", 0.0)
+                if created_at and (time.time() - float(created_at)) > self._cache_ttl:
+                    self._cache.pop(cache_key, None)
+                else:
+                    self._cache.move_to_end(cache_key)
+                    logger.info(f"Tavily cache hit (L1) for query: {query[:50]}", component="tavily")
+                    return cached
 
             # 2) L2 cache (Tarantool)
             if settings.tavily.cache_enabled:
@@ -112,7 +119,9 @@ class TavilyClient:
                     repo = t.get_cache_repository()
                     l2 = await repo.get(cache_key)
                     if l2:
-                        self._cache[cache_key] = l2
+                        self._cache[cache_key] = {**l2, "_created_at": time.time()}
+                        while len(self._cache) > self._cache_max_size:
+                            self._cache.popitem(last=False)
                         logger.info(
                             f"Tavily cache hit (L2/Tarantool) for query: {query[:50]}",
                             component="tavily",
@@ -150,7 +159,10 @@ class TavilyClient:
             if search_depth:
                 payload["search_depth"] = search_depth
 
-            results = await loop.run_in_executor(None, tool.invoke, payload)
+            results = await asyncio.wait_for(
+                loop.run_in_executor(None, tool.invoke, payload),
+                timeout=60.0,
+            )
 
             answer = ""
             if isinstance(results, str):
@@ -211,7 +223,9 @@ class TavilyClient:
             }
 
             if use_cache:
-                self._cache[cache_key] = {**response_data, "cached": True}
+                self._cache[cache_key] = {**response_data, "cached": True, "_created_at": time.time()}
+                while len(self._cache) > self._cache_max_size:
+                    self._cache.popitem(last=False)
                 # L2 запись в Tarantool (best-effort)
                 if settings.tavily.cache_enabled:
                     try:
@@ -319,7 +333,7 @@ class TavilyClient:
                             "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
                         },
                         allow_redirects=True,
-                        ssl=False,  # Skip SSL verification for problematic sites
+                        ssl=True,
                     ) as response:
                         if response.status != 200:
                             return {

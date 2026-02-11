@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import time
+from collections import OrderedDict
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from app.config import settings
@@ -23,8 +24,9 @@ class PerplexityClient:
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or settings.perplexity.api_key
         self.model = model or settings.perplexity.model or self.DEFAULT_MODEL
-        # L1 кэш в памяти процесса (быстрый, но не разделяется между инстансами)
-        self._cache: Dict[str, Dict[str, Any]] = {}
+        # L1 кэш в памяти процесса (LRU, ограничен по размеру)
+        self._cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        self._cache_max_size: int = 200
         self._cache_ttl_s = settings.perplexity.cache_ttl or 300
         # Коалесинг: если несколько корутин запросили один и тот же cache_key одновременно,
         # выполняем внешний вызов один раз, остальные ожидают результат.
@@ -58,10 +60,17 @@ class PerplexityClient:
         if created_at and (time.time() - float(created_at)) > self._cache_ttl_s:
             self._cache.pop(cache_key, None)
             return None
+        # Перемещаем в конец (LRU: последний использованный — последний на вытеснение)
+        self._cache.move_to_end(cache_key)
         return cached
 
     def _cache_set(self, cache_key: str, value: Dict[str, Any]) -> None:
+        if cache_key in self._cache:
+            self._cache.move_to_end(cache_key)
         self._cache[cache_key] = {**value, "_created_at": time.time()}
+        # LRU eviction
+        while len(self._cache) > self._cache_max_size:
+            self._cache.popitem(last=False)
 
     @staticmethod
     def _to_lc_messages(messages: List[Dict[str, str]]) -> Tuple[list, list]:
@@ -163,6 +172,7 @@ class PerplexityClient:
                 base_url=self.BASE_URL,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                timeout=60.0,
                 model_kwargs={"search_recency_filter": search_recency_filter},  # ✅ ВКЛЮЧЕНО
             )
 

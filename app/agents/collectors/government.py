@@ -73,7 +73,7 @@ class FNSCollector(BaseCollector):
                     data=search_data,
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=15),
-                    ssl=False,
+                    ssl=True,
                 ) as resp:
                     if resp.status != 200:
                         return CollectorResult(
@@ -106,7 +106,7 @@ class FNSCollector(BaseCollector):
                     results_url,
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=10),
-                    ssl=False,
+                    ssl=True,
                 ) as resp:
                     if resp.status != 200:
                         return CollectorResult(
@@ -366,7 +366,7 @@ class BankrotCollector(BaseCollector):
                     params={"searchString": inn, "type": "Debtor"},
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=20),
-                    ssl=False,
+                    ssl=True,
                 ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
@@ -416,7 +416,7 @@ class BankrotCollector(BaseCollector):
                             messages_url,
                             headers=headers,
                             timeout=aiohttp.ClientTimeout(total=15),
-                            ssl=False,
+                            ssl=True,
                         ) as msg_resp:
                             if msg_resp.status == 200:
                                 msg_data = await msg_resp.json()

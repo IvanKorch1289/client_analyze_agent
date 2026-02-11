@@ -4,10 +4,13 @@
 Поддерживает несколько LLM провайдеров с доставкой через webhook callback.
 """
 
+import ipaddress
+import socket
 from enum import Enum
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
 class LLMProviderEnum(str, Enum):
@@ -38,6 +41,50 @@ class AsyncLLMRequest(BaseModel):
     callback_headers: Optional[Dict[str, str]] = Field(
         default=None, description="Заголовки для включения в callback запрос"
     )
+
+    @field_validator("callback_url")
+    @classmethod
+    def validate_callback_url_not_internal(cls, v: HttpUrl) -> HttpUrl:
+        """Блокировка SSRF: запрет callback на внутренние адреса."""
+        url_str = str(v)
+        parsed = urlparse(url_str)
+        hostname = parsed.hostname or ""
+
+        # Блокировка Docker-хостнеймов внутренних сервисов
+        blocked_hosts = {
+            "localhost", "tarantool", "rabbitmq", "chroma", "chromadb",
+            "prometheus", "alertmanager", "grafana", "tempo", "jayguard",
+            "app", "worker", "mcp", "redis", "postgres", "mongodb",
+        }
+        if hostname.lower() in blocked_hosts:
+            raise ValueError(f"callback_url не может указывать на внутренний сервис: {hostname}")
+
+        # Блокировка приватных IP-адресов (RFC 1918, loopback, link-local)
+        try:
+            resolved = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            for _, _, _, _, addr in resolved:
+                ip = ipaddress.ip_address(addr[0])
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                    raise ValueError(
+                        f"callback_url не может указывать на приватный/локальный адрес: {addr[0]}"
+                    )
+        except socket.gaierror:
+            # DNS-резолв не удался — разрешаем (будет ошибка при фактическом вызове)
+            pass
+
+        return v
+
+    @field_validator("callback_headers")
+    @classmethod
+    def sanitize_callback_headers(cls, v: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
+        """Удаление потенциально опасных заголовков из callback."""
+        if not v:
+            return v
+        blocked_header_prefixes = ("x-auth", "cookie", "x-api-key", "x-admin")
+        return {
+            k: val for k, val in v.items()
+            if not k.lower().startswith(blocked_header_prefixes)
+        }
 
     # Параметры LLM
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Температура семплирования")
