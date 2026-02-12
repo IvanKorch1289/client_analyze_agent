@@ -2,6 +2,8 @@
 File Writer Agent: сохраняет отчёт в файл.
 """
 
+import asyncio
+import functools
 import json
 import os
 import time
@@ -11,6 +13,12 @@ from typing import Any, Dict
 from app.shared.toolkit.logging import logger
 
 REPORTS_DIR = "reports"
+
+
+def _write_text_file(path: str, content: str) -> None:
+    """Write text content to file (designed for run_in_executor)."""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
 
 
 def ensure_reports_dir():
@@ -67,8 +75,10 @@ async def file_writer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
 
         md_content = generate_markdown_report(report, summary, client_name, inn)
 
-        with open(md_path, "w", encoding="utf-8") as f:
-            f.write(md_content)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None, functools.partial(_write_text_file, md_path, md_content)
+        )
 
         saved_files["markdown"] = md_path
         logger.info(f"Saved markdown report: {md_path}", component="file_writer")
@@ -91,8 +101,11 @@ async def file_writer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
             "session_id": session_id,
         }
 
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(json_report, f, ensure_ascii=False, indent=2)
+        json_content = json.dumps(json_report, ensure_ascii=False, indent=2)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None, functools.partial(_write_text_file, json_path, json_content)
+        )
 
         saved_files["json"] = json_path
         logger.info(f"Saved JSON report: {json_path}", component="file_writer")

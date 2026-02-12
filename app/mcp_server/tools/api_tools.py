@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.config.settings import settings
 from app.shared.exceptions import APIError
 from app.shared.logger import get_logger
-from app.shared.security import sanitize_for_llm, validate_inn
+from app.shared.security import mask_inn, sanitize_for_llm, validate_inn
 
 logger = get_logger(__name__)
 
@@ -179,7 +179,7 @@ async def fetch_casebook_data_tool(request: CasebookRequest) -> Dict[str, Any]:
     Raises:
         APIError: If API call fails
     """
-    logger.log_action("casebook_api_call", inn=request.inn)
+    logger.log_action("casebook_api_call", inn=mask_inn(request.inn))
 
     try:
         async with AsyncClient(timeout=30.0) as client:
@@ -202,7 +202,7 @@ async def fetch_casebook_data_tool(request: CasebookRequest) -> Dict[str, Any]:
             logger.log_action(
                 "casebook_api_success",
                 status_code=response.status_code,
-                inn=request.inn,
+                inn=mask_inn(request.inn),
             )
 
             return data
@@ -212,7 +212,7 @@ async def fetch_casebook_data_tool(request: CasebookRequest) -> Dict[str, Any]:
         logger.error(
             "casebook_api_failed",
             exc=e,
-            inn=request.inn,
+            inn=mask_inn(request.inn),
             status_code=status_code,
         )
         raise APIError(
@@ -222,7 +222,7 @@ async def fetch_casebook_data_tool(request: CasebookRequest) -> Dict[str, Any]:
             original_error=e,
         )
     except RequestError as e:
-        logger.error("casebook_api_failed", exc=e, inn=request.inn)
+        logger.error("casebook_api_failed", exc=e, inn=mask_inn(request.inn))
         raise APIError(
             f"Casebook API request error: {e}",
             api_name="Casebook",
@@ -243,7 +243,7 @@ async def fetch_infosfera_data_tool(request: InfosferaRequest) -> Dict[str, Any]
     Raises:
         APIError: If API call fails
     """
-    logger.log_action("infosfera_api_call", inn=request.inn)
+    logger.log_action("infosfera_api_call", inn=mask_inn(request.inn))
 
     try:
         async with AsyncClient(timeout=30.0) as client:
@@ -266,7 +266,7 @@ async def fetch_infosfera_data_tool(request: InfosferaRequest) -> Dict[str, Any]
             logger.log_action(
                 "infosfera_api_success",
                 status_code=response.status_code,
-                inn=request.inn,
+                inn=mask_inn(request.inn),
             )
 
             return data
@@ -276,7 +276,7 @@ async def fetch_infosfera_data_tool(request: InfosferaRequest) -> Dict[str, Any]
         logger.error(
             "infosfera_api_failed",
             exc=e,
-            inn=request.inn,
+            inn=mask_inn(request.inn),
             status_code=status_code,
         )
         raise APIError(
@@ -286,7 +286,7 @@ async def fetch_infosfera_data_tool(request: InfosferaRequest) -> Dict[str, Any]
             original_error=e,
         )
     except RequestError as e:
-        logger.error("infosfera_api_failed", exc=e, inn=request.inn)
+        logger.error("infosfera_api_failed", exc=e, inn=mask_inn(request.inn))
         raise APIError(
             f"Infosfera API request error: {e}",
             api_name="Infosfera",

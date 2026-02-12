@@ -43,6 +43,55 @@ class RiskFactor:
     evidence: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class RiskThresholds:
+    """Configurable risk score thresholds (extracted from magic numbers)."""
+
+    # Risk level boundaries (final score 0-100)
+    critical_level: int = 75
+    high_level: int = 50
+    medium_level: int = 25
+
+    # Legal: defendant case counts → scores
+    bankruptcy_base: int = 30
+    bankruptcy_per_case: int = 3
+    defendant_100_plus: int = 25
+    defendant_50_plus: int = 20
+    defendant_20_plus: int = 15
+    defendant_10_plus: int = 10
+    defendant_any: int = 5
+    plaintiff_discount: int = 3
+
+    # Financial thresholds
+    critical_liquidity: float = 0.5
+    critical_liquidity_score: int = 28
+    low_liquidity: float = 1.0
+    low_liquidity_score: int = 18
+    high_debt_ratio: float = 0.8
+    high_debt_score: int = 20
+    medium_debt_ratio: float = 0.6
+    medium_debt_score: int = 10
+    low_credit_score: int = 25
+    medium_credit_score: int = 15
+    no_financial_data_score: int = 10
+
+    # Reputation
+    scandal_base: int = 10
+    scandal_per_count: int = 3
+    scandal_max: int = 20
+    multiple_negative_score: int = 15
+    few_negative_score: int = 5
+    negative_count_threshold: int = 3
+
+    # Regulatory
+    sanction_score: int = 15
+    regulatory_issue_score: int = 5
+
+
+# Default thresholds (can be overridden for testing or per-deployment tuning)
+DEFAULT_THRESHOLDS = RiskThresholds()
+
+
 class RiskScoreCalculator:
     """
     Калькулятор итогового риск-скора (0-100).
@@ -73,6 +122,9 @@ class RiskScoreCalculator:
         RiskCategory.REPUTATION: 20,
         RiskCategory.REGULATORY: 15,
     }
+
+    def __init__(self, thresholds: Optional[RiskThresholds] = None):
+        self.t = thresholds or DEFAULT_THRESHOLDS
 
     def calculate_risk_score(
         self,
@@ -109,11 +161,11 @@ class RiskScoreCalculator:
 
         final_score = min(100, max(0, int(normalized_score)))
 
-        if final_score >= 75:
+        if final_score >= self.t.critical_level:
             level = "critical"
-        elif final_score >= 50:
+        elif final_score >= self.t.high_level:
             level = "high"
-        elif final_score >= 25:
+        elif final_score >= self.t.medium_level:
             level = "medium"
         else:
             level = "low"
@@ -192,7 +244,7 @@ class RiskScoreCalculator:
                 plaintiff_cases = [c for c in cases if c.get("role") == "plaintiff"]
 
                 if bankruptcy_cases:
-                    bankruptcy_score = min(max_score, 30 + len(bankruptcy_cases) * 3)
+                    bankruptcy_score = min(max_score, self.t.bankruptcy_base + len(bankruptcy_cases) * self.t.bankruptcy_per_case)
                     score += bankruptcy_score
                     factors.append(
                         RiskFactor(
@@ -208,19 +260,19 @@ class RiskScoreCalculator:
                 defendant_count = len(defendant_cases) if defendant_cases else total_cases
 
                 if defendant_count >= 100:
-                    defendant_score = 25
+                    defendant_score = self.t.defendant_100_plus
                     severity: Literal["critical", "high", "medium", "low"] = "high"
                 elif defendant_count >= 50:
-                    defendant_score = 20
+                    defendant_score = self.t.defendant_50_plus
                     severity = "high"
                 elif defendant_count >= 20:
-                    defendant_score = 15
+                    defendant_score = self.t.defendant_20_plus
                     severity = "medium"
                 elif defendant_count >= 10:
-                    defendant_score = 10
+                    defendant_score = self.t.defendant_10_plus
                     severity = "medium"
                 elif defendant_count > 0:
-                    defendant_score = 5
+                    defendant_score = self.t.defendant_any
                     severity = "low"
                 else:
                     defendant_score = 0
@@ -240,7 +292,7 @@ class RiskScoreCalculator:
                     )
 
                 if plaintiff_cases and not bankruptcy_cases:
-                    score = max(0, score - 3)
+                    score = max(0, score - self.t.plaintiff_discount)
                     factors.append(
                         RiskFactor(
                             category=RiskCategory.LEGAL,
@@ -281,26 +333,26 @@ class RiskScoreCalculator:
             if liquidity is not None:
                 try:
                     liquidity = float(liquidity)
-                    if liquidity < 0.5:
-                        score += 28
+                    if liquidity < self.t.critical_liquidity:
+                        score += self.t.critical_liquidity_score
                         factors.append(
                             RiskFactor(
                                 category=RiskCategory.FINANCIAL,
                                 description="🔴 КРИТИЧЕСКАЯ ликвидность",
                                 severity="critical",
-                                score_contribution=28,
+                                score_contribution=self.t.critical_liquidity_score,
                                 source="infosphere",
                                 evidence=f"Коэффициент ликвидности: {liquidity:.2f} (критически низко)",
                             )
                         )
-                    elif liquidity < 1.0:
-                        score += 18
+                    elif liquidity < self.t.low_liquidity:
+                        score += self.t.low_liquidity_score
                         factors.append(
                             RiskFactor(
                                 category=RiskCategory.FINANCIAL,
                                 description="⚠️ Низкая ликвидность",
                                 severity="high",
-                                score_contribution=18,
+                                score_contribution=self.t.low_liquidity_score,
                                 source="infosphere",
                                 evidence=f"Коэффициент ликвидности: {liquidity:.2f} (ниже нормы)",
                             )
@@ -323,26 +375,26 @@ class RiskScoreCalculator:
             if debt_ratio is not None:
                 try:
                     debt_ratio = float(debt_ratio)
-                    if debt_ratio > 0.8:
-                        score += 20
+                    if debt_ratio > self.t.high_debt_ratio:
+                        score += self.t.high_debt_score
                         factors.append(
                             RiskFactor(
                                 category=RiskCategory.FINANCIAL,
                                 description="⚠️ Высокая долговая нагрузка",
                                 severity="high",
-                                score_contribution=20,
+                                score_contribution=self.t.high_debt_score,
                                 source="infosphere",
                                 evidence=f"Коэффициент долга: {debt_ratio:.2f} (высокий)",
                             )
                         )
-                    elif debt_ratio > 0.6:
-                        score += 10
+                    elif debt_ratio > self.t.medium_debt_ratio:
+                        score += self.t.medium_debt_score
                         factors.append(
                             RiskFactor(
                                 category=RiskCategory.FINANCIAL,
                                 description="⚠️ Повышенная долговая нагрузка",
                                 severity="medium",
-                                score_contribution=10,
+                                score_contribution=self.t.medium_debt_score,
                                 source="infosphere",
                                 evidence=f"Коэффициент долга: {debt_ratio:.2f}",
                             )
@@ -355,37 +407,37 @@ class RiskScoreCalculator:
             medium_ratings = ["BB", "BB+", "BB-", "B", "B+", "B-"]
 
             if any(r in credit_rating for r in low_ratings):
-                score += 25
+                score += self.t.low_credit_score
                 factors.append(
                     RiskFactor(
                         category=RiskCategory.FINANCIAL,
                         description="🔴 Низкий кредитный рейтинг",
                         severity="critical",
-                        score_contribution=25,
+                        score_contribution=self.t.low_credit_score,
                         source="infosphere",
                         evidence=f"Кредитный рейтинг: {credit_rating}",
                     )
                 )
             elif any(r in credit_rating for r in medium_ratings):
-                score += 15
+                score += self.t.medium_credit_score
                 factors.append(
                     RiskFactor(
                         category=RiskCategory.FINANCIAL,
                         description="⚠️ Спекулятивный кредитный рейтинг",
                         severity="high",
-                        score_contribution=15,
+                        score_contribution=self.t.medium_credit_score,
                         source="infosphere",
                         evidence=f"Кредитный рейтинг: {credit_rating}",
                     )
                 )
         else:
-            score += 10
+            score += self.t.no_financial_data_score
             factors.append(
                 RiskFactor(
                     category=RiskCategory.FINANCIAL,
                     description="⚠️ Финансовые данные недоступны",
                     severity="medium",
-                    score_contribution=10,
+                    score_contribution=self.t.no_financial_data_score,
                     source="infosphere",
                     evidence="Нет данных из InfoSphere",
                 )
@@ -446,7 +498,7 @@ class RiskScoreCalculator:
                     break
 
         if scandal_count > 0:
-            scandal_score = min(20, 10 + scandal_count * 3)
+            scandal_score = min(self.t.scandal_max, self.t.scandal_base + scandal_count * self.t.scandal_per_count)
             score += scandal_score
             factors.append(
                 RiskFactor(
@@ -458,26 +510,26 @@ class RiskScoreCalculator:
                     evidence=f"Найдено {scandal_count} упоминаний скандалов/проблем",
                 )
             )
-        elif negative_count > 3:
-            score += 15
+        elif negative_count > self.t.negative_count_threshold:
+            score += self.t.multiple_negative_score
             factors.append(
                 RiskFactor(
                     category=RiskCategory.REPUTATION,
                     description=f"⚠️ Множественные негативные отзывы ({negative_count})",
                     severity="medium",
-                    score_contribution=15,
+                    score_contribution=self.t.multiple_negative_score,
                     source="perplexity/tavily",
                     evidence=f"Найдено {negative_count} негативных результатов поиска",
                 )
             )
         elif negative_count > 0:
-            score += 5
+            score += self.t.few_negative_score
             factors.append(
                 RiskFactor(
                     category=RiskCategory.REPUTATION,
                     description=f"⚠️ Есть негативные отзывы ({negative_count})",
                     severity="low",
-                    score_contribution=5,
+                    score_contribution=self.t.few_negative_score,
                     source="perplexity/tavily",
                     evidence=f"Найдено {negative_count} негативных результатов",
                 )
@@ -533,13 +585,13 @@ class RiskScoreCalculator:
 
             for keyword in sanction_keywords:
                 if keyword in text:
-                    score += 15
+                    score += self.t.sanction_score
                     factors.append(
                         RiskFactor(
                             category=RiskCategory.REGULATORY,
                             description="🔴 Обнаружены санкционные ограничения",
                             severity="high",
-                            score_contribution=15,
+                            score_contribution=self.t.sanction_score,
                             source="perplexity/tavily",
                             evidence=f"Найдено упоминание: {keyword}",
                         )
@@ -548,13 +600,13 @@ class RiskScoreCalculator:
 
             for keyword in regulatory_keywords:
                 if keyword in text:
-                    score += 5
+                    score += self.t.regulatory_issue_score
                     factors.append(
                         RiskFactor(
                             category=RiskCategory.REGULATORY,
                             description=f"⚠️ Регуляторные вопросы: {keyword}",
                             severity="medium",
-                            score_contribution=5,
+                            score_contribution=self.t.regulatory_issue_score,
                             source="perplexity/tavily",
                             evidence=f"Найдено упоминание: {keyword}",
                         )

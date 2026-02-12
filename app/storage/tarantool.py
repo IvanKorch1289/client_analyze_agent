@@ -93,7 +93,7 @@ class TarantoolClient:
     """
 
     _instance: Optional["TarantoolClient"] = None
-    _lock: Optional[asyncio.Lock] = None
+    _lock: asyncio.Lock = asyncio.Lock()  # Initialized at class level to prevent TOCTOU race
     _initialized: bool = False
 
     def __new__(cls):
@@ -113,10 +113,6 @@ class TarantoolClient:
         # Быстрая проверка без блокировки
         if cls._instance is not None and cls._initialized:
             return cls._instance
-
-        # Создаем lock если еще нет
-        if cls._lock is None:
-            cls._lock = asyncio.Lock()
 
         # Двойная проверка с блокировкой
         async with cls._lock:
@@ -1124,15 +1120,7 @@ class TarantoolClient:
 
         if cls._instance is not None:
             await cls._instance.close()
-            if cls._lock is not None:
-                async with cls._lock:
-                    cls._instance = None
-                    cls._initialized = False
-                    # Сброс repositories
-                    _cache_repo = None
-                    _reports_repo = None
-                    _threads_repo = None
-            else:
+            async with cls._lock:
                 cls._instance = None
                 cls._initialized = False
                 # Сброс repositories

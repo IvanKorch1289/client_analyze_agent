@@ -41,6 +41,14 @@ class ManagerBackedLLM(LLM):
         _run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> str:
+        import warnings
+
+        warnings.warn(
+            "ManagerBackedLLM._call() is deprecated and creates a blocking thread. "
+            "Use _acall() / ainvoke() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return _run_coroutine_sync(get_llm_manager().ainvoke(prompt, **kwargs))
 
     async def _acall(

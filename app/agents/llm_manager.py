@@ -112,10 +112,15 @@ def _run_coroutine_sync(coro, timeout: float = 300.0):
         except Exception as e:
             result_box["error"] = e
 
-    t = threading.Thread(target=_runner, daemon=True)
+    t = threading.Thread(target=_runner, daemon=True, name="llm-sync-bridge")
     t.start()
     t.join(timeout=timeout)
     if t.is_alive():
+        logger.error(
+            f"_run_coroutine_sync: thread {t.name} (ident={t.ident}) leaked after {timeout}s timeout. "
+            "Daemon thread will be cleaned up on process exit.",
+            component="llm_manager",
+        )
         raise TimeoutError(
             f"_run_coroutine_sync: coroutine не завершился за {timeout}s. "
             "Возможен deadlock. Используйте ainvoke() из async-контекста."
@@ -180,8 +185,9 @@ class LLMManager:
             LLMProvider.YANDEXGPT,
         ]
 
-        # Кэш доступности моделей OpenRouter
+        # Кэш доступности моделей OpenRouter (bounded)
         self._model_availability_cache: Dict[str, tuple[bool, float]] = {}
+        self._model_availability_cache_max_size: int = 50
         self._current_openrouter_model: Optional[str] = None
 
         # Jay Guard circuit breaker state
@@ -460,7 +466,10 @@ class LLMManager:
 
                     is_available = model in available_models
 
-                    # Кэшируем результат
+                    # Кэшируем результат (with eviction)
+                    if len(self._model_availability_cache) >= self._model_availability_cache_max_size:
+                        oldest_key = next(iter(self._model_availability_cache))
+                        del self._model_availability_cache[oldest_key]
                     self._model_availability_cache[model] = (is_available, time.time())
 
                     logger.info(

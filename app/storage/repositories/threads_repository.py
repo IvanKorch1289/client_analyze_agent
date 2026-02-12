@@ -242,7 +242,9 @@ class ThreadsRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Список threads для данного ИНН
         """
-        logger.debug(f"Get threads by INN: {inn}", component="threads_repo")
+        from app.shared.security import mask_inn
+
+        logger.debug(f"Get threads by INN: {mask_inn(inn)}", component="threads_repo")
         # Оптимизированный поиск с ранней фильтрацией
         return await self.client.search_threads_by_field(
             field_name="inn",

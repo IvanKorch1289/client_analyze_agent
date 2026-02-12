@@ -5,6 +5,7 @@ Adaptive Prompt Engine: автоматическая доработка пром
 дорабатывает промпты для агентов, чтобы избежать повторения ошибок.
 """
 
+from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
 from app.agents.llm_manager import LLMManager, LLMProvider
@@ -34,8 +35,9 @@ class AdaptivePromptEngine:
         self.prompt_manager = prompt_manager or PromptManager.get_instance()
         self.llm_manager = llm_manager or LLMManager.get_instance()
 
-        # Кэш адаптированных промптов (session-level)
-        self._adaptive_cache: Dict[str, str] = {}
+        # Кэш адаптированных промптов (session-level, bounded)
+        self._adaptive_cache: OrderedDict[str, str] = OrderedDict()
+        self._adaptive_cache_max_size: int = 200
 
     def _sanitize_comments(self, comments: List[str]) -> List[str]:
         """
@@ -133,8 +135,10 @@ class AdaptivePromptEngine:
         # Комбинировать базовый промпт с адаптивными инструкциями
         adaptive_prompt = self._combine_prompt_with_instructions(base_prompt, adaptive_instructions)
 
-        # Сохранить в кэш
+        # Сохранить в кэш (evict oldest if at capacity)
         if cache_key:
+            if len(self._adaptive_cache) >= self._adaptive_cache_max_size:
+                self._adaptive_cache.popitem(last=False)
             self._adaptive_cache[cache_key] = adaptive_prompt
 
         logger.structured(

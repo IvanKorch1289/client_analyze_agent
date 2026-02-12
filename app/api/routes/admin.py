@@ -803,13 +803,15 @@ async def warmup_cache() -> Dict[str, Any]:
                         "company_name": result.get("data", {}).get("name", {}).get("short_with_opf", "N/A"),
                     }
                 )
-                logger.debug(f"Cache warmed for INN: {inn}", component="admin_api")
+                from app.shared.security import mask_inn
+
+                logger.debug(f"Cache warmed for INN: {mask_inn(inn)}", component="admin_api")
             else:
                 results.append({"inn": inn, "status": "not_found", "company_name": None})
 
         except Exception as e:
             logger.error(
-                f"Failed to warm cache for INN {inn}: {e}",
+                f"Failed to warm cache for INN {mask_inn(inn)}: {e}",
                 exc_info=True,
                 component="admin_api",
             )

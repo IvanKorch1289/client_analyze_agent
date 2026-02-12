@@ -28,6 +28,7 @@ import fcntl
 import os
 import time
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -70,8 +71,9 @@ class SchedulerService:
             },
         )
 
-        # Хранилище метаданных задач
-        self._tasks_metadata: Dict[str, Dict[str, Any]] = {}
+        # Хранилище метаданных задач (bounded to prevent memory leak)
+        self._tasks_metadata: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        self._tasks_metadata_max_size: int = 1000
 
         self._started = False
 
@@ -294,7 +296,9 @@ class SchedulerService:
             else:
                 raise ValueError("Either delay_seconds, delay_minutes or run_date must be specified")
 
-        # Сохраняем метаданные
+        # Сохраняем метаданные (evict oldest if at capacity)
+        if len(self._tasks_metadata) >= self._tasks_metadata_max_size:
+            self._tasks_metadata.popitem(last=False)
         self._tasks_metadata[task_id] = {
             "task_id": task_id,
             "func_name": func.__name__,

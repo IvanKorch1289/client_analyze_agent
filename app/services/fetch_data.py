@@ -186,10 +186,12 @@ async def fetch_company_info(inn: str) -> Dict[str, Any]:
     Returns:
         Dict с агрегированными данными из всех источников
     """
-    logger.info(f"Fetching data for INN: {inn}", component="company_info")
+    from app.shared.security import mask_inn
+
+    logger.info(f"Fetching data for INN: {mask_inn(inn)}", component="company_info")
 
     if not inn.isdigit() or len(inn) not in (10, 12):
-        logger.warning(f"Invalid INN format: {inn}", component="company_info")
+        logger.warning(f"Invalid INN format: {mask_inn(inn)}", component="company_info")
         return {"error": "Invalid INN"}
 
     # Параллельные запросы

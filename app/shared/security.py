@@ -354,6 +354,21 @@ def sanitize_filename(filename: str) -> str:
     return filename
 
 
+def mask_inn(inn: str) -> str:
+    """
+    Mask INN for safe logging, showing only last 4 digits.
+
+    Examples:
+        >>> mask_inn("7707083893")
+        "******3893"
+        >>> mask_inn("772012345678")
+        "********5678"
+    """
+    if not inn or len(inn) < 4:
+        return "***"
+    return "*" * (len(inn) - 4) + inn[-4:]
+
+
 __all__ = [
     "sanitize_for_llm",
     "validate_client_id",
@@ -363,4 +378,5 @@ __all__ = [
     "INNValidationResult",
     "sanitize_for_sql",
     "sanitize_filename",
+    "mask_inn",
 ]

@@ -206,7 +206,7 @@ class CircuitBreakerOpenError(Exception):
 
 class AsyncHttpClient:
     _instance: Optional["AsyncHttpClient"] = None
-    _lock: Optional[asyncio.Lock] = None
+    _lock: asyncio.Lock = asyncio.Lock()  # Initialized at class level to prevent TOCTOU race
     _initialized: bool = False
 
     def __new__(cls):
@@ -226,10 +226,6 @@ class AsyncHttpClient:
         # Быстрая проверка без блокировки
         if cls._instance is not None and cls._initialized:
             return cls._instance
-
-        # Создаем lock если еще нет
-        if cls._lock is None:
-            cls._lock = asyncio.Lock()
 
         # Двойная проверка с блокировкой
         async with cls._lock:
