@@ -6,13 +6,8 @@ from typing import Any, Dict, List
 import streamlit as st
 
 from app.frontend.api_client import ApiClient
-from app.frontend.lib.ui import info_box, render_payload, section_header
+from app.frontend.lib.ui import get_admin_token as _get_token, info_box, render_payload, section_header
 from app.frontend.lib.validators import validate_inn
-
-
-def _get_token() -> str:
-    """Получить admin token из session_state."""
-    return st.session_state.get("admin_token", "") or ""
 
 
 def render(api: ApiClient) -> None:

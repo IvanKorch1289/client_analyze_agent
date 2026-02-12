@@ -103,6 +103,35 @@ class LLMAuditRecord:
     metadata: Dict[str, Any]  # Произвольные метаданные
 
 
+@dataclass
+class LLMCallParams:
+    """
+    Parameter object для log_llm_call.
+
+    Группирует 17 параметров вызова для удобной передачи:
+        params = LLMCallParams(provider="openrouter", model="claude-3.5", ...)
+        await audit_logger.log_llm_call(**asdict(params))
+    """
+
+    provider: str
+    model: str
+    operation: str
+    prompt: str
+    response: Optional[str]
+    duration_ms: int
+    success: bool
+    error: Optional[str] = None
+    pii_detected: bool = False
+    pii_types: Optional[List[str]] = None
+    prompt_tokens: Optional[int] = None
+    response_tokens: Optional[int] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    fallback_used: bool = False
+    metadata: Optional[Dict[str, Any]] = None
+    request_id: Optional[str] = None
+
+
 class LLMAuditLogger:
     """
     Логгер аудита LLM вызовов.
@@ -174,29 +203,11 @@ class LLMAuditLogger:
         """
         Логирует LLM вызов.
 
-        Args:
-            provider: Провайдер (openrouter, huggingface, etc.)
-            model: Название модели
-            operation: Тип операции (generate_text, generate_json, etc.)
-            prompt: Промпт (будет хэширован в зависимости от privacy_mode)
-            response: Ответ (будет хэширован в зависимости от privacy_mode)
-            duration_ms: Длительность в миллисекундах
-            success: Успешно ли выполнен запрос
-            error: Текст ошибки если есть
-            pii_detected: Обнаружена ли PII
-            pii_types: Типы обнаруженной PII
-            prompt_tokens: Токены в промпте
-            response_tokens: Токены в ответе
-            temperature: Температура генерации
-            max_tokens: Максимум токенов
-            fallback_used: Использован ли fallback
-            metadata: Дополнительные метаданные
-            request_id: ID запроса (генерируется автоматически если не указан)
-
-        Returns:
-            LLMAuditRecord с записью аудита
+        Принимает параметры напрямую для обратной совместимости.
+        Также поддерживает передачу через LLMCallParams:
+            params = LLMCallParams(provider="openrouter", ...)
+            await logger.log_llm_call(**asdict(params))
         """
-        # Генерируем request_id если не предоставлен
         if request_id is None:
             request_id = f"{provider}_{int(time.time() * 1000)}"
 
@@ -495,6 +506,7 @@ def audit_llm_call(operation: str):
 
 __all__ = [
     "LLMAuditRecord",
+    "LLMCallParams",
     "LLMAuditLogger",
     "PrivacyMode",
     "get_audit_logger",

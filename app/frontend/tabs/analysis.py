@@ -12,6 +12,7 @@ from app.frontend.api_client import ApiClient
 from app.frontend.lib.formatters import format_ts, get_risk_emoji
 from app.frontend.lib.risk_charts import render_risk_summary
 from app.frontend.lib.ui import (
+    get_admin_token as _get_token,
     render_metric_cards,
     safe_api_call,
     section_header,
@@ -59,11 +60,6 @@ STEP_MODEL_INFO = {
         "task": "Сохранение отчёта",
     },
 }
-
-
-def _get_token() -> str:
-    """Получить admin token из session_state."""
-    return st.session_state.get("admin_token", "") or ""
 
 
 def render(api: ApiClient) -> None:

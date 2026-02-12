@@ -1,14 +1,13 @@
 import asyncio
 import hashlib
-import time
-from collections import OrderedDict
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from app.config import settings
+from app.services.cached_client_mixin import CachedClientMixin
 from app.shared.toolkit.logging import logger
 
 
-class PerplexityClient:
+class PerplexityClient(CachedClientMixin):
     """
     Perplexity client via LangChain (OpenAI-compatible).
 
@@ -24,13 +23,13 @@ class PerplexityClient:
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or settings.perplexity.api_key
         self.model = model or settings.perplexity.model or self.DEFAULT_MODEL
-        # L1 кэш в памяти процесса (LRU, ограничен по размеру)
-        self._cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
-        self._cache_max_size: int = 200
-        self._cache_ttl_s = settings.perplexity.cache_ttl or 300
+        self._init_cache(
+            max_size=200,
+            ttl_s=settings.perplexity.cache_ttl or 300,
+            source_name="perplexity",
+        )
         # Коалесинг: если несколько корутин запросили один и тот же cache_key одновременно,
         # выполняем внешний вызов один раз, остальные ожидают результат.
-        self._inflight: Dict[str, asyncio.Future] = {}
 
     @classmethod
     def get_instance(cls) -> "PerplexityClient":
@@ -51,26 +50,6 @@ class PerplexityClient:
     ) -> str:
         key_str = f"{messages}:{model}:{temperature}:{max_tokens}:{search_recency_filter}"
         return f"perplexity:{hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()}"
-
-    def _cache_get(self, cache_key: str) -> Optional[Dict[str, Any]]:
-        cached = self._cache.get(cache_key)
-        if not cached:
-            return None
-        created_at = cached.get("_created_at", 0.0)
-        if created_at and (time.time() - float(created_at)) > self._cache_ttl_s:
-            self._cache.pop(cache_key, None)
-            return None
-        # Перемещаем в конец (LRU: последний использованный — последний на вытеснение)
-        self._cache.move_to_end(cache_key)
-        return cached
-
-    def _cache_set(self, cache_key: str, value: Dict[str, Any]) -> None:
-        if cache_key in self._cache:
-            self._cache.move_to_end(cache_key)
-        self._cache[cache_key] = {**value, "_created_at": time.time()}
-        # LRU eviction
-        while len(self._cache) > self._cache_max_size:
-            self._cache.popitem(last=False)
 
     @staticmethod
     def _to_lc_messages(messages: List[Dict[str, str]]) -> Tuple[list, list]:
@@ -118,42 +97,15 @@ class PerplexityClient:
             search_recency_filter=search_recency_filter,
         )
         if use_cache:
-            # 1) L1 кэш (in-memory)
-            cached = self._cache_get(cache_key)
-            if cached:
-                logger.info("Perplexity cache hit", component="perplexity")
+            cached = await self._cache_lookup(
+                cache_key, l2_enabled=settings.perplexity.cache_enabled
+            )
+            if cached is not None:
                 return cached
-
-            # 2) L2 кэш (Tarantool) — разделяемый между воркерами/процессами (если доступен)
-            if settings.perplexity.cache_enabled:
-                try:
-                    from app.storage.tarantool import TarantoolClient
-
-                    t = await TarantoolClient.get_instance()
-                    repo = t.get_cache_repository()
-                    l2 = await repo.get(cache_key)
-                    if l2:
-                        # L2 может хранить уже "cached": True — оставляем как есть
-                        self._cache_set(cache_key, l2)
-                        logger.info(
-                            "Perplexity L2 cache hit (Tarantool)",
-                            component="perplexity",
-                        )
-                        return l2
-                except Exception:
-                    # кэш недоступен — продолжаем без L2
-                    pass
-
-            # 3) Коалесинг на уровне процесса
-            inflight = self._inflight.get(cache_key)
-            if inflight is not None:
-                return await inflight
 
         try:
             if use_cache:
-                loop = asyncio.get_running_loop()
-                fut: asyncio.Future = loop.create_future()
-                self._inflight[cache_key] = fut
+                self._inflight_start(cache_key)
 
             from langchain_openai import ChatOpenAI
 
@@ -223,27 +175,10 @@ class PerplexityClient:
             }
 
             if use_cache:
-                self._cache_set(cache_key, {**response_data, "cached": True})
-                # L2 запись в Tarantool (best-effort)
-                if settings.perplexity.cache_enabled:
-                    try:
-                        from app.storage.tarantool import TarantoolClient
-
-                        t = await TarantoolClient.get_instance()
-                        repo = t.get_cache_repository()
-                        await repo.set_with_ttl(
-                            cache_key,
-                            {**response_data, "cached": True},
-                            ttl=self._cache_ttl_s,
-                            source="perplexity",
-                        )
-                    except Exception:
-                        pass
-
-                # Завершаем inflight
-                inflight = self._inflight.pop(cache_key, None)
-                if inflight is not None and not inflight.done():
-                    inflight.set_result({**response_data, "cached": True})
+                await self._cache_store(
+                    cache_key, response_data,
+                    l2_enabled=settings.perplexity.cache_enabled,
+                )
 
             return response_data
 
@@ -253,9 +188,8 @@ class PerplexityClient:
                 f"Perplexity LangChain request failed: {type(e).__name__}: {error_msg}",
                 component="perplexity",
             )
-            inflight = self._inflight.pop(cache_key, None) if use_cache else None
-            if inflight is not None and not inflight.done():
-                inflight.set_result({"success": False, "error": error_msg})
+            if use_cache:
+                self._inflight_resolve(cache_key, {"success": False, "error": error_msg})
             return {"success": False, "error": error_msg}
 
     async def ask(
@@ -332,18 +266,6 @@ class PerplexityClient:
                 "error": str(e) or type(e).__name__,
                 "integration": "langchain-openai",
             }
-
-    def clear_cache(self) -> None:
-        """
-        Очистка L1 кэша процесса.
-
-        Примечание: L2 кэш в Tarantool очищается через админ-эндпоинт `/utility/cache/prefix/perplexity:`.
-        """
-        self._cache.clear()
-        logger.info("Perplexity cache cleared (L1)", component="perplexity")
-
-    def get_cache_stats(self) -> Dict[str, int]:
-        return {"cache_size": len(self._cache), "cache_ttl": self._cache_ttl_s}
 
     async def get_status(self) -> Dict[str, Any]:
         # Status != healthcheck; does not call external service.

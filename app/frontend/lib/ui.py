@@ -192,6 +192,57 @@ def confirm_action(
     return st.checkbox(label, value=False, key=key)
 
 
+def get_admin_token() -> str:
+    """Get admin token from session state (shared across all tabs)."""
+    return st.session_state.get("admin_token", "") or ""
+
+
+def inn_input(
+    label: str = "ИНН",
+    *,
+    placeholder: str = "7707083893",
+    max_chars: int = 12,
+    key: str = "inn_input",
+    help_text: str = "Введите ИНН компании (10 или 12 цифр)",
+) -> str:
+    """
+    Reusable INN input widget with validation.
+
+    Returns:
+        Cleaned INN string (digits only) or empty string.
+    """
+    raw = st.text_input(
+        label,
+        placeholder=placeholder,
+        max_chars=max_chars,
+        key=key,
+        help=help_text,
+    )
+    return (raw or "").strip()
+
+
+def validate_inn_input(inn: str) -> bool:
+    """Validate INN and show error if invalid. Returns True if valid."""
+    if not inn:
+        return False
+    if not inn.isdigit() or len(inn) not in (10, 12):
+        st.error("Введите корректный ИНН (10 или 12 цифр)")
+        return False
+    return True
+
+
+def service_status_badge(status: str) -> None:
+    """Display a colored status badge for a service."""
+    badges = {
+        "ready": ("✅", "success"),
+        "error": ("❌", "error"),
+        "not_configured": ("⚙️", "warning"),
+        "degraded": ("⚠️", "warning"),
+    }
+    emoji, method = badges.get(status, ("❓", "info"))
+    getattr(st, method)(f"{emoji} {status}")
+
+
 def progress_with_status(
     steps: list[tuple[str, float]],
     current_step: int,

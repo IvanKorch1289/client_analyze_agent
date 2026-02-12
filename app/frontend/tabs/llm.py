@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 import streamlit as st
 
 from app.frontend.api_client import ApiClient
-from app.frontend.lib.ui import info_box, render_payload, section_header
+from app.frontend.lib.ui import get_admin_token as _get_token, info_box, render_payload, section_header
 
 # Опции провайдеров с отображаемыми именами
 LLM_PROVIDERS: List[tuple[str, str]] = [
@@ -20,11 +20,6 @@ LLM_PROVIDERS: List[tuple[str, str]] = [
     ("YandexGPT", "yandexgpt"),
     ("OpenLlama (Внутренний)", "openllama"),
 ]
-
-
-def _get_token() -> str:
-    """Получение admin токена из session_state."""
-    return st.session_state.get("admin_token", "") or ""
 
 
 def render(api: ApiClient) -> None:
