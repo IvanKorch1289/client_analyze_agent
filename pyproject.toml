@@ -16,7 +16,7 @@ langchain-openai = "^1.1.7"
 langchain-community = "^0.4.1"
 langchain-huggingface = "^1.2.0"
 gigachat = "^0.1.43"
-fastmcp = "^2.14.1"
+fastmcp = "^3.2.0"
 tarantool = "^1.2.0"
 httpx = {extras = ["http2"], version = "^0.28.1"}
 tenacity = "^9.1.2"
