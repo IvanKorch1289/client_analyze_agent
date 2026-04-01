@@ -47,7 +47,7 @@ requests = "^2.32.5"
 bs4 = "^0.0.2"
 yandexcloud = "^0.372.0"
 # Security fixes for transitive dependencies
-aiohttp = "^3.13.3"      # CVE-2025-69223 through CVE-2025-69230
+aiohttp = "^3.13.4"      # CVE-2025-69223 through CVE-2025-69230
 urllib3 = "^2.6.3"       # CVE-2026-21441
 
 # Sprint 0: Security & Optimization
